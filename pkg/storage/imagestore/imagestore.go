@@ -2609,28 +2609,22 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 
 			// if we have a new candidate, make sure it holds the content before this copy goes
 			if dstRecord != "" {
-				removedFrom, err := is.lifecycle.HandOffContent(blobPath, dstRecord)
+				removedFrom, err := is.handOffToNextCopy(digest, blobPath, binfo, dstRecord)
 				if err != nil {
 					is.log.Error().Err(err).Str("blobPath", blobPath).Str("candidate", dstRecord).
 						Str("component", "dedupe").Msg("failed to hand off blob content to the next copy")
 
+					// The cache no longer records this copy, so a retry would delete it as an
+					// ordinary duplicate. Record it as the origin again until a hand-off succeeds.
+					if serr := is.cache.SetOrigin(digest, blobPath); serr != nil {
+						is.log.Error().Err(serr).Str("blobPath", blobPath).Str("component", "dedupe").
+							Msg("failed to restore the cache origin after a failed hand-off")
+					}
+
 					return err
 				}
 
-				if !removedFrom {
-					// The cache now names the candidate as the origin, so it must hold the
-					// content. A corrupt zero-size copy (older dedupe walks recorded them
-					// without repair) takes this copy's content instead of losing it.
-					removedFrom, err = is.moveOntoCorruptCopy(digest, blobPath, dstRecord)
-					if err != nil {
-						is.log.Error().Err(err).Str("blobPath", blobPath).Str("candidate", dstRecord).
-							Str("component", "dedupe").Msg("failed to repair the next copy from the deleted one")
-
-						return err
-					}
-				}
-
-				// a copy neither step removed is deleted below
+				// a copy the hand-off did not remove is deleted below
 				if removedFrom {
 					return nil
 				}
@@ -2663,10 +2657,33 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	return nil
 }
 
+// handOffToNextCopy makes sure toPath, the copy the cache now records as the origin, holds the
+// content of fromPath, which is about to be deleted. It reports whether doing so removed fromPath.
+func (is *ImageStore) handOffToNextCopy(digest godigest.Digest, fromPath string, fromInfo driver.FileInfo,
+	toPath string,
+) (bool, error) {
+	removedFrom, err := is.lifecycle.HandOffContent(fromPath, toPath)
+	if err != nil || removedFrom {
+		return removedFrom, err
+	}
+
+	// The cache origin must hold the content on every driver. A corrupt zero-size copy (older
+	// dedupe walks recorded them without repair) takes this copy's content instead of losing it.
+	return is.moveOntoCorruptCopy(digest, fromPath, fromInfo, toPath)
+}
+
 // moveOntoCorruptCopy moves the copy at fromPath onto toPath when toPath is a zero-size copy of
 // a non-empty digest that is not a placeholder, i.e. corrupt, and reports whether it did, which
-// also removes fromPath. A missing toPath is left to the cache to heal.
-func (is *ImageStore) moveOntoCorruptCopy(digest godigest.Digest, fromPath, toPath string) (bool, error) {
+// also removes fromPath. Only a fromPath with content is moved: when both are links to one
+// truncated inode, a rename would succeed without removing either. A missing toPath is left to
+// the cache to heal.
+func (is *ImageStore) moveOntoCorruptCopy(digest godigest.Digest, fromPath string, fromInfo driver.FileInfo,
+	toPath string,
+) (bool, error) {
+	if fromInfo.Size() == 0 {
+		return false, nil
+	}
+
 	binfo, err := is.storeDriver.Stat(toPath)
 	if err != nil {
 		if errclass.IsStorageObjectMissing(err) {

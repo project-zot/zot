@@ -2,6 +2,7 @@ package imagestore_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path"
 	"testing"
@@ -18,6 +19,41 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
+
+var errMoveFailed = errors.New("move failed") //nolint: gochecknoglobals
+
+// failingMoveDriver fails the first failures calls to Move, then delegates.
+type failingMoveDriver struct {
+	storageTypes.Driver
+
+	failures int
+}
+
+func (d *failingMoveDriver) Move(sourcePath, destPath string) error {
+	if d.failures > 0 {
+		d.failures--
+
+		return errMoveFailed
+	}
+
+	return d.Driver.Move(sourcePath, destPath)
+}
+
+// newLocalDedupeStoreAt returns a local image store with dedupe on and a BoltDB cache that
+// stores relative paths, as local storage does.
+func newLocalDedupeStoreAt(dir string, storeDriver storageTypes.Driver) (storageTypes.ImageStore, storageTypes.Cache) {
+	log := zlog.NewTestLogger()
+
+	cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     dir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
+	So(err, ShouldBeNil)
+
+	return imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+		storeDriver, cacheDriver, nil, nil), cacheDriver
+}
 
 func TestDeleteDedupeOrigin(t *testing.T) {
 	Convey("Deleting the dedupe origin removes it and leaves the next copy readable", t, func() {
@@ -157,5 +193,80 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 
 		_, err = os.Stat(copies[0])
 		So(os.IsNotExist(err), ShouldBeTrue)
+	})
+
+	Convey("A failed repair of the next copy keeps the deleted copy as the cache origin", t, func() {
+		dir := t.TempDir()
+		storeDriver := &failingMoveDriver{Driver: local.New(true), failures: 1}
+		imgStore, cacheDriver := newLocalDedupeStoreAt(dir, storeDriver)
+
+		ctx := context.Background()
+		content := []byte("handoff-content")
+		digest := godigest.FromBytes(content)
+
+		plant := func(repo string, body []byte) string {
+			So(imgStore.InitRepo(ctx, repo), ShouldBeNil)
+
+			blobPath := imgStore.BlobPath(repo, digest)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+			So(cacheDriver.PutBlob(digest, blobPath), ShouldBeNil)
+
+			return blobPath
+		}
+
+		origin := plant("repo-origin", content)
+		corrupt := plant("repo-copy", []byte{})
+
+		So(errors.Is(imgStore.DeleteBlob("repo-origin", digest), errMoveFailed), ShouldBeTrue)
+
+		// nothing was lost, and the cache still names the copy holding the content
+		data, err := os.ReadFile(origin)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		record, err := cacheDriver.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(path.Join(dir, record), ShouldEqual, origin)
+
+		// so the retry repairs the next copy rather than deleting the content
+		So(imgStore.DeleteBlob("repo-origin", digest), ShouldBeNil)
+
+		_, err = os.Stat(origin)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		data, err = os.ReadFile(corrupt)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+
+	Convey("Deleting one of two links to a truncated inode removes it", t, func() {
+		dir := t.TempDir()
+		imgStore, cacheDriver := newLocalDedupeStoreAt(dir, local.New(true))
+
+		ctx := context.Background()
+		digest := godigest.FromBytes([]byte("handoff-content"))
+
+		origin := imgStore.BlobPath("repo-origin", digest)
+		other := imgStore.BlobPath("repo-copy", digest)
+
+		So(imgStore.InitRepo(ctx, "repo-origin"), ShouldBeNil)
+		So(imgStore.InitRepo(ctx, "repo-copy"), ShouldBeNil)
+		So(os.MkdirAll(path.Dir(origin), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.MkdirAll(path.Dir(other), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(origin, nil, storageConstants.DefaultFilePerms), ShouldBeNil)
+		So(os.Link(origin, other), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, origin), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, other), ShouldBeNil)
+
+		// both links are zero-size, so there is no content to move, and renaming one link of
+		// an inode onto another would succeed without removing either
+		So(imgStore.DeleteBlob("repo-origin", digest), ShouldBeNil)
+
+		_, err := os.Stat(origin)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		_, err = os.Stat(other)
+		So(err, ShouldBeNil)
 	})
 }
