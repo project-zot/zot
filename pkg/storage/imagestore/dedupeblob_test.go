@@ -3,6 +3,7 @@ package imagestore_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"testing"
@@ -51,25 +52,45 @@ func TestDedupeBlobOriginWithoutContent(t *testing.T) {
 				ctx := context.Background()
 
 				// the cache names an empty copy as the origin: a placeholder whose content was
-				// lost, or a corrupt local copy recorded by an older dedupe walk
-				So(imgStore.InitRepo(ctx, "repo-empty"), ShouldBeNil)
+				// lost, or a corrupt local copy recorded by an older dedupe walk. Another repo
+				// shares it: a hardlink locally, a placeholder remotely.
+				emptyOrigin := ""
 
-				emptyOrigin := imgStore.BlobPath("repo-empty", digest)
-				So(os.MkdirAll(path.Dir(emptyOrigin), storageConstants.DefaultDirPerms), ShouldBeNil)
-				So(os.WriteFile(emptyOrigin, nil, storageConstants.DefaultFilePerms), ShouldBeNil)
-				So(cacheDriver.PutBlob(digest, emptyOrigin), ShouldBeNil)
+				for _, repo := range []string{"repo-empty", "repo-other"} {
+					So(imgStore.InitRepo(ctx, repo), ShouldBeNil)
+
+					blobPath := imgStore.BlobPath(repo, digest)
+					So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+
+					if emptyOrigin == "" || !testCase.relPaths {
+						So(os.WriteFile(blobPath, nil, storageConstants.DefaultFilePerms), ShouldBeNil)
+					} else {
+						So(os.Link(emptyOrigin, blobPath), ShouldBeNil)
+					}
+
+					So(cacheDriver.PutBlob(digest, blobPath), ShouldBeNil)
+
+					if emptyOrigin == "" {
+						emptyOrigin = blobPath
+					}
+				}
 
 				_, size, err := imgStore.FullBlobUpload(ctx, "repo-push", bytes.NewReader(content), digest)
 				So(err, ShouldBeNil)
 				So(size, ShouldEqual, len(content))
 
-				pushed := imgStore.BlobPath("repo-push", digest)
-
-				data, err := os.ReadFile(pushed)
+				// the push repaired the origin rather than replacing it, so every repo reads it
+				data, err := os.ReadFile(emptyOrigin)
 				So(err, ShouldBeNil)
 				So(data, ShouldResemble, content)
 
-				// the push is now the origin, and still records the empty copy
+				for _, repo := range []string{"repo-empty", "repo-other", "repo-push"} {
+					ok, blobSize, err := imgStore.CheckBlob(ctx, repo, digest)
+					So(err, ShouldBeNil)
+					So(ok, ShouldBeTrue)
+					So(blobSize, ShouldEqual, len(content))
+				}
+
 				record, err := cacheDriver.GetBlob(digest)
 				So(err, ShouldBeNil)
 
@@ -77,13 +98,8 @@ func TestDedupeBlobOriginWithoutContent(t *testing.T) {
 					record = path.Join(dir, record)
 				}
 
-				So(record, ShouldEqual, pushed)
-				So(cacheDriver.HasBlob(digest, emptyOrigin), ShouldBeTrue)
-
-				ok, blobSize, err := imgStore.CheckBlob(ctx, "repo-push", digest)
-				So(err, ShouldBeNil)
-				So(ok, ShouldBeTrue)
-				So(blobSize, ShouldEqual, len(content))
+				So(record, ShouldEqual, emptyOrigin)
+				So(cacheDriver.HasBlob(digest, imgStore.BlobPath("repo-push", digest)), ShouldBeTrue)
 			})
 		}
 	})
@@ -91,45 +107,58 @@ func TestDedupeBlobOriginWithoutContent(t *testing.T) {
 
 func TestDedupeBlobRepairsSharedContent(t *testing.T) {
 	Convey("Pushing a blob again over wrong shared content repairs every copy of it", t, func() {
-		dir := t.TempDir()
-		log := zlog.NewTestLogger()
-
-		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
-		}, log)
-		So(err, ShouldBeNil)
-
-		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
-			local.New(true), cacheDriver, nil, nil)
-
-		storeController := storage.StoreController{DefaultStore: imgStore}
-
-		img := image.CreateRandomImage()
-		So(image.WriteImageToFileSystem(img, "repo-a", "tag", storeController), ShouldBeNil)
-		So(image.WriteImageToFileSystem(img, "repo-b", "tag", storeController), ShouldBeNil)
-
-		layer := img.Layers[0]
-		digest := godigest.FromBytes(layer)
-		origin := imgStore.BlobPath("repo-a", digest)
-		copyB := imgStore.BlobPath("repo-b", digest)
-
-		// both copies are links to one inode, so truncating it corrupts both
-		So(os.Truncate(origin, 3), ShouldBeNil)
-
-		data, err := os.ReadFile(copyB)
-		So(err, ShouldBeNil)
-		So(data, ShouldHaveLength, 3)
-
-		_, _, err = imgStore.FullBlobUpload(context.Background(), "repo-b", bytes.NewReader(layer), digest)
-		So(err, ShouldBeNil)
-
-		// a rename would have repaired only repo-b's path; the origin and its links stay wrong
-		for _, blobPath := range []string{origin, copyB} {
-			data, err := os.ReadFile(blobPath)
-			So(err, ShouldBeNil)
-			So(data, ShouldResemble, layer)
+		// a truncated inode, and one truncated to nothing
+		for _, corruptSize := range []int64{3, 0} {
+			Convey(fmt.Sprintf("shared content cut to %d bytes", corruptSize), func() {
+				testRepairSharedContent(t, corruptSize)
+			})
 		}
 	})
+}
+
+// testRepairSharedContent pushes a blob again after cutting the inode two repos share to
+// corruptSize bytes, and checks that both copies are repaired.
+func testRepairSharedContent(t *testing.T, corruptSize int64) {
+	t.Helper()
+
+	dir := t.TempDir()
+	log := zlog.NewTestLogger()
+
+	cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     dir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
+	So(err, ShouldBeNil)
+
+	imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+		local.New(true), cacheDriver, nil, nil)
+
+	storeController := storage.StoreController{DefaultStore: imgStore}
+
+	img := image.CreateRandomImage()
+	So(image.WriteImageToFileSystem(img, "repo-a", "tag", storeController), ShouldBeNil)
+	So(image.WriteImageToFileSystem(img, "repo-b", "tag", storeController), ShouldBeNil)
+
+	layer := img.Layers[0]
+	digest := godigest.FromBytes(layer)
+	origin := imgStore.BlobPath("repo-a", digest)
+	copyB := imgStore.BlobPath("repo-b", digest)
+
+	// both copies are links to one inode, so truncating it corrupts both
+	So(os.Truncate(origin, corruptSize), ShouldBeNil)
+
+	data, err := os.ReadFile(copyB)
+	So(err, ShouldBeNil)
+	So(data, ShouldHaveLength, corruptSize)
+
+	_, _, err = imgStore.FullBlobUpload(context.Background(), "repo-b", bytes.NewReader(layer), digest)
+	So(err, ShouldBeNil)
+
+	// a rename would have repaired only repo-b's path; the origin and its links stay wrong
+	for _, blobPath := range []string{origin, copyB} {
+		data, err := os.ReadFile(blobPath)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, layer)
+	}
 }

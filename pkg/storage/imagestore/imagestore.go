@@ -1703,26 +1703,38 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			continue
 		}
 
-		// An origin without content cannot back another copy: linking this upload to it would
-		// leave the upload empty as well. Keep the upload as the content copy instead and make it
-		// the origin, which also makes the copies that point at the origin readable again.
+		/* An origin without content cannot back another copy: linking this upload to it would leave
+		the upload empty as well. It is the shared content gone wrong, as below for a re-push of a
+		blob whose content has the wrong size, so repair it from the upload, which repairs every
+		copy sharing it, and then link this copy to it like any other. */
 		if lacksContent(dstDigest, blobInfo.Size()) {
 			is.log.Warn().Str("origin", dstRecord).Str("dst", dst).Str("component", "dedupe").
-				Msg("dedupe origin has no content, keeping the upload as the new origin")
+				Msg("dedupe origin has no content, repairing it from the upload")
 
-			if err := is.storeDriver.Move(src, dst); err != nil {
-				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-					Msg("failed to rename blob")
+			if err := is.lifecycle.RepairSharedContent(src, dstRecord); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("origin", dstRecord).Str("component", "dedupe").
+					Msg("failed to repair shared blob content")
 
 				return err
 			}
 
-			if err := is.cache.SetOrigin(dstDigest, dst); err != nil {
-				// As when publishing a first origin fails: the content is durable at dst, so failing the
-				// upload would report an error for a blob that exists. A later upload or the
-				// dedupe walk can repair the origin.
+			// the repair consumed the upload, so there is nothing left to remove
+			if is.storeDriver.SameFile(dst, dstRecord) {
+				return nil
+			}
+
+			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
+				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
+					Msg("failed to link blobs")
+
+				return err
+			}
+
+			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-					Msg("failed to make the upload the dedupe origin; leaving blob committed")
+					Msg("failed to insert blob record")
+
+				return err
 			}
 
 			return nil
