@@ -2729,16 +2729,15 @@ func (is *ImageStore) handOffToNextCopy(digest godigest.Digest, fromPath string,
 func (is *ImageStore) moveOntoCorruptCopy(digest godigest.Digest, fromPath string, fromInfo driver.FileInfo,
 	toPath string,
 ) (bool, error) {
-	if fromInfo.Size() == 0 {
-		return false, nil
-	}
-
+	// stat first, even with nothing to move: a missing toPath must reach the caller, which drops
+	// it rather than making it the origin
 	binfo, err := is.storeDriver.Stat(toPath)
 	if err != nil {
 		return false, err
 	}
 
-	if binfo.Size() != 0 || isEmptyContentDigest(digest) || is.lifecycle.IsPlaceholder(digest, binfo) {
+	if fromInfo.Size() == 0 || binfo.Size() != 0 || isEmptyContentDigest(digest) ||
+		is.lifecycle.IsPlaceholder(digest, binfo) {
 		return false, nil
 	}
 

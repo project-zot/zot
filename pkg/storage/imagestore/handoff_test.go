@@ -216,18 +216,22 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 
 	Convey("A next copy missing from storage is dropped, and the one after it takes the content", t, func() {
 		content := []byte("handoff-content")
-		digest := godigest.FromBytes(content)
 
 		for _, testCase := range []struct {
 			name     string
 			driver   storageTypes.Driver
 			relPaths bool
+			content  []byte
 			nextCopy []byte
 		}{
-			{"remote, placeholder after it", &remoteNamedDriver{Driver: local.New(true)}, false, []byte{}},
-			{"local, corrupt copy after it", local.New(true), true, []byte{}},
+			{"remote, placeholder after it", &remoteNamedDriver{Driver: local.New(true)}, false, content, []byte{}},
+			{"local, corrupt copy after it", local.New(true), true, content, []byte{}},
+			// nothing to move for the empty digest, but the missing copy must still be dropped
+			{"local, empty digest", local.New(true), true, []byte{}, []byte{}},
 		} {
 			Convey(testCase.name, func() {
+				digest := godigest.FromBytes(testCase.content)
+
 				dir := t.TempDir()
 				log := zlog.NewTestLogger()
 
@@ -255,8 +259,8 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 				}
 
 				// the cache promotes copies in path order, so the missing one comes first
-				origin := plant("repo-a-origin", content)
-				missing := plant("repo-b-missing", content)
+				origin := plant("repo-a-origin", testCase.content)
+				missing := plant("repo-b-missing", testCase.content)
 				nextCopy := plant("repo-c-next", testCase.nextCopy)
 				So(os.Remove(missing), ShouldBeNil)
 
@@ -267,7 +271,7 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 
 				data, err := os.ReadFile(nextCopy)
 				So(err, ShouldBeNil)
-				So(data, ShouldResemble, content)
+				So(data, ShouldResemble, testCase.content)
 
 				So(cacheDriver.HasBlob(digest, missing), ShouldBeFalse)
 
