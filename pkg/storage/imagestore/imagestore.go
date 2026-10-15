@@ -2617,7 +2617,20 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 					return err
 				}
 
-				// a copy the hand-off did not remove is deleted below
+				if !removedFrom {
+					// The cache now names the candidate as the origin, so it must hold the
+					// content. A corrupt zero-size copy (older dedupe walks recorded them
+					// without repair) takes this copy's content instead of losing it.
+					removedFrom, err = is.moveOntoCorruptCopy(digest, blobPath, dstRecord)
+					if err != nil {
+						is.log.Error().Err(err).Str("blobPath", blobPath).Str("candidate", dstRecord).
+							Str("component", "dedupe").Msg("failed to repair the next copy from the deleted one")
+
+						return err
+					}
+				}
+
+				// a copy neither step removed is deleted below
 				if removedFrom {
 					return nil
 				}
@@ -2648,6 +2661,30 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	}
 
 	return nil
+}
+
+// moveOntoCorruptCopy moves the copy at fromPath onto toPath when toPath is a zero-size copy of
+// a non-empty digest that is not a placeholder, i.e. corrupt, and reports whether it did, which
+// also removes fromPath. A missing toPath is left to the cache to heal.
+func (is *ImageStore) moveOntoCorruptCopy(digest godigest.Digest, fromPath, toPath string) (bool, error) {
+	binfo, err := is.storeDriver.Stat(toPath)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	if binfo.Size() != 0 || isEmptyContentDigest(digest) || is.lifecycle.IsPlaceholder(digest, binfo) {
+		return false, nil
+	}
+
+	if err := is.storeDriver.Move(fromPath, toPath); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // deleteMustWaitForWalk reports whether deleting the content copy described by binfo has to

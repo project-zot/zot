@@ -50,6 +50,14 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 				digest: godigest.FromBytes(nil), origin: []byte{}, nextCopy: []byte{}, nextAfter: []byte{},
 			},
 			{
+				// older dedupe walks recorded zero-size local copies without repairing them: the
+				// origin's content moves onto such a copy instead of being lost with the origin
+				name:     "local, next copy is a corrupt zero-size copy",
+				driver:   local.New(true),
+				relPaths: true,
+				digest:   godigest.FromBytes(content), origin: content, nextCopy: []byte{}, nextAfter: content,
+			},
+			{
 				// relative cache paths, as local storage uses
 				name:     "local",
 				driver:   local.New(true),
@@ -109,5 +117,45 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 				So(data, ShouldResemble, testCase.nextAfter)
 			})
 		}
+	})
+
+	Convey("Deleting the dedupe origin succeeds when the next copy has gone", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			local.New(true), cacheDriver, nil, nil)
+
+		ctx := context.Background()
+		content := []byte("handoff-content")
+		digest := godigest.FromBytes(content)
+
+		var copies []string
+
+		for _, repo := range []string{"repo-origin", "repo-copy"} {
+			So(imgStore.InitRepo(ctx, repo), ShouldBeNil)
+
+			blobPath := imgStore.BlobPath(repo, digest)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, content, storageConstants.DefaultFilePerms), ShouldBeNil)
+			So(cacheDriver.PutBlob(digest, blobPath), ShouldBeNil)
+
+			copies = append(copies, blobPath)
+		}
+
+		// the cache still records the next copy, which is no longer on storage
+		So(os.Remove(copies[1]), ShouldBeNil)
+
+		So(imgStore.DeleteBlob("repo-origin", digest), ShouldBeNil)
+
+		_, err = os.Stat(copies[0])
+		So(os.IsNotExist(err), ShouldBeTrue)
 	})
 }
