@@ -1,7 +1,9 @@
 package imagestore
 
 import (
+	"context"
 	"errors"
+	"io"
 	"net/http"
 	"path"
 
@@ -32,6 +34,7 @@ import (
 //   - IsPlaceholder decides whether a read has to go through the cache to find the content,
 //     and which copies the dedupe and restore walks treat as placeholders.
 //   - HandOffContent keeps the content alive when the copy holding it is deleted.
+//   - RepairSharedContent replaces wrong shared content with a verified upload.
 //   - DeletesCanDestroySharedContent decides whether deletes wait for the dedupe walk.
 //
 // What stays in the image store is the driver-independent integrity rule: a zero-byte file
@@ -81,6 +84,18 @@ type blobLifecycle interface {
 	// Local: no, an inode with several hard links outlives any one of them. Remote: yes, a
 	// placeholder does not hold the content, which is stored once.
 	DeletesCanDestroySharedContent() bool
+
+	// RepairSharedContent overwrites the content at originPath, which every deduped copy of the
+	// blob shares, with the verified upload at uploadPath, and consumes uploadPath. It is used
+	// when a blob is pushed again and the shared content is found to be wrong; the cache is not
+	// changed.
+	// Local: copies share one inode, so originPath is rewritten in place (Writer without append
+	// truncates the existing file), which repairs every hardlink to it, and uploadPath is then
+	// deleted. A rename would repair only the path it lands on. If the rewrite fails, originPath
+	// may be left partly written; it was already wrong, the upload is still in place, and the
+	// error reaches the client, so a retry repeats the repair.
+	// Remote: placeholders resolve to originPath, so uploadPath is moved onto it.
+	RepairSharedContent(uploadPath, originPath string) error
 }
 
 func newBlobLifecycle(storeDriver storageTypes.Driver, rootDir string,
@@ -141,6 +156,39 @@ func (l *localHardlinkBlobLifecycle) HandOffContent(digest godigest.Digest, from
 	}
 
 	return true, nil
+}
+
+func (l *localHardlinkBlobLifecycle) RepairSharedContent(uploadPath, originPath string) error {
+	reader, err := l.storeDriver.Reader(uploadPath, 0)
+	if err != nil {
+		return err
+	}
+
+	defer reader.Close()
+
+	// not Cancel on failure: it removes the file, which here is a link to the shared content
+	writer, err := l.storeDriver.Writer(originPath, false)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(writer, reader); err != nil {
+		_ = writer.Close()
+
+		return err
+	}
+
+	if err := writer.Commit(context.Background()); err != nil {
+		_ = writer.Close()
+
+		return err
+	}
+
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	return l.storeDriver.Delete(uploadPath)
 }
 
 func (l *localHardlinkBlobLifecycle) ValidateBlobsDir(repoDir string) (bool, error) {
@@ -206,6 +254,10 @@ func (r *remoteSharedBlobLifecycle) HandOffContent(_ godigest.Digest, fromPath s
 	}
 
 	return true, nil
+}
+
+func (r *remoteSharedBlobLifecycle) RepairSharedContent(uploadPath, originPath string) error {
+	return r.storeDriver.Move(uploadPath, originPath)
 }
 
 func (r *remoteSharedBlobLifecycle) ValidateBlobsDir(_ string) (bool, error) {

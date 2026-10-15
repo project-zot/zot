@@ -1748,9 +1748,11 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
 				// blob corrupted, replace content
 				if desc.Size != blobInfo.Size() {
-					if err := is.storeDriver.Move(src, dst); err != nil {
-						is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-							Msg("failed to rename blob")
+					// Repair the origin rather than dst: every copy shares its content, so this
+					// repairs dst too, whichever copy of the origin's content dst is.
+					if err := is.lifecycle.RepairSharedContent(src, dstRecord); err != nil {
+						is.log.Error().Err(err).Str("src", src).Str("origin", dstRecord).Str("component", "dedupe").
+							Msg("failed to repair shared blob content")
 
 						return err
 					}

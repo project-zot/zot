@@ -18,6 +18,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	image "zotregistry.dev/zot/v2/pkg/test/image-utils"
 )
 
 func TestDedupeBlobOriginWithoutContent(t *testing.T) {
@@ -84,6 +85,51 @@ func TestDedupeBlobOriginWithoutContent(t *testing.T) {
 				So(ok, ShouldBeTrue)
 				So(blobSize, ShouldEqual, len(content))
 			})
+		}
+	})
+}
+
+func TestDedupeBlobRepairsSharedContent(t *testing.T) {
+	Convey("Pushing a blob again over wrong shared content repairs every copy of it", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			local.New(true), cacheDriver, nil, nil)
+
+		storeController := storage.StoreController{DefaultStore: imgStore}
+
+		img := image.CreateRandomImage()
+		So(image.WriteImageToFileSystem(img, "repo-a", "tag", storeController), ShouldBeNil)
+		So(image.WriteImageToFileSystem(img, "repo-b", "tag", storeController), ShouldBeNil)
+
+		layer := img.Layers[0]
+		digest := godigest.FromBytes(layer)
+		origin := imgStore.BlobPath("repo-a", digest)
+		copyB := imgStore.BlobPath("repo-b", digest)
+
+		// both copies are links to one inode, so truncating it corrupts both
+		So(os.Truncate(origin, 3), ShouldBeNil)
+
+		data, err := os.ReadFile(copyB)
+		So(err, ShouldBeNil)
+		So(data, ShouldHaveLength, 3)
+
+		_, _, err = imgStore.FullBlobUpload(context.Background(), "repo-b", bytes.NewReader(layer), digest)
+		So(err, ShouldBeNil)
+
+		// a rename would have repaired only repo-b's path; the origin and its links stay wrong
+		for _, blobPath := range []string{origin, copyB} {
+			data, err := os.ReadFile(blobPath)
+			So(err, ShouldBeNil)
+			So(data, ShouldResemble, layer)
 		}
 	})
 }
