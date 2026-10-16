@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path"
+	"reflect"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -13,6 +15,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
@@ -39,7 +42,7 @@ import (
 //
 // What stays in the image store is the driver-independent integrity rule: a zero-byte file
 // for a digest that is not the empty one is never served, and never used as a dedupe origin.
-type blobLifecycle interface {
+type blobLifecycle interface { //nolint:interfacebloat
 	// IsPlaceholder reports whether the file at a copy of digest, as already stat'd, is a
 	// dedupe placeholder whose content is at the path the cache records.
 	// Local: never, since a hardlink holds the content. Remote: a zero-byte file for a
@@ -96,16 +99,47 @@ type blobLifecycle interface {
 	// error reaches the client, so a retry repeats the repair.
 	// Remote: placeholders resolve to originPath, so uploadPath is moved onto it.
 	RepairSharedContent(uploadPath, originPath string) error
+
+	// The methods below serve the global blobstore (GlobalBlobsRepo), which holds the one
+	// copy of each deduped blob. They keep the names and meaning they have in the common
+	// blobstore refactor (#4137).
+
+	// PromoteCandidate makes the global blobstore copy at dstPath out of a repo's copy at
+	// srcPath, making it the canonical copy for that digest. Local: hardlink (cheap, same
+	// inode). Remote: streamed copy of the actual bytes (dstPath has no content of its own
+	// yet).
+	PromoteCandidate(srcPath, dstPath string) error
+
+	// RemoveMigratedRepoBlob runs once per pre-existing repo copy during the one-time
+	// upgrade to the global blobstore, after PromoteCandidate has made the canonical copy:
+	// every repo copy that holds the content itself must go, so the content exists once.
+	// Local: no-op, repo copies are hardlinks of the canonical copy's inode. Remote: deletes
+	// repoBlobPath; one already gone is not an error.
+	RemoveMigratedRepoBlob(globalBlobPath, repoBlobPath string) error
+
+	// ShouldDeleteGlobalBlob reports whether the global blobstore copy of digest at
+	// globalBlobPath is no longer used by any repo, once a repo's copy is gone. Local: the
+	// copy's hardlink count, which is 1 when only the blobstore's own link remains; where
+	// the platform does not report one, isDigestReferenced (a cache-based scan) decides.
+	// Remote: always isDigestReferenced, there being no link count to consult. A copy
+	// already gone is never to be deleted again.
+	ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
+		isDigestReferenced func(godigest.Digest) (bool, error),
+	) (bool, error)
+
+	// IncludeRepoInMountCandidates reports whether repo may be a source for cross-repo blob
+	// mounts. Both exclude the global blobstore, which is never a repository.
+	IncludeRepoInMountCandidates(repo string) bool
 }
 
 func newBlobLifecycle(storeDriver storageTypes.Driver, rootDir string,
-	metrics monitoring.MetricServer,
+	metrics monitoring.MetricServer, log zlog.Logger,
 ) blobLifecycle {
 	if storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		return &localHardlinkBlobLifecycle{storeDriver: storeDriver, rootDir: rootDir, metrics: metrics}
+		return &localHardlinkBlobLifecycle{storeDriver: storeDriver, rootDir: rootDir, metrics: metrics, statFn: os.Stat}
 	}
 
-	return &remoteSharedBlobLifecycle{storeDriver: storeDriver}
+	return &remoteSharedBlobLifecycle{storeDriver: storeDriver, log: log}
 }
 
 // isEmptyContentDigest reports whether digest is the algorithm's hash of zero bytes.
@@ -128,6 +162,9 @@ type localHardlinkBlobLifecycle struct {
 	storeDriver storageTypes.Driver
 	rootDir     string
 	metrics     monitoring.MetricServer
+	// statFn reads the hardlink count; os.Stat, overridable in tests so the fallback for
+	// platforms that report no count can be driven.
+	statFn func(name string) (os.FileInfo, error)
 }
 
 func (l *localHardlinkBlobLifecycle) IsPlaceholder(_ godigest.Digest, _ driver.FileInfo) bool {
@@ -198,6 +235,65 @@ func (l *localHardlinkBlobLifecycle) rewriteInPlace(srcPath, dstPath string) err
 	return writer.Close()
 }
 
+func (l *localHardlinkBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
+	return linkDistinct(l.storeDriver, srcPath, dstPath)
+}
+
+func (l *localHardlinkBlobLifecycle) RemoveMigratedRepoBlob(_, _ string) error {
+	// repo copies are hardlinks of the canonical copy's inode: nothing to remove
+	return nil
+}
+
+func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
+	isDigestReferenced func(godigest.Digest) (bool, error),
+) (bool, error) {
+	fileInfo, err := l.statFn(globalBlobPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	if nLink, ok := hardLinkCount(fileInfo); ok {
+		// the blobstore's own link is the last one left
+		return nLink <= 1, nil
+	}
+
+	if isDigestReferenced == nil {
+		return false, nil
+	}
+
+	referenced, err := isDigestReferenced(digest)
+	if err != nil {
+		return false, err
+	}
+
+	return !referenced, nil
+}
+
+func (l *localHardlinkBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
+	return repo != storageConstants.GlobalBlobsRepo
+}
+
+// hardLinkCount returns a file's hardlink count where the platform reports one. It reads the
+// Nlink field of the platform's stat structure by reflection, so it builds everywhere; where
+// there is no such field (Windows) it reports none, and callers fall back to the cache.
+func hardLinkCount(fileInfo os.FileInfo) (uint64, bool) {
+	stat := reflect.Indirect(reflect.ValueOf(fileInfo.Sys()))
+	if !stat.IsValid() || stat.Kind() != reflect.Struct {
+		return 0, false
+	}
+
+	nLink := stat.FieldByName("Nlink")
+	if !nLink.IsValid() || !nLink.CanUint() {
+		return 0, false
+	}
+
+	return nLink.Uint(), true
+}
+
 func (l *localHardlinkBlobLifecycle) ValidateBlobsDir(repoDir string) (bool, error) {
 	// Stat, not DirExists: DirExists collapses Transient/Permanent into false, which would
 	// soft-skip a live repo from inventory walks as (false, nil).
@@ -232,6 +328,7 @@ func (l *localHardlinkBlobLifecycle) DeletesCanDestroySharedContent() bool {
 
 type remoteSharedBlobLifecycle struct {
 	storeDriver storageTypes.Driver
+	log         zlog.Logger
 }
 
 func (r *remoteSharedBlobLifecycle) IsPlaceholder(digest godigest.Digest, binfo driver.FileInfo) bool {
@@ -266,6 +363,90 @@ func (r *remoteSharedBlobLifecycle) HandOffContent(_ godigest.Digest, fromPath s
 func (r *remoteSharedBlobLifecycle) RepairSharedContent(uploadPath, originPath string) error {
 	// every placeholder resolves to originPath through the cache, so replacing it repairs them all
 	return r.storeDriver.Move(uploadPath, originPath)
+}
+
+func (r *remoteSharedBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
+	blobReader, err := r.storeDriver.Reader(srcPath, 0)
+	if err != nil {
+		return err
+	}
+
+	blobWriter, err := r.storeDriver.Writer(dstPath, false)
+	if err != nil {
+		if closeErr := blobReader.Close(); closeErr != nil {
+			r.log.Error().Err(closeErr).Msg("failed to close blob reader")
+		}
+
+		return err
+	}
+
+	if _, err := io.Copy(blobWriter, blobReader); err != nil {
+		r.abortWrite(blobWriter, blobReader)
+
+		return err
+	}
+
+	if err := blobWriter.Commit(context.Background()); err != nil {
+		r.abortWrite(blobWriter, blobReader)
+
+		return err
+	}
+
+	if err := blobReader.Close(); err != nil {
+		if closeErr := blobWriter.Close(); closeErr != nil {
+			r.log.Error().Err(closeErr).Msg("failed to close blob writer")
+		}
+
+		return err
+	}
+
+	return blobWriter.Close()
+}
+
+// abortWrite cleans up after PromoteCandidate's copy or commit failed. Every step is best
+// effort, but a failure is logged, since it can leave a partial object behind.
+func (r *remoteSharedBlobLifecycle) abortWrite(blobWriter driver.FileWriter, blobReader io.ReadCloser) {
+	if err := blobWriter.Cancel(context.Background()); err != nil {
+		r.log.Error().Err(err).Msg("failed to cancel blob writer")
+	}
+
+	if err := blobReader.Close(); err != nil {
+		r.log.Error().Err(err).Msg("failed to close blob reader")
+	}
+
+	if err := blobWriter.Close(); err != nil {
+		r.log.Error().Err(err).Msg("failed to close blob writer")
+	}
+}
+
+func (r *remoteSharedBlobLifecycle) RemoveMigratedRepoBlob(_, repoBlobPath string) error {
+	// A migration re-run after a crash revisits repo objects it already removed, which a
+	// driver may report as a plain PathNotFoundError: either way the object is gone.
+	err := r.storeDriver.Delete(repoBlobPath)
+	if err == nil || errclass.IsStorageObjectMissing(err) {
+		return nil
+	}
+
+	if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
+		return nil
+	}
+
+	return err
+}
+
+func (r *remoteSharedBlobLifecycle) ShouldDeleteGlobalBlob(_ string, digest godigest.Digest,
+	isDigestReferenced func(godigest.Digest) (bool, error),
+) (bool, error) {
+	referenced, err := isDigestReferenced(digest)
+	if err != nil {
+		return false, err
+	}
+
+	return !referenced, nil
+}
+
+func (r *remoteSharedBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
+	return repo != storageConstants.GlobalBlobsRepo
 }
 
 func (r *remoteSharedBlobLifecycle) ValidateBlobsDir(_ string) (bool, error) {
