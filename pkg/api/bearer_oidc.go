@@ -71,7 +71,7 @@ type cachedOIDCKeySet struct {
 func (keySet *cachedOIDCKeySet) VerifySignature(ctx context.Context, token string) ([]byte, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("parsing jwt: expected three segments")
+		return nil, fmt.Errorf("%w: expected three segments", zerr.ErrInvalidBearerToken)
 	}
 
 	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])

@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -42,6 +43,9 @@ func TestSupportedOIDCSigningAlgorithms(t *testing.T) {
 	}
 }
 
+// omitOIDCTokenIssuer makes newOIDCOutageTestServer sign a token without an iss claim.
+const omitOIDCTokenIssuer = "<omit>"
+
 func newOIDCOutageTestServer(t *testing.T, tokenIssuer string) (*httptest.Server, string, *atomic.Bool, *atomic.Int32) {
 	t.Helper()
 
@@ -78,10 +82,14 @@ func newOIDCOutageTestServer(t *testing.T, tokenIssuer string) (*httptest.Server
 	if tokenIssuer == "" {
 		tokenIssuer = server.URL
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+	claims := jwt.MapClaims{
 		"iss": tokenIssuer, "aud": []string{"zot"}, "sub": "test-user",
 		"exp": time.Now().Add(time.Hour).Unix(),
-	})
+	}
+	if tokenIssuer == omitOIDCTokenIssuer {
+		delete(claims, "iss")
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = "test-key"
 	signed, err := token.SignedString(key)
 	if err != nil {
@@ -201,6 +209,29 @@ func TestOIDCIssuerIsolation(t *testing.T) {
 	}
 	if _, err := skipIssuer.Authenticate(context.Background(), alternateHeader); err != nil {
 		t.Fatalf("skipIssuerVerification must still allow a different token issuer: %v", err)
+	}
+
+	// A token without iss has no issuer to route by: only skipIssuerVerification providers try it.
+	noIssuer, noIssuerHeader, _, _ := newOIDCOutageTestServer(t, omitOIDCTokenIssuer)
+	skipNoIssuer, err := NewOIDCBearerAuthorizer([]config.BearerOIDCConfig{
+		{Issuer: unavailable.URL, Audiences: []string{"zot"}},
+		{
+			Issuer: noIssuer.URL, Audiences: []string{"zot"}, SkipIssuerVerification: true,
+			// the default username, claims.iss + '/' + claims.sub, needs an issuer
+			ClaimMapping: &config.CELClaimValidationAndMapping{Username: "claims.sub"},
+		},
+	}, log.NewTestLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := skipNoIssuer.Authenticate(context.Background(), noIssuerHeader); err != nil {
+		t.Fatalf("skipIssuerVerification must allow a token without an issuer: %v", err)
+	}
+	if _, err := unknown.Authenticate(context.Background(), noIssuerHeader); err == nil {
+		t.Fatal("a token without an issuer authenticated without skipIssuerVerification")
+	}
+	if requests.Load() != 0 {
+		t.Fatal("a token without an issuer contacted an issuer that verifies issuers")
 	}
 }
 
@@ -565,6 +596,116 @@ func TestOIDCHTTPTimeout(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOIDCMalformedInput(t *testing.T) {
+	t.Parallel()
+
+	encode := base64.RawURLEncoding.EncodeToString
+
+	t.Run("cached key set rejects malformed tokens", func(t *testing.T) {
+		t.Parallel()
+
+		keySet := &cachedOIDCKeySet{}
+		for _, token := range []string{
+			"only.two",
+			"!!!." + encode([]byte("{}")) + ".sig",
+			encode([]byte("not json")) + "." + encode([]byte("{}")) + ".sig",
+		} {
+			if _, err := keySet.VerifySignature(context.Background(), token); err == nil {
+				t.Fatalf("malformed token %q verified", token)
+			}
+		}
+	})
+
+	t.Run("non-string issuer is rejected before routing", func(t *testing.T) {
+		t.Parallel()
+
+		var requests atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests.Add(1)
+		}))
+		defer server.Close()
+
+		authorizer, err := NewOIDCBearerAuthorizer([]config.BearerOIDCConfig{
+			{Issuer: server.URL, Audiences: []string{"zot"}, SkipIssuerVerification: true},
+		}, log.NewTestLogger())
+		if err != nil {
+			t.Fatal(err)
+		}
+		token := encode([]byte(`{"alg":"RS256"}`)) + "." + encode([]byte(`{"iss":1}`)) + "." + encode([]byte("sig"))
+		if _, err := authorizer.Authenticate(context.Background(), "Bearer "+token); err == nil {
+			t.Fatal("token with a non-string issuer authenticated")
+		}
+		if requests.Load() != 0 {
+			t.Fatal("token with a non-string issuer triggered discovery")
+		}
+	})
+
+	t.Run("initial discovery gives up with the request", func(t *testing.T) {
+		t.Parallel()
+
+		hanging := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			<-r.Context().Done()
+		}))
+		defer hanging.Close()
+		_, header, _, _ := newOIDCOutageTestServer(t, hanging.URL)
+
+		authorizer, err := NewOIDCBearerAuthorizer([]config.BearerOIDCConfig{
+			{Issuer: hanging.URL, Audiences: []string{"zot"}},
+		}, log.NewTestLogger())
+		if err != nil {
+			t.Fatal(err)
+		}
+		// the request gives up first; the shorter client timeout only ends the background discovery sooner
+		authorizer.providers[0].httpClient.Timeout = 500 * time.Millisecond
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		if _, err := authorizer.Authenticate(ctx, header); err == nil {
+			t.Fatal("authentication succeeded while initial discovery hung")
+		}
+	})
+
+	t.Run("JWKS fetch errors", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/truncated":
+				// promise more than is sent, so reading the body fails
+				w.Header().Set("Content-Length", "100")
+				_, _ = w.Write([]byte("{"))
+			case "/not-json":
+				_, _ = w.Write([]byte("not json"))
+			case "/bad-key":
+				_, _ = w.Write([]byte(`{"keys":[{"kty":"RSA","n":"!!","e":"AQAB"}]}`))
+			case "/unsupported-key":
+				_, _ = w.Write([]byte(`{"keys":[{"kty":"OKP","crv":"Ed448","x":"AAAA"}]}`))
+			}
+		}))
+		defer server.Close()
+
+		provider, err := newOIDCProvider(&config.BearerOIDCConfig{Issuer: server.URL, Audiences: []string{"zot"}},
+			log.NewTestLogger())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, jwksURL := range []string{"://bad-url", server.URL + "/truncated", server.URL + "/not-json",
+			server.URL + "/bad-key"} {
+			if _, err := provider.fetchKeySet(context.Background(), jwksURL); err == nil {
+				t.Fatalf("JWKS from %s was accepted", jwksURL)
+			}
+		}
+
+		// like go-oidc, keys of a type go-jose does not support are skipped, not fatal
+		keySet, err := provider.fetchKeySet(context.Background(), server.URL+"/unsupported-key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(keySet.keys) != 0 {
+			t.Fatal("unsupported key was cached")
+		}
+	})
 }
 
 func TestNewBearerAuthCreatesOIDCBearerAuthorizer(t *testing.T) {
