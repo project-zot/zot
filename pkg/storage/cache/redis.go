@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-redsync/redsync/v4"
 	gors "github.com/go-redsync/redsync/v4/redis/goredis/v9"
@@ -24,6 +25,9 @@ type RedisDriver struct {
 	keyPrefix   string           // prepended to all keys, logically separating cache drivers accessing the same DB
 	useRelPaths bool             // whether or not to use relative paths, should be true for filesystem and false for s3
 	rs          *redsync.Redsync // used for locks, at the moment we are locking only for calls writing to the DB
+	claimLease  time.Duration    // how long a reclaim claim stays live (see types.BlobRefIndex)
+
+	blobRefScripts redisBlobRefScripts
 }
 
 type RedisDriverParameters struct {
@@ -67,6 +71,9 @@ func NewRedisCache(parameters any, log zlog.Logger) (*RedisDriver, error) {
 		useRelPaths: properParameters.UseRelPaths,
 		keyPrefix:   keyPrefix,
 		rs:          redsync.New(pool),
+		claimLease:  constants.DefaultReclaimClaimLease,
+
+		blobRefScripts: newRedisBlobRefScripts(),
 	}
 
 	return driver, nil
