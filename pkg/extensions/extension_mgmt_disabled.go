@@ -7,13 +7,16 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
 func IsBuiltWithMGMTExtension() bool {
 	return false
 }
 
-func SetupMgmtRoutes(config *config.Config, router *mux.Router, log log.Logger) {
+func SetupMgmtRoutes(config *config.Config, router *mux.Router, gcOnDemand func(store string) (*gc.OnDemand, bool),
+	log log.Logger,
+) {
 	log.Warn().Msg("skipping setting up mgmt routes because given zot binary doesn't include this feature," +
 		"please build a binary that does so")
 }
