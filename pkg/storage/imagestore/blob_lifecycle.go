@@ -264,6 +264,7 @@ func (r *remoteSharedBlobLifecycle) HandOffContent(_ godigest.Digest, fromPath s
 }
 
 func (r *remoteSharedBlobLifecycle) RepairSharedContent(uploadPath, originPath string) error {
+	// every placeholder resolves to originPath through the cache, so replacing it repairs them all
 	return r.storeDriver.Move(uploadPath, originPath)
 }
 

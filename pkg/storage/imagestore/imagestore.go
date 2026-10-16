@@ -1630,6 +1630,8 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 	return uuid, nbytes, nil
 }
 
+// DedupeBlob's repo argument is unused: the shared content is checked against the verified
+// upload, not against the repo's blob descriptor. It stays because ImageStore declares it.
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string, dst string) error {
 	for {
 		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
@@ -1711,7 +1713,9 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 			return mapStorageErr(err)
 		}
 
-		// prevent overwrite original blob
+		// prevent overwrite original blob; when dst already is the origin's content (the same file
+		// remotely, a hardlink of it locally), there is nothing to link, and the size check below
+		// still repairs wrong content
 		if !is.storeDriver.SameFile(dst, dstRecord) {
 			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
@@ -1759,6 +1763,8 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 
 				return err
 			}
+
+			// the repair consumed the snapshot only: the upload is removed below, as after a link
 		}
 
 		// remove temp blobupload
