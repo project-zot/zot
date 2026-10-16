@@ -20,6 +20,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/sync/singleflight"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -58,10 +59,16 @@ type oidcProvider struct {
 	refreshDone      chan struct{}
 }
 
+// refreshedOIDCKeySet holds an issuer's signing keys. The last successful fetch is the only key set
+// trusted: a token signed by a key it lacks fetches the keys again, and that fetch replaces the set,
+// so keys the issuer removed stop validating tokens. A failed fetch keeps the previous set.
 type refreshedOIDCKeySet struct {
-	current    *cachedOIDCKeySet
-	remote     *oidc.RemoteKeySet
-	httpClient *http.Client
+	jwksURL string
+	fetch   func(ctx context.Context, jwksURL string) (*cachedOIDCKeySet, error)
+	fetches singleflight.Group
+
+	mu      sync.RWMutex
+	current *cachedOIDCKeySet
 }
 
 type cachedOIDCKeySet struct {
@@ -97,14 +104,44 @@ func (keySet *cachedOIDCKeySet) VerifySignature(ctx context.Context, token strin
 }
 
 func (keySet *refreshedOIDCKeySet) VerifySignature(ctx context.Context, token string) ([]byte, error) {
-	payload, err := keySet.current.VerifySignature(ctx, token)
+	keySet.mu.RLock()
+	current := keySet.current
+	keySet.mu.RUnlock()
+
+	payload, err := current.VerifySignature(ctx, token)
 	if err == nil {
 		return payload, nil
 	}
 
-	ctx = oidc.ClientContext(ctx, keySet.httpClient)
+	// Concurrent callers share one fetch. It outlives a caller that gives up, and the provider's
+	// HTTP client timeout bounds it.
+	fetched := keySet.fetches.DoChan("", func() (any, error) {
+		keys, err := keySet.fetch(context.WithoutCancel(ctx), keySet.jwksURL)
+		if err != nil {
+			return nil, err
+		}
 
-	return keySet.remote.VerifySignature(ctx, token)
+		keySet.mu.Lock()
+		keySet.current = keys
+		keySet.mu.Unlock()
+
+		return nil, nil //nolint:nilnil // the result is keySet.current
+	})
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-fetched:
+		if result.Err != nil {
+			return nil, fmt.Errorf("%w; failed to refresh signing keys: %w", err, result.Err)
+		}
+	}
+
+	keySet.mu.RLock()
+	current = keySet.current
+	keySet.mu.RUnlock()
+
+	return current.VerifySignature(ctx, token)
 }
 
 // NewOIDCBearerAuthorizer creates a new OIDC bearer token authorizer.
@@ -352,9 +389,9 @@ func (o *oidcProvider) refreshVerifier(ctx context.Context, done chan struct{}) 
 		return
 	}
 	keySet := &refreshedOIDCKeySet{
-		current:    currentKeySet,
-		remote:     oidc.NewRemoteKeySet(ctx, current.JWKSURL),
-		httpClient: o.httpClient,
+		jwksURL: current.JWKSURL,
+		fetch:   o.fetchKeySet,
+		current: currentKeySet,
 	}
 
 	verifier := oidc.NewVerifier(o.issuer, keySet, &oidc.Config{

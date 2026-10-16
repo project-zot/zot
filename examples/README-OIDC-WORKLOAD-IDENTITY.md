@@ -69,7 +69,7 @@ Add OIDC workload identity configuration to your bearer authentication settings.
 
 - **`skipIssuerVerification`** (optional): Skip issuer verification (for testing only). Default: `false`.
 
-Tokens are routed to their configured issuer before verification; unknown issuers are rejected without network requests unless `skipIssuerVerification` is enabled. Discovery and signing-key HTTP requests, including on-demand requests for newly rotated keys, have a 10-second timeout. Once a verifier is one minute old, the next authentication starts a background refresh while the last working verifier remains available. If discovery or signing-key refresh fails, the last working verifier and its cached keys are retained, so already-known keys can validate tokens during an issuer outage. New signing keys still require a successful fetch from the issuer.
+Tokens are routed to their configured issuer before verification; unknown issuers are rejected without network requests unless `skipIssuerVerification` is enabled. Discovery and signing-key HTTP requests, including on-demand requests for newly rotated keys, have a 10-second timeout. Once a verifier is one minute old, the next authentication starts a background refresh while the last working verifier remains available. If discovery or signing-key refresh fails, the last working verifier and its cached keys are retained, so already-known keys can validate tokens during an issuer outage. A token signed by a key that is not cached fetches the signing keys again, and every successful fetch replaces the cached keys, so keys the issuer has removed stop validating tokens. New signing keys still require a successful fetch from the issuer.
 
 ### CEL Expressions
 

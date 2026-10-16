@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -42,6 +43,8 @@ func TestSupportedOIDCSigningAlgorithms(t *testing.T) {
 		t.Fatalf("unexpected supported signing algorithms: got %v, want %v", actual, expected)
 	}
 }
+
+var errOIDCTestFetch = errors.New("test JWKS fetch failure")
 
 // omitOIDCTokenIssuer makes newOIDCOutageTestServer sign a token without an iss claim.
 const omitOIDCTokenIssuer = "<omit>"
@@ -377,10 +380,16 @@ func TestOIDCOnDemandKeyRotationUsesProviderHTTPClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rotated atomic.Bool
+	var discoveryDown atomic.Bool
 	var keyRequests atomic.Int32
 	var server *httptest.Server
 	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/jwks" && discoveryDown.Load() {
+			http.Error(w, "discovery unavailable", http.StatusServiceUnavailable)
+
+			return
+		}
 		if r.URL.Path == "/jwks" {
 			keyRequests.Add(1)
 			key := oldKey
@@ -438,6 +447,66 @@ func TestOIDCOnDemandKeyRotationUsesProviderHTTPClient(t *testing.T) {
 	}
 	if keyRequests.Load() != 2 {
 		t.Fatalf("expected initial and on-demand JWKS requests, got %d", keyRequests.Load())
+	}
+
+	// The on-demand fetch replaced the cached keys: the issuer no longer publishes the old key.
+	if _, err := authorizer.Authenticate(context.Background(), "Bearer "+oldSigned); err == nil {
+		t.Fatal("a token signed by a key removed in an on-demand fetch must be rejected")
+	}
+
+	// A failed discovery refresh keeps the verifier, and with it the keys fetched on demand.
+	discoveryDown.Store(true)
+	provider.refreshVerifier(context.Background(), make(chan struct{}))
+	if _, err := authorizer.Authenticate(context.Background(), "Bearer "+oldSigned); err == nil {
+		t.Fatal("a removed key must stay rejected while discovery fails")
+	}
+	if _, err := authorizer.Authenticate(context.Background(), "Bearer "+newSigned); err != nil {
+		t.Fatalf("the key fetched on demand must keep validating tokens while discovery fails: %v", err)
+	}
+}
+
+func TestOIDCKeySetFetchFailures(t *testing.T) {
+	t.Parallel()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"sub": "test-user"})
+	token.Header["kid"] = "unknown-key"
+	signed, err := token.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached := &cachedOIDCKeySet{}
+
+	failing := &refreshedOIDCKeySet{
+		current: cached,
+		fetch: func(context.Context, string) (*cachedOIDCKeySet, error) {
+			return nil, errOIDCTestFetch
+		},
+	}
+	if _, err := failing.VerifySignature(context.Background(), signed); !errors.Is(err, errOIDCTestFetch) {
+		t.Fatalf("expected the fetch error, got %v", err)
+	}
+	if failing.current != cached {
+		t.Fatal("a failed fetch must keep the previous keys")
+	}
+
+	release := make(chan struct{})
+	defer close(release)
+	hanging := &refreshedOIDCKeySet{
+		current: cached,
+		fetch: func(context.Context, string) (*cachedOIDCKeySet, error) {
+			<-release
+
+			return cached, nil
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := hanging.VerifySignature(ctx, signed); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("a caller must stop waiting for a hanging fetch when its context ends, got %v", err)
 	}
 }
 
