@@ -113,6 +113,15 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
 	imgStore.dedupeRebuildDone.Store(true)
 
+	// Upgrade a store written by an earlier release before anything is served from it.
+	if dedupe && !imgStore.isCacheNil() && imgStore.lifecycle.KeepsContentInGlobalBlobstore() {
+		if err := imgStore.upgradeToGlobalBlobstore(); err != nil {
+			log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to upgrade to global blobstore")
+
+			return nil
+		}
+	}
+
 	return imgStore
 }
 
@@ -527,10 +536,16 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 func (is *ImageStore) GetRepositories() ([]string, error) {
 	var lockLatency time.Time
 
-	dir := is.rootDir
-
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
+
+	return is.getRepositories()
+}
+
+// getRepositories is GetRepositories without the store lock, for callers that hold it or that
+// run before the store is in use, such as the global blobstore upgrade.
+func (is *ImageStore) getRepositories() ([]string, error) {
+	dir := is.rootDir
 
 	stores := make([]string, 0)
 
@@ -1185,13 +1200,23 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 	}
 
 	if toDelete {
-		p := path.Join(dir, ispec.ImageBlobsDir, manifestDesc.Digest.Algorithm().String(),
+		manifestPath := path.Join(dir, ispec.ImageBlobsDir, manifestDesc.Digest.Algorithm().String(),
 			manifestDesc.Digest.Encoded())
 
-		err = is.storeDriver.Delete(p)
+		err = is.storeDriver.Delete(manifestPath)
 		if err != nil {
 			return err
 		}
+
+		// Manifests are deduped too (the dedupe walk and the global blobstore upgrade link
+		// them), so forget this copy and reclaim the blobstore copy, as a blob delete does.
+		if !is.isCacheNil() && is.cache.HasBlob(manifestDesc.Digest, manifestPath) {
+			if err := is.cache.DeleteBlob(manifestDesc.Digest, manifestPath); err != nil {
+				is.log.Error().Err(err).Str("blobPath", manifestPath).Msg("failed to remove manifest path from cache")
+			}
+		}
+
+		is.reclaimGlobalBlob(manifestDesc.Digest)
 	}
 
 	if is.events != nil {
