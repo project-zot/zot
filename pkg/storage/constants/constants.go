@@ -5,6 +5,14 @@ import (
 )
 
 const (
+	// BlobRefsBucket holds the blob reference index (see types.BlobRefIndex).
+	BlobRefsBucket = "blob_refs"
+	// DefaultReclaimClaimLease is how long a reclaim claim stays live: a claim older than that
+	// belongs to a sweep that stopped, and the next AddReference or ClaimReclaim breaks it.
+	DefaultReclaimClaimLease = 5 * time.Minute
+)
+
+const (
 	// BlobUploadDir defines the upload directory for blob uploads.
 	BlobUploadDir           = ".uploads"
 	SchemaVersion           = 2
