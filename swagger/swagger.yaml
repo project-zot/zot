@@ -396,6 +396,10 @@ paths:
           description: bad request
           schema:
             type: string
+        "401":
+          description: unauthorized
+          schema:
+            type: string
         "403":
           description: forbidden
           schema:
@@ -434,6 +438,10 @@ paths:
             type: string
         "400":
           description: bad request
+          schema:
+            type: string
+        "401":
+          description: unauthorized
           schema:
             type: string
         "403":

@@ -14,7 +14,7 @@ import (
 func TestGCOnDemand(t *testing.T) {
 	Convey("On-demand GC is available for each store with GC enabled", t, func() {
 		conf := config.New()
-		conf.HTTP.Port = test.GetFreePort()
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Storage.GC = true
 		conf.Storage.GCInterval = time.Hour

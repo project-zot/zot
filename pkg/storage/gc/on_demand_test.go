@@ -441,3 +441,31 @@ func TestGarbageCollectOnDemandListError(t *testing.T) {
 		So(waitFor(func() bool { return !onDemand.Status().Running }), ShouldBeTrue)
 	})
 }
+
+func TestGarbageCollectOnDemandStorageError(t *testing.T) {
+	Convey("CleanRepoNow reports a storage error, not a missing repository", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		store := mocks.MockedImageStore{
+			RootDirFn: func() string { return "/mock" },
+			// a directory that exists, but whose index.json can't be read
+			DirExistsFn: func(string) bool { return true },
+			StatIndexFn: func(string) (bool, int64, time.Time, error) {
+				return false, 0, time.Time{}, errIndexUnavailable
+			},
+		}
+
+		sch := scheduler.NewScheduler(config.New(), metrics, log)
+
+		onDemand := gc.NewGarbageCollect(store, nil, gc.Options{}, nil, log, metrics).
+			CleanImageStorePeriodically(time.Hour, sch)
+
+		err := onDemand.CleanRepoNow(onDemandRepo)
+		So(err, ShouldWrap, errIndexUnavailable)
+		So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeFalse)
+
+		_, found := onDemand.RepoStatus(onDemandRepo)
+		So(found, ShouldBeFalse)
+	})
+}
