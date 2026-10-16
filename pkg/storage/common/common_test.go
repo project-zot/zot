@@ -21,6 +21,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -30,6 +31,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
+	stypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	tcommon "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -153,6 +155,53 @@ func TestValidateManifest(t *testing.T) {
 
 			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "1.0", ispec.MediaTypeImageManifest, body, nil)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("ModelPack manifest validates model config and layer blobs", func() {
+			manifest := ispec.Manifest{
+				SchemaVersion: 2,
+				MediaType:     ispec.MediaTypeImageManifest,
+				ArtifactType:  zcommon.ArtifactTypeModelPack,
+				Config: ispec.Descriptor{
+					MediaType: zcommon.MediaTypeModelPackConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.cncf.model.weight.v1.raw",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+
+			body, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			_, _, err = imgStore.PutImageManifest(context.Background(), "test", "modelpack",
+				ispec.MediaTypeImageManifest, body, nil)
+			So(err, ShouldBeNil)
+
+			storedManifest, _, _, err := imgStore.GetImageManifest("test", "modelpack")
+			So(err, ShouldBeNil)
+
+			var stored ispec.Manifest
+			So(json.Unmarshal(storedManifest, &stored), ShouldBeNil)
+			So(stored.ArtifactType, ShouldEqual, zcommon.ArtifactTypeModelPack)
+
+			manifest.Config.Digest = godigest.FromString("missing-model-config")
+			body, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			err = common.ValidateManifest(imgStore, "test", "modelpack", ispec.MediaTypeImageManifest, body, nil, log)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+
+			manifest.Config.Digest = cdigest
+			manifest.Layers[0].Digest = godigest.FromString("missing-model-weight")
+			body, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			err = common.ValidateManifest(imgStore, "test", "modelpack", ispec.MediaTypeImageManifest, body, nil, log)
+			So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
 		})
 
 		Convey("manifest with non-distributable layers", func() {
@@ -1147,6 +1196,28 @@ func TestIsSignature(t *testing.T) {
 		So(isTagSignature("sha256-abc.sig"), ShouldBeFalse)
 		So(isTagSignature("sha256-imagesig"), ShouldBeFalse)
 		So(isTagSignature("sha256-"+strings.Repeat("a", 64)+"sig"), ShouldBeFalse)
+	})
+}
+
+func TestApplyLinterSkipsModelPack(t *testing.T) {
+	Convey("ModelPack artifacts do not use the image linter", t, func() {
+		called := false
+		linter := &mocks.MockedLint{
+			LintFn: func(_ string, _ godigest.Digest, _ stypes.ImageStore) (bool, error) {
+				called = true
+
+				return false, nil
+			},
+		}
+
+		pass, err := common.ApplyLinter(nil, linter, "repo", ispec.Descriptor{
+			MediaType:    ispec.MediaTypeImageManifest,
+			ArtifactType: zcommon.ArtifactTypeModelPack,
+		})
+
+		So(err, ShouldBeNil)
+		So(pass, ShouldBeTrue)
+		So(called, ShouldBeFalse)
 	})
 }
 

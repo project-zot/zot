@@ -33,6 +33,10 @@ const (
 	ArtifactTypeNotation     = "application/vnd.cncf.notary.signature"
 	ArtifactTypeCosign       = "application/vnd.dev.cosign.artifact.sig.v1+json"
 	ArtifactTypeCosignBundle = "application/vnd.dev.sigstore.bundle.v0.3+json"
+	// ArtifactTypeModelPack identifies a CNCF ModelPack manifest.
+	ArtifactTypeModelPack = "application/vnd.cncf.model.manifest.v1+json"
+	// MediaTypeModelPackConfig identifies a CNCF ModelPack configuration blob.
+	MediaTypeModelPackConfig = "application/vnd.cncf.model.config.v1+json"
 	// CosignBundlePredicateTypeAnnotation is the manifest annotation cosign sets on a sigstore bundle referrer.
 	// `cosign sign` and `cosign attest` write the same artifact type, this annotation is what tells them apart.
 	CosignBundlePredicateTypeAnnotation = "dev.sigstore.bundle.predicateType"
@@ -66,6 +70,11 @@ func IsCosignTag(tag string) bool {
 // use IsCosignSignatureArtifact to decide whether a manifest is a signature.
 func IsArtifactTypeCosign(artifactType string) bool {
 	return artifactType == ArtifactTypeCosign || artifactType == ArtifactTypeCosignBundle
+}
+
+// IsModelPackArtifactType reports whether artifactType identifies a ModelPack manifest or config.
+func IsModelPackArtifactType(artifactType string) bool {
+	return artifactType == ArtifactTypeModelPack || artifactType == MediaTypeModelPackConfig
 }
 
 // IsCosignSignatureArtifact returns true if a manifest with the given artifact type and annotations is a

@@ -100,6 +100,7 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 
 		// validate blobs only for known media types
 		if manifest.Config.MediaType == ispec.MediaTypeImageConfig ||
+			manifest.Config.MediaType == zcommon.MediaTypeModelPackConfig ||
 			manifest.Config.MediaType == ispec.MediaTypeEmptyJSON {
 			// validate config blob - a lightweight check if the blob is present
 			ok, _, _, err := imgStore.StatBlob(repo, manifest.Config.Digest)
@@ -794,7 +795,7 @@ func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, des
 		return pass, nil
 	}
 
-	if linter != nil && !IsSignature(descriptor) {
+	if linter != nil && !IsSignature(descriptor) && !zcommon.IsModelPackArtifactType(descriptor.ArtifactType) {
 		// lint new index with new manifest before writing to disk
 		pass, err := linter.Lint(repo, descriptor.Digest, imgStore)
 		if err != nil {

@@ -68,6 +68,14 @@ func TestCommon(t *testing.T) {
 		So(common.IsArtifactTypeCosign("application/example"), ShouldBeFalse)
 	})
 
+	Convey("Test ModelPack artifact types", t, func() {
+		So(common.ArtifactTypeModelPack, ShouldEqual, "application/vnd.cncf.model.manifest.v1+json")
+		So(common.MediaTypeModelPackConfig, ShouldEqual, "application/vnd.cncf.model.config.v1+json")
+		So(common.IsModelPackArtifactType(common.ArtifactTypeModelPack), ShouldBeTrue)
+		So(common.IsModelPackArtifactType(common.MediaTypeModelPackConfig), ShouldBeTrue)
+		So(common.IsModelPackArtifactType("application/example"), ShouldBeFalse)
+	})
+
 	Convey("Test IsCosignSignatureArtifact", t, func() {
 		predicate := func(predicateType string) map[string]string {
 			return map[string]string{common.CosignBundlePredicateTypeAnnotation: predicateType}
