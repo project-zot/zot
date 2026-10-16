@@ -11,6 +11,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
@@ -69,7 +70,7 @@ func TestBlobLifecycle(t *testing.T) {
 	newLifecycle := func(name string) (blobLifecycle, *lifecycleTestDriver) {
 		storeDriver := &lifecycleTestDriver{name: name}
 
-		return newBlobLifecycle(storeDriver, "/root", monitoring.NewNopMetricServer()), storeDriver
+		return newBlobLifecycle(storeDriver, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger()), storeDriver
 	}
 
 	Convey("The driver picks the lifecycle", t, func() {
