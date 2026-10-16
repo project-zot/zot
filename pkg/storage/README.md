@@ -5,6 +5,32 @@
 
 The cache database can be configured independently of storage (BoltDB locally; Redis / DynamoDB when `cloudCache` is enabled). Examples: `examples/config-boltdb.json`, `examples/config-redis.json`, `examples/config-dynamodb.json`.
 
+## Global blobstore (local storage)
+
+On a local store with dedupe enabled, the content of each digest lives once, at `_blobstore/blobs/<algorithm>/<digest>` under the store root, and the cache records that copy as the digest's origin. `_blobstore` is not a repository: catalog listings, repository walks and cross-repository mounts never see it. Local stores with dedupe disabled (including stores whose filesystem cannot hardlink, where dedupe is turned off at startup) and remote stores do not use it.
+
+1. **Upload**: content is streamed to the repository's `.uploads/` and verified. The first push of a digest hardlinks the upload into `_blobstore`, records that copy as the origin, and only then renames the upload onto the repository's `blobs/<algorithm>/<digest>` path, which is the same inode by then. If a step fails before the rename, the upload stays in place for the client to retry. Later pushes of the digest hardlink the repository path to the origin. A push whose content differs from a wrong shared copy (see `RepairSharedContent`) rewrites the `_blobstore` copy in place, which repairs every hardlink of it at once.
+2. **Read**: repository paths are hardlinks with real content, so reads open them directly.
+3. **Delete**: deleting a repository's blob (or manifest) removes its hardlink and its cache record. The `_blobstore` copy is deleted too once no repository uses it: its hardlink count is 1, or, on platforms that report no link count, the cache records no other copy. A failure to reclaim is only logged; it never fails the repository delete.
+
+Remote stores keep the earlier layout in this release: the first copy pushed holds the content and is the origin, later copies are zero-byte placeholders resolved through the cache, and deleting the origin hands its content to another copy. They move to `_blobstore` in a later release.
+
+### Upgrading an existing store
+
+A local store written by an earlier release keeps each digest's content in a repository, and its cache may record a repository copy as the origin. When such a store is opened with dedupe enabled and has no `_global_blobstore_migrated` marker at its root, it is upgraded while the store is created, before anything is served:
+
+1. Every repository is listed, and for each digest a copy with content is hardlinked into `_blobstore` and made the cache origin, replacing a repository origin recorded by the earlier release.
+2. Every repository copy is recorded in the cache.
+3. The marker is written once a pass has covered every repository and promoted at least one digest (a store with no repositories is marked at once); later starts then skip the scan.
+
+Every step repeats harmlessly, so a pass that stops part way, or one that skipped a repository it could not list, simply runs again on the next start. A storage or cache failure during the pass stops zot from starting. Copies on separate inodes, written while dedupe was off, are linked to the `_blobstore` copy by the dedupe walk that runs after startup.
+
+There is no command to run or reverse the upgrade.
+
+### Downgrade policy
+
+Running an earlier release against an upgraded store is not supported. That release does not know `_blobstore` or the cache origins that point into it. To go back, run the earlier release on a separate store and sync content into it from the upgraded instance.
+
 ## Storage error classification
 
 Goal: callers can distinguish true absence from unreliable or permanent storage failures via `errors.Is` / `errors.As`, without collapsing every failure to bare `zerr.ErrBlobNotFound` and without treating Missing as GC age-eligible.
