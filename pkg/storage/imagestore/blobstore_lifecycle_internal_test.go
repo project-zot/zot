@@ -306,7 +306,10 @@ func TestRemoteBlobLifecyclePromoteStreamsContent(t *testing.T) {
 	})
 }
 
-var errInjectedPromote = errors.New("injected promote failure")
+var (
+	errInjectedPromote = errors.New("injected promote failure")
+	errInjectedCleanup = errors.New("injected cleanup failure")
+)
 
 // errCloseReader wraps a reader with an injectable Close error - io.NopCloser (used
 // by the success-path test above) always returns nil from Close, so it can't exercise
@@ -461,6 +464,62 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 			So(closeCalls, ShouldEqual, 1)
 		})
 
+		// Cleanup is best effort: a failing cleanup step is only logged, and the error that
+		// stopped the copy is the one returned.
+		Convey("cleanup failures are logged and the original error is returned", func() {
+			failingReader := func(path string, offset int64) (io.ReadCloser, error) {
+				return errCloseReader{Reader: bytes.NewReader([]byte("content")), closeErr: errInjectedCleanup}, nil
+			}
+
+			Convey("writer error, then reader close error", func() {
+				driverStub := &lifecycleStubDriver{
+					readerFn: failingReader,
+					writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+						return nil, errInjectedPromote
+					},
+				}
+
+				lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+
+				err := lifecycle.PromoteCandidate("src", "dst")
+				So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
+			})
+
+			Convey("copy error, then cancel and both close errors", func() {
+				driverStub := &lifecycleStubDriver{
+					readerFn: failingReader,
+					writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+						return &lifecycleWriterStub{
+							writeFn:  func(p []byte) (int, error) { return 0, errInjectedPromote },
+							cancelFn: func() error { return errInjectedCleanup },
+							closeFn:  func() error { return errInjectedCleanup },
+						}, nil
+					},
+				}
+
+				lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+
+				err := lifecycle.PromoteCandidate("src", "dst")
+				So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
+			})
+
+			Convey("reader close error, then writer close error", func() {
+				driverStub := &lifecycleStubDriver{
+					readerFn: func(path string, offset int64) (io.ReadCloser, error) {
+						return errCloseReader{Reader: bytes.NewReader(nil), closeErr: errInjectedPromote}, nil
+					},
+					writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+						return &lifecycleWriterStub{closeFn: func() error { return errInjectedCleanup }}, nil
+					},
+				}
+
+				lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+
+				err := lifecycle.PromoteCandidate("src", "dst")
+				So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
+			})
+		})
+
 		Convey("writer close error propagates", func() {
 			driverStub := &lifecycleStubDriver{
 				readerFn: func(path string, offset int64) (io.ReadCloser, error) {
@@ -561,6 +620,15 @@ func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
 			_, err := lifecycle.ShouldDeleteGlobalBlob("irrelevant", godigest.FromString("errors"),
 				func(godigest.Digest) (bool, error) { return false, errInjectedReferenceCheck })
 			So(errors.Is(err, errInjectedReferenceCheck), ShouldBeTrue)
+		})
+
+		Convey("stat errors other than a missing path propagate", func() {
+			lifecycle := &localHardlinkBlobLifecycle{statFn: func(name string) (os.FileInfo, error) {
+				return nil, os.ErrPermission
+			}}
+
+			_, err := lifecycle.ShouldDeleteGlobalBlob("irrelevant", godigest.FromString("stat-error"), nil)
+			So(errors.Is(err, os.ErrPermission), ShouldBeTrue)
 		})
 
 		Convey("nlink unavailable, isDigestReferenced nil: not deletable", func() {
