@@ -121,7 +121,7 @@ jobs:
         run: |
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3-localstack.json &
             sleep 10
-            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080 --skip-cleanup
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd --max-timeout-failures 1 http://localhost:8080 --skip-cleanup
 
             killall --wait -r zot-*
 
@@ -163,7 +163,7 @@ jobs:
         run: |
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3-localstack.json &
             sleep 10
-            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080 --skip-cleanup
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd --max-timeout-failures 1 http://localhost:8080 --skip-cleanup
 
             killall --wait -r zot-*
 
@@ -203,7 +203,7 @@ jobs:
             # of the per-push "-c 10 -n 100" run, which takes under a minute on this runner type,
             # and give each worker 20x the requests (200 instead of 10), so the run is expected
             # to take 20x as long: roughly 15 minutes, inside the step timeout.
-            bin/zb-linux-amd64 -c 10 -n 2000 -o ci-cd http://localhost:8080
+            bin/zb-linux-amd64 -c 10 -n 2000 -o ci-cd --max-timeout-failures 1 http://localhost:8080
 
             kill -TERM $(cat zot.PID) || true
             rm -f zot.PID

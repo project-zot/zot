@@ -257,7 +257,7 @@ function teardown_file() {
     # --multi-arch below pushes an image index (containing many images) instead
     # of an image manifest (single image)
     run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
-        docker://public.ecr.aws/docker/library/busybox:latest \
+        docker://ghcr.io/project-zot/test-images/busybox:1.38 \
         docker://127.0.0.1:${zot_port3}/busybox:latest
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:${zot_port3}/v2/_catalog
@@ -284,7 +284,7 @@ function teardown_file() {
     # --multi-arch below pushes an image index (containing many images) instead
     # of an image manifest (single image)
     run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
-        docker://public.ecr.aws/docker/library/busybox:latest \
+        docker://ghcr.io/project-zot/test-images/busybox:1.38 \
         docker://127.0.0.1:${zot_port3}/busybox:latest
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:${zot_port3}/v2/_catalog
