@@ -125,9 +125,10 @@ func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.Walk
 }
 
 type FileInfoMock struct {
-	IsDirFn func() bool
-	SizeFn  func() int64
-	PathFn  func() string
+	IsDirFn   func() bool
+	SizeFn    func() int64
+	PathFn    func() string
+	ModTimeFn func() time.Time
 }
 
 func (f *FileInfoMock) Path() string {
@@ -147,6 +148,10 @@ func (f *FileInfoMock) Size() int64 {
 }
 
 func (f *FileInfoMock) ModTime() time.Time {
+	if f != nil && f.ModTimeFn != nil {
+		return f.ModTimeFn()
+	}
+
 	return time.Now()
 }
 

@@ -1967,6 +1967,8 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 }
 
 // StatBlob verifies if a blob is present inside a repository. The caller function MUST lock from outside.
+// For remote dedupe placeholders it returns the content original's size and modtime (via
+// originalBlobInfo). Callers that need the per-repo object's own age must use StatBlobEntry.
 func (is *ImageStore) StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
 	if err := digest.Validate(); err != nil {
 		return false, -1, time.Time{}, err
@@ -1975,6 +1977,31 @@ func (is *ImageStore) StatBlob(repo string, digest godigest.Digest) (bool, int64
 	binfo, err := is.originalBlobInfo(repo, digest)
 	if err != nil {
 		return false, -1, time.Time{}, err
+	}
+
+	return true, binfo.Size(), binfo.ModTime(), nil
+}
+
+// StatBlobEntry stats the blob object at BlobPath(repo, digest) without resolving through the
+// dedupe cache. GC delay and idle-repo reclaim use this so a freshly written remote placeholder
+// is younger than gcDelay even when the shared content original is weeks old.
+// The caller function MUST lock from outside.
+func (is *ImageStore) StatBlobEntry(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+	if err := digest.Validate(); err != nil {
+		return false, -1, time.Time{}, err
+	}
+
+	blobPath := is.BlobPath(repo, digest)
+
+	binfo, err := is.storeDriver.Stat(blobPath)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			is.log.Debug().Err(err).Str("blob", blobPath).Str("digest", digest.String()).Msg("blob not found")
+		} else {
+			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		}
+
+		return false, -1, time.Time{}, mapStorageErr(err)
 	}
 
 	return true, binfo.Size(), binfo.ModTime(), nil
@@ -2493,7 +2520,7 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 
 	for _, digest := range blobs {
 		if maxBlobAge > 0 {
-			_, _, modtime, err := is.StatBlob(repo, digest)
+			_, _, modtime, err := is.StatBlobEntry(repo, digest)
 			if err != nil {
 				return false, err
 			}

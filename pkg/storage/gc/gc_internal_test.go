@@ -2105,7 +2105,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(deleted, ShouldEqual, 0)
 		})
 
-		Convey("StatBlob error in deleteUnreferencedBlobs skips candidate and continues", func() {
+		Convey("StatBlobEntry error in deleteUnreferencedBlobs skips candidate and continues", func() {
 			blobDigest := godigest.FromBytes([]byte("blob-content"))
 
 			returnedIndex := ispec.Index{}
@@ -2119,8 +2119,44 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return []godigest.Digest{blobDigest}, nil
 				},
-				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+				StatBlobEntryFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
 					return false, 0, time.Time{}, errGC
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.deleteUnreferencedBlobs(repoName, time.Hour, log)
+			So(err, ShouldBeNil)
+			So(deleted, ShouldEqual, 0)
+		})
+
+		Convey("fresh StatBlobEntry keeps orphan even when StatBlob reports an old original", func() {
+			blobDigest := godigest.FromBytes([]byte("blob-content"))
+
+			returnedIndex := ispec.Index{}
+			returnedIndexBuf, err := json.Marshal(returnedIndex)
+			So(err, ShouldBeNil)
+
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return returnedIndexBuf, nil
+				},
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{blobDigest}, nil
+				},
+				// Content original is weeks old (what StatBlob would return for a placeholder).
+				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 100, time.Now().Add(-14 * 24 * time.Hour), nil
+				},
+				// Per-repo placeholder was written seconds ago.
+				StatBlobEntryFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					return true, 0, time.Now().Add(-time.Second), nil
+				},
+				CleanupRepoFn: func(repo string, blobs []godigest.Digest) (int, error) {
+					So(blobs, ShouldBeEmpty)
+
+					return 0, nil
 				},
 			}
 
@@ -2145,7 +2181,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
 					return []godigest.Digest{blobDigest}, nil
 				},
-				StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+				StatBlobEntryFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
 					return true, 100, time.Now().Add(-2 * time.Hour), nil
 				},
 				CleanupRepoFn: func(repo string, blobs []godigest.Digest) (int, error) {
