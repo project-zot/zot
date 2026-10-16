@@ -9,12 +9,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
@@ -116,6 +119,51 @@ func TestParseRangeHeader(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdateManifestQuotaProjectionFailureFailsClosed(t *testing.T) {
+	projectionErr := errors.New("metadata projection unavailable")
+	putCalled := false
+
+	conf := config.New()
+	conf.Storage.MaxRepoBytes = 1
+
+	imageStore := mocks.MockedImageStore{
+		PutImageManifestFn: func(context.Context, string, string, string, []byte, []string) (
+			godigest.Digest, godigest.Digest, error,
+		) {
+			putCalled = true
+
+			return "", "", nil
+		},
+	}
+
+	controller := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetRepoSizeWithCandidateFn: func(context.Context, string, []string, mTypes.ImageMeta) (int64, int64, error) {
+				return 0, 0, projectionErr
+			},
+		},
+		StoreController: storage.StoreController{DefaultStore: imageStore},
+	}
+	handler := &RouteHandler{c: controller}
+
+	request := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/v1", strings.NewReader(
+		`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",`+
+			`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",`+
+			`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",`+
+			`"size":2},"layers":[]}`))
+	request.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo", "reference": "v1"})
+	response := httptest.NewRecorder()
+
+	handler.UpdateManifest(response, request)
+
+	require.Equal(t, http.StatusServiceUnavailable, response.Code)
+	require.Contains(t, response.Body.String(), "quota accounting unavailable; retry later")
+	require.False(t, putCalled)
 }
 
 func TestNormalizeBlobRedirectURL(t *testing.T) {

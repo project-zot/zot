@@ -32,8 +32,13 @@ function setup_file() {
 
     # Download test data to folder common for the entire suite, not just this file
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/alpine:3.17.3 oci:${TEST_DATA_DIR}/alpine:3.17.3
 
-    # Setup zot server with maxRepos=2
+    local golang_blob_bytes
+    golang_blob_bytes=$(find ${TEST_DATA_DIR}/golang/blobs/sha256 -type f -printf '%s\n' | awk '{sum += $1} END {print sum}')
+    local max_repo_bytes=$((golang_blob_bytes + 4096))
+
+    # Setup zot server with maxRepos=2 and a byte quota just above the first real image.
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
     mkdir -p ${zot_root_dir}
@@ -44,7 +49,8 @@ function setup_file() {
     "distSpecVersion": "1.1.1",
     "storage": {
         "rootDirectory": "${zot_root_dir}",
-        "maxRepos": 2
+        "maxRepos": 2,
+        "maxRepoBytes": ${max_repo_bytes}
     },
     "http": {
         "address": "0.0.0.0",
@@ -91,7 +97,24 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.repositories | length') -eq 2 ]
 }
 
-@test "push manifest to new repo3 returns HTTP 429 when quota is reached" {
+@test "real image growth exceeding maxRepoBytes returns HTTP 413" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/alpine:3.17.3 \
+        docker://127.0.0.1:${zot_port}/repo1:alpine
+    [ "$status" -ne 0 ]
+
+    manifest=$(skopeo inspect --raw oci:${TEST_DATA_DIR}/alpine:3.17.3)
+    run curl -s -o /dev/null -w "%{http_code}" \
+        -X PUT \
+        -H "Content-Type: application/vnd.oci.image.manifest.v1+json" \
+        -d "${manifest}" \
+        "http://127.0.0.1:${zot_port}/v2/repo1/manifests/alpine"
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" -eq 413 ]
+}
+
+@test "push manifest to new repo3 returns HTTP 413 when quota is reached" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     # Push a minimal OCI manifest; the quota middleware rejects it before content validation
     run curl -s -o /dev/null -w "%{http_code}" \
@@ -100,10 +123,10 @@ function teardown_file() {
         -d "${MINIMAL_MANIFEST}" \
         "http://127.0.0.1:${zot_port}/v2/repo3/manifests/v1"
     [ "$status" -eq 0 ]
-    [ "${lines[-1]}" -eq 429 ]
+    [ "${lines[-1]}" -eq 413 ]
 }
 
-@test "429 response body contains TOOMANYREQUESTS code and limit detail" {
+@test "413 response body contains DENIED code and limit detail" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
     run curl -s \
         -X PUT \
@@ -111,7 +134,7 @@ function teardown_file() {
         -d "${MINIMAL_MANIFEST}" \
         "http://127.0.0.1:${zot_port}/v2/repo3/manifests/v1"
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq -r '.errors[0].code') = "TOOMANYREQUESTS" ]
+    [ $(echo "${lines[-1]}" | jq -r '.errors[0].code') = "DENIED" ]
     [ $(echo "${lines[-1]}" | jq -r '.errors[0].detail.limit') = "2" ]
 }
 
@@ -164,5 +187,5 @@ function teardown_file() {
         -d "${MINIMAL_MANIFEST}" \
         "http://127.0.0.1:${zot_port}/v2/repo5/manifests/v1"
     [ "$status" -eq 0 ]
-    [ "${lines[-1]}" -eq 429 ]
+    [ "${lines[-1]}" -eq 413 ]
 }

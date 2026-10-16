@@ -93,6 +93,12 @@ type MetaDB interface { //nolint:interfacebloat
 	// GetRepoMeta returns the full information about a repo
 	GetRepoMeta(ctx context.Context, repo string) (RepoMeta, error)
 
+	// GetRepoSizeWithCandidate returns the current and projected logical sizes for a repo
+	// after applying an image metadata candidate and the supplied tag references. It does not
+	// persist the candidate.
+	GetRepoSizeWithCandidate(ctx context.Context, repo string, references []string, imageMeta ImageMeta) (
+		current int64, projected int64, err error)
+
 	// GetFullImageMeta returns the full information about an image
 	GetFullImageMeta(ctx context.Context, repo string, tag string) (FullImageMeta, error)
 
