@@ -185,7 +185,7 @@ jobs:
   long-running-benchmark:
     name: Long-running zb benchmark (local storage)
     needs: build-binaries
-    runs-on: cncf-ubuntu-8-32-x86
+    runs-on: cncf-ubuntu-16-64-x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -229,6 +229,10 @@ jobs:
           external-data-json-path: ./cache/benchmark-data.json
           fail-on-alert: true
           summary-always: true
+          # schedule / workflow_dispatch payloads have no head_commit; the action needs a token
+          # (and preferably an explicit ref) to resolve commit metadata via the GitHub API.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.sha }}
 
   docker-image:
     name: Build docker image (for users still using Docker environments)
