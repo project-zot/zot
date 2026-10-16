@@ -738,6 +738,17 @@ func TestOIDCMalformedInput(t *testing.T) {
 	t.Run("JWKS fetch errors", func(t *testing.T) {
 		t.Parallel()
 
+		rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rsaKeyJSON, err := json.Marshal(jose.JSONWebKey{
+			Key: &rsaKey.PublicKey, KeyID: "rsa-key", Algorithm: string(jose.RS256), Use: "sig",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/truncated":
@@ -746,10 +757,16 @@ func TestOIDCMalformedInput(t *testing.T) {
 				_, _ = w.Write([]byte("{"))
 			case "/not-json":
 				_, _ = w.Write([]byte("not json"))
+			case "/bad-alg":
+				_, _ = w.Write([]byte(`{"keys":[{"kty":"RSA","alg":5}]}`))
 			case "/bad-key":
 				_, _ = w.Write([]byte(`{"keys":[{"kty":"RSA","n":"!!","e":"AQAB"}]}`))
 			case "/unsupported-key":
 				_, _ = w.Write([]byte(`{"keys":[{"kty":"OKP","crv":"Ed448","x":"AAAA"}]}`))
+			case "/mixed-keys":
+				// go-jose cannot decode secp256k1, used by some issuers for ES256K
+				_, _ = w.Write([]byte(`{"keys":[{"kty":"EC","crv":"secp256k1","alg":"ES256K","x":"AAAA","y":"AAAA"},` +
+					string(rsaKeyJSON) + `]}`))
 			}
 		}))
 		defer server.Close()
@@ -760,7 +777,7 @@ func TestOIDCMalformedInput(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, jwksURL := range []string{"://bad-url", server.URL + "/truncated", server.URL + "/not-json",
-			server.URL + "/bad-key"} {
+			server.URL + "/bad-alg", server.URL + "/bad-key"} {
 			if _, err := provider.fetchKeySet(context.Background(), jwksURL); err == nil {
 				t.Fatalf("JWKS from %s was accepted", jwksURL)
 			}
@@ -773,6 +790,15 @@ func TestOIDCMalformedInput(t *testing.T) {
 		}
 		if len(keySet.keys) != 0 {
 			t.Fatal("unsupported key was cached")
+		}
+
+		// a key for an unsupported algorithm is skipped before decoding, as go-oidc does
+		keySet, err = provider.fetchKeySet(context.Background(), server.URL+"/mixed-keys")
+		if err != nil {
+			t.Fatalf("a key for an unsupported algorithm must not fail the key set: %v", err)
+		}
+		if len(keySet.keys) != 1 || keySet.keys[0].KeyID != "rsa-key" {
+			t.Fatalf("expected only the RSA key, got %d keys", len(keySet.keys))
 		}
 	})
 }

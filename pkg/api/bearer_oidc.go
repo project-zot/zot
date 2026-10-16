@@ -453,6 +453,18 @@ func (o *oidcProvider) fetchKeySet(ctx context.Context, jwksURL string) (*cached
 
 	keySet := &cachedOIDCKeySet{keys: make([]jose.JSONWebKey, 0, len(rawKeySet.Keys))}
 	for _, rawKey := range rawKeySet.Keys {
+		// Like go-oidc, skip a key for an unsupported algorithm before decoding it: go-jose cannot
+		// decode some of them (ES256K's secp256k1 curve), which must not fail the whole set.
+		var metadata struct {
+			Algorithm string `json:"alg"`
+		}
+		if err := json.Unmarshal(rawKey, &metadata); err != nil {
+			return nil, fmt.Errorf("failed to decode JWK: %w", err)
+		}
+		if metadata.Algorithm != "" && len(supportedOIDCSigningAlgorithms([]string{metadata.Algorithm})) == 0 {
+			continue
+		}
+
 		var key jose.JSONWebKey
 		if err := json.Unmarshal(rawKey, &key); err != nil {
 			if errors.Is(err, jose.ErrUnsupportedKeyType) {
@@ -462,8 +474,7 @@ func (o *oidcProvider) fetchKeySet(ctx context.Context, jwksURL string) (*cached
 			return nil, fmt.Errorf("failed to decode JWK: %w", err)
 		}
 
-		if key.IsPublic() &&
-			(key.Algorithm == "" || len(supportedOIDCSigningAlgorithms([]string{key.Algorithm})) != 0) {
+		if key.IsPublic() {
 			keySet.keys = append(keySet.keys, key)
 		}
 	}
