@@ -162,3 +162,132 @@ func testRepairSharedContent(t *testing.T, corruptSize int64) {
 		So(data, ShouldResemble, layer)
 	}
 }
+
+func TestDedupeBlobOriginWithWrongContent(t *testing.T) {
+	Convey("A push into a new repo repairs an origin left with part of its content", t, func() {
+		content := []byte("dedupe-origin-content")
+		digest := godigest.FromBytes(content)
+
+		for _, testCase := range []struct {
+			name     string
+			driver   storageTypes.Driver
+			relPaths bool
+		}{
+			{"remote", &remoteNamedDriver{Driver: local.New(true)}, false},
+			{"local", local.New(true), true},
+		} {
+			Convey(testCase.name, func() {
+				dir := t.TempDir()
+				log := zlog.NewTestLogger()
+
+				cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+					RootDir:     dir,
+					Name:        "cache",
+					UseRelPaths: testCase.relPaths,
+				}, log)
+				So(err, ShouldBeNil)
+
+				imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+					testCase.driver, cacheDriver, nil, nil)
+
+				ctx := context.Background()
+
+				// what a repair that failed partway through leaves behind: a prefix of the content
+				So(imgStore.InitRepo(ctx, "repo-origin"), ShouldBeNil)
+
+				origin := imgStore.BlobPath("repo-origin", digest)
+				So(os.MkdirAll(path.Dir(origin), storageConstants.DefaultDirPerms), ShouldBeNil)
+				So(os.WriteFile(origin, content[:5], storageConstants.DefaultFilePerms), ShouldBeNil)
+				So(cacheDriver.PutBlob(digest, origin), ShouldBeNil)
+
+				_, _, err = imgStore.FullBlobUpload(ctx, "repo-new", bytes.NewReader(content), digest)
+				So(err, ShouldBeNil)
+
+				data, err := os.ReadFile(origin)
+				So(err, ShouldBeNil)
+				So(data, ShouldResemble, content)
+
+				for _, repo := range []string{"repo-origin", "repo-new"} {
+					ok, blobSize, err := imgStore.CheckBlob(ctx, repo, digest)
+					So(err, ShouldBeNil)
+					So(ok, ShouldBeTrue)
+					So(blobSize, ShouldEqual, len(content))
+				}
+			})
+		}
+	})
+}
+
+// failingLinkDriver fails the first failures calls to Link, then delegates.
+type failingLinkDriver struct {
+	storageTypes.Driver
+
+	failures int
+}
+
+func (d *failingLinkDriver) Link(src, dest string) error {
+	if d.failures > 0 {
+		d.failures--
+
+		return errDriverFailed
+	}
+
+	return d.Driver.Link(src, dest)
+}
+
+func TestDedupeBlobKeepsUploadUntilLinked(t *testing.T) {
+	Convey("A failed link while finishing an upload over an empty origin keeps the upload", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		storeDriver := &failingLinkDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}, failures: 1}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			storeDriver, cacheDriver, nil, nil)
+
+		ctx := context.Background()
+		content := []byte("dedupe-origin-content")
+		digest := godigest.FromBytes(content)
+
+		So(imgStore.InitRepo(ctx, "repo-empty"), ShouldBeNil)
+
+		emptyOrigin := imgStore.BlobPath("repo-empty", digest)
+		So(os.MkdirAll(path.Dir(emptyOrigin), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(emptyOrigin, nil, storageConstants.DefaultFilePerms), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, emptyOrigin), ShouldBeNil)
+
+		So(imgStore.InitRepo(ctx, "repo-push"), ShouldBeNil)
+
+		uuid, err := imgStore.NewBlobUpload(ctx, "repo-push")
+		So(err, ShouldBeNil)
+
+		_, err = imgStore.PutBlobChunkStreamed(ctx, "repo-push", uuid, bytes.NewReader(content))
+		So(err, ShouldBeNil)
+
+		// the link fails before anything consumed the upload, so the session survives
+		So(imgStore.FinishBlobUpload("repo-push", uuid, bytes.NewReader(nil), digest), ShouldNotBeNil)
+
+		size, err := imgStore.GetBlobUpload("repo-push", uuid)
+		So(err, ShouldBeNil)
+		So(size, ShouldEqual, len(content))
+
+		// and the retry finishes it, repairing the origin
+		So(imgStore.FinishBlobUpload("repo-push", uuid, bytes.NewReader(nil), digest), ShouldBeNil)
+
+		data, err := os.ReadFile(emptyOrigin)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		ok, blobSize, err := imgStore.CheckBlob(ctx, "repo-push", digest)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+		So(blobSize, ShouldEqual, len(content))
+	})
+}

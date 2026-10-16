@@ -87,7 +87,7 @@ type blobLifecycle interface {
 
 	// RepairSharedContent overwrites the content at originPath, which every deduped copy of the
 	// blob shares, with the verified upload at uploadPath, and consumes uploadPath. It is used
-	// when a blob is pushed again and the shared content is found to be wrong; the cache is not
+	// when a blob is pushed and the shared content does not match the upload; the cache is not
 	// changed.
 	// Local: copies share one inode, so originPath is rewritten in place (Writer without append
 	// truncates the existing file), which repairs every hardlink to it, and uploadPath is then

@@ -1630,7 +1630,7 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 	return uuid, nbytes, nil
 }
 
-func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
+func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string, dst string) error {
 	for {
 		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
@@ -1703,41 +1703,12 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			continue
 		}
 
-		/* An origin without content cannot back another copy: linking this upload to it would leave
-		the upload empty as well. It is the shared content gone wrong, as below for a re-push of a
-		blob whose content has the wrong size, so repair it from the upload, which repairs every
-		copy sharing it, and then link this copy to it like any other. */
-		if lacksContent(dstDigest, blobInfo.Size()) {
-			is.log.Warn().Str("origin", dstRecord).Str("dst", dst).Str("component", "dedupe").
-				Msg("dedupe origin has no content, repairing it from the upload")
+		// The upload's digest has been verified, so its size is what the origin's content must be.
+		uploadInfo, err := is.storeDriver.Stat(src)
+		if err != nil {
+			is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").Msg("failed to stat upload")
 
-			if err := is.lifecycle.RepairSharedContent(src, dstRecord); err != nil {
-				is.log.Error().Err(err).Str("src", src).Str("origin", dstRecord).Str("component", "dedupe").
-					Msg("failed to repair shared blob content")
-
-				return err
-			}
-
-			// the repair consumed the upload, so there is nothing left to remove
-			if is.storeDriver.SameFile(dst, dstRecord) {
-				return nil
-			}
-
-			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
-					Msg("failed to link blobs")
-
-				return err
-			}
-
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-					Msg("failed to insert blob record")
-
-				return err
-			}
-
-			return nil
+			return mapStorageErr(err)
 		}
 
 		// prevent overwrite original blob
@@ -1755,25 +1726,26 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 				return err
 			}
-		} else {
-			// if it's same file then it was already uploaded, check if blob is corrupted
-			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
-				// blob corrupted, replace content
-				if desc.Size != blobInfo.Size() {
-					// Repair the origin rather than dst: every copy shares its content, so this
-					// repairs dst too, whichever copy of the origin's content dst is.
-					if err := is.lifecycle.RepairSharedContent(src, dstRecord); err != nil {
-						is.log.Error().Err(err).Str("src", src).Str("origin", dstRecord).Str("component", "dedupe").
-							Msg("failed to repair shared blob content")
+		}
 
-						return err
-					}
+		/* An origin whose size differs from the upload's holds wrong content: empty, truncated,
+		or left partly rewritten by an earlier repair that failed. Every copy shares it, dst
+		included now, so repair it from the upload, which repairs them all. This comes last
+		because it consumes the upload: until then a failure leaves the upload in place for the
+		client to retry, and a retry after a partial repair sees the wrong size again. */
+		if blobInfo.Size() != uploadInfo.Size() {
+			is.log.Warn().Str("origin", dstRecord).Int64("originSize", blobInfo.Size()).
+				Int64("uploadSize", uploadInfo.Size()).Str("component", "dedupe").
+				Msg("dedupe origin does not match the upload, repairing it")
 
-					is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
+			if err := is.lifecycle.RepairSharedContent(src, dstRecord); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("origin", dstRecord).Str("component", "dedupe").
+					Msg("failed to repair shared blob content")
 
-					return nil
-				}
+				return err
 			}
+
+			return nil
 		}
 
 		// remove temp blobupload
