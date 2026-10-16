@@ -25,12 +25,23 @@ import (
 )
 
 // remoteNamedDriver is the local driver under a name that is not the local one, so the
-// image store picks the remote lifecycle (zero-byte copies are placeholders) for it.
+// image store picks the remote lifecycle (zero-byte copies are placeholders) for it. Link
+// writes an empty placeholder, as the remote drivers do, rather than a hardlink.
 type remoteNamedDriver struct {
 	storageTypes.Driver
 }
 
 func (d *remoteNamedDriver) Name() string { return "remote-test" }
+
+func (d *remoteNamedDriver) Link(src, dest string) error {
+	if src == dest {
+		return nil
+	}
+
+	_, err := d.Driver.WriteFile(dest, []byte{})
+
+	return err
+}
 
 func TestRestoreDedupedBlobsRemoteLifecycle(t *testing.T) {
 	Convey("The restore walk refills placeholders from a surviving content copy", t, func() {
