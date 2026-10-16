@@ -130,6 +130,12 @@ type blobLifecycle interface { //nolint:interfacebloat
 	// IncludeRepoInMountCandidates reports whether repo may be a source for cross-repo blob
 	// mounts. Both exclude the global blobstore, which is never a repository.
 	IncludeRepoInMountCandidates(repo string) bool
+
+	// KeepsContentInGlobalBlobstore reports whether deduped content lives in the global
+	// blobstore, with repo copies only referring to it. Local: yes, repo copies are
+	// hardlinks of the blobstore copy. Remote: not yet, the origin is still a repo's copy;
+	// this goes away once remote storage moves to the global blobstore too.
+	KeepsContentInGlobalBlobstore() bool
 }
 
 func newBlobLifecycle(storeDriver storageTypes.Driver, rootDir string,
@@ -275,6 +281,10 @@ func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath strin
 
 func (l *localHardlinkBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
 	return repo != storageConstants.GlobalBlobsRepo
+}
+
+func (l *localHardlinkBlobLifecycle) KeepsContentInGlobalBlobstore() bool {
+	return true
 }
 
 // hardLinkCount returns a file's hardlink count where the platform reports one. It reads the
@@ -447,6 +457,10 @@ func (r *remoteSharedBlobLifecycle) ShouldDeleteGlobalBlob(_ string, digest godi
 
 func (r *remoteSharedBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
 	return repo != storageConstants.GlobalBlobsRepo
+}
+
+func (r *remoteSharedBlobLifecycle) KeepsContentInGlobalBlobstore() bool {
+	return false
 }
 
 func (r *remoteSharedBlobLifecycle) ValidateBlobsDir(_ string) (bool, error) {
