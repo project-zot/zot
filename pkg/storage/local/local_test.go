@@ -781,6 +781,9 @@ func TestStorageCacheErrors(t *testing.T) {
 }
 
 func FuzzDedupeBlob(f *testing.F) {
+	// a seed, so that a plain go test runs the target too
+	f.Add("blob-content")
+
 	f.Fuzz(func(t *testing.T, data string) {
 		log := zlog.NewTestLoggerPtr()
 		metrics := monitoring.NewNopMetricServer()
@@ -801,19 +804,20 @@ func FuzzDedupeBlob(f *testing.F) {
 		src := path.Join(imgStore.RootDir(), "src")
 		blob := bytes.NewReader([]byte(data))
 
-		_, _, err := imgStore.FullBlobUpload(context.Background(), "repoName", blob, blobDigest)
+		_, _, err := imgStore.FullBlobUpload(context.Background(), "repo", blob, blobDigest)
 		if err != nil {
 			t.Error(err)
 		}
 
-		dst := imgStore.BlobPath("repoName", blobDigest)
+		dst := imgStore.BlobPath("repo", blobDigest)
 
-		err = os.MkdirAll(src, 0o755)
+		// the staged upload holds the verified blob, as BlobUploadPath would
+		err = os.WriteFile(src, []byte(data), 0o600)
 		if err != nil {
 			t.Error(err)
 		}
 
-		err = imgStore.DedupeBlob(src, blobDigest, "repoName", dst)
+		err = imgStore.DedupeBlob(src, blobDigest, "repo", dst)
 		if err != nil {
 			t.Error(err)
 		}
