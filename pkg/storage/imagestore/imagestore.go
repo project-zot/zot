@@ -1752,6 +1752,11 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 				is.log.Error().Err(err).Str("src", snapshot).Str("origin", dstRecord).Str("component", "dedupe").
 					Msg("failed to repair shared blob content")
 
+				// the upload stays for the retry, which takes a new snapshot
+				if derr := is.storeDriver.Delete(snapshot); derr != nil && !errclass.IsStorageObjectMissing(derr) {
+					is.log.Error().Err(derr).Str("snapshot", snapshot).Msg("failed to remove upload snapshot")
+				}
+
 				return err
 			}
 		}
@@ -1772,12 +1777,19 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 
 // verifiedSnapshot copies the upload at src to a path only this call writes, hashing the copy
 // on the way, and returns that path once the copy matches digest. The upload itself can still
-// change under a concurrent chunk upload; the snapshot cannot. On a mismatch, the snapshot is
-// removed and ErrBadBlobDigest is returned.
+// change under a concurrent chunk upload; the snapshot cannot. Its name is random: it sits next
+// to uploads, and the upload endpoints accept any session ID, so a name derived from src could
+// be written through them. On a mismatch, the snapshot is removed and ErrBadBlobDigest is
+// returned.
 func (is *ImageStore) verifiedSnapshot(src string, digest godigest.Digest) (string, error) {
-	snapshot := src + ".verified"
+	snapshotID, err := guuid.NewV4()
+	if err != nil {
+		return "", err
+	}
 
-	err := func() error {
+	snapshot := src + "." + snapshotID.String() + ".verified"
+
+	err = func() error {
 		reader, err := is.storeDriver.Reader(src, 0)
 		if err != nil {
 			return mapStorageErr(err)

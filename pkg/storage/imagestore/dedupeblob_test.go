@@ -5,8 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -360,5 +364,109 @@ func TestDedupeBlobNeverRepairsFromAChangedUpload(t *testing.T) {
 				So(blobSize, ShouldEqual, len(content))
 			})
 		}
+	})
+}
+
+// snapshotReadHookDriver calls hook once, the first time a verified snapshot is read: between
+// the snapshot being hashed and the repair copying it.
+type snapshotReadHookDriver struct {
+	storageTypes.Driver
+
+	once sync.Once
+	hook func()
+}
+
+func (d *snapshotReadHookDriver) Reader(readPath string, offset int64) (io.ReadCloser, error) {
+	if strings.HasSuffix(readPath, ".verified") {
+		d.once.Do(d.hook)
+	}
+
+	return d.Driver.Reader(readPath, offset)
+}
+
+func TestDedupeBlobRepairSnapshot(t *testing.T) {
+	content := []byte("dedupe-origin-content")
+	digest := godigest.FromBytes(content)
+
+	newStore := func(dir string, storeDriver storageTypes.Driver, relPaths bool) (storageTypes.ImageStore,
+		storageTypes.Cache, string,
+	) {
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: relPaths,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			storeDriver, cacheDriver, nil, nil)
+
+		// the cache names an empty copy as the origin, so a push of the blob repairs it
+		So(imgStore.InitRepo(context.Background(), "repo-empty"), ShouldBeNil)
+
+		emptyOrigin := imgStore.BlobPath("repo-empty", digest)
+		So(os.MkdirAll(path.Dir(emptyOrigin), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(emptyOrigin, nil, storageConstants.DefaultFilePerms), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, emptyOrigin), ShouldBeNil)
+
+		return imgStore, cacheDriver, emptyOrigin
+	}
+
+	snapshotsLeft := func(dir string) []string {
+		snapshots, err := filepath.Glob(path.Join(dir, "repo-push", storageConstants.BlobUploadDir, "*.verified"))
+		So(err, ShouldBeNil)
+
+		return snapshots
+	}
+
+	Convey("The snapshot cannot be written through the upload API", t, func() {
+		dir := t.TempDir()
+		storeDriver := &snapshotReadHookDriver{Driver: local.New(true)}
+		imgStore, _, emptyOrigin := newStore(dir, storeDriver, true)
+		ctx := context.Background()
+
+		So(imgStore.InitRepo(ctx, "repo-push"), ShouldBeNil)
+
+		uuid, err := imgStore.NewBlobUpload(ctx, "repo-push")
+		So(err, ShouldBeNil)
+
+		_, err = imgStore.PutBlobChunkStreamed(ctx, "repo-push", uuid, bytes.NewReader(content))
+		So(err, ShouldBeNil)
+
+		// a client appending to the session ID a snapshot name could be derived from
+		storeDriver.hook = func() {
+			_, _ = imgStore.PutBlobChunkStreamed(ctx, "repo-push", uuid+".verified",
+				bytes.NewReader([]byte("unverified")))
+		}
+
+		So(imgStore.FinishBlobUpload("repo-push", uuid, bytes.NewReader(nil), digest), ShouldBeNil)
+
+		data, err := os.ReadFile(emptyOrigin)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		So(snapshotsLeft(dir), ShouldBeEmpty)
+	})
+
+	Convey("A failed repair leaves no snapshot behind, and the retry succeeds", t, func() {
+		dir := t.TempDir()
+		// the first Move is the repair's: the remote lifecycle moves the snapshot onto the origin
+		storeDriver := &failingMoveDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}, failures: 1}
+		imgStore, _, emptyOrigin := newStore(dir, storeDriver, false)
+		ctx := context.Background()
+
+		_, _, err := imgStore.FullBlobUpload(ctx, "repo-push", bytes.NewReader(content), digest)
+		So(err, ShouldNotBeNil)
+		So(snapshotsLeft(dir), ShouldBeEmpty)
+
+		_, _, err = imgStore.FullBlobUpload(ctx, "repo-push", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+		So(snapshotsLeft(dir), ShouldBeEmpty)
+
+		data, err := os.ReadFile(emptyOrigin)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
 	})
 }
