@@ -1730,22 +1730,30 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 
 		/* An origin whose size differs from the upload's holds wrong content: empty, truncated,
 		or left partly rewritten by an earlier repair that failed. Every copy shares it, dst
-		included now, so repair it from the upload, which repairs them all. This comes last
-		because it consumes the upload: until then a failure leaves the upload in place for the
-		client to retry, and a retry after a partial repair sees the wrong size again. */
+		included now, so repair it, which repairs them all. The upload was verified before this
+		store lock was taken, and an upload can still be appended to without it, so the repair
+		uses a snapshot verified here instead: unverified bytes must never reach shared content.
+		This comes last, so that until it succeeds the upload stays in place for the client to
+		retry, and a retry after a partial repair sees the wrong size again. */
 		if blobInfo.Size() != uploadInfo.Size() {
 			is.log.Warn().Str("origin", dstRecord).Int64("originSize", blobInfo.Size()).
 				Int64("uploadSize", uploadInfo.Size()).Str("component", "dedupe").
 				Msg("dedupe origin does not match the upload, repairing it")
 
-			if err := is.lifecycle.RepairSharedContent(src, dstRecord); err != nil {
-				is.log.Error().Err(err).Str("src", src).Str("origin", dstRecord).Str("component", "dedupe").
-					Msg("failed to repair shared blob content")
+			snapshot, err := is.verifiedSnapshot(src, dstDigest)
+			if err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
+					Msg("failed to take a verified snapshot of the upload")
 
 				return err
 			}
 
-			return nil
+			if err := is.lifecycle.RepairSharedContent(snapshot, dstRecord); err != nil {
+				is.log.Error().Err(err).Str("src", snapshot).Str("origin", dstRecord).Str("component", "dedupe").
+					Msg("failed to repair shared blob content")
+
+				return err
+			}
 		}
 
 		// remove temp blobupload
@@ -1760,6 +1768,61 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 
 		return nil
 	}
+}
+
+// verifiedSnapshot copies the upload at src to a path only this call writes, hashing the copy
+// on the way, and returns that path once the copy matches digest. The upload itself can still
+// change under a concurrent chunk upload; the snapshot cannot. On a mismatch, the snapshot is
+// removed and ErrBadBlobDigest is returned.
+func (is *ImageStore) verifiedSnapshot(src string, digest godigest.Digest) (string, error) {
+	snapshot := src + ".verified"
+
+	err := func() error {
+		reader, err := is.storeDriver.Reader(src, 0)
+		if err != nil {
+			return mapStorageErr(err)
+		}
+
+		defer reader.Close()
+
+		writer, err := is.storeDriver.Writer(snapshot, false)
+		if err != nil {
+			return mapStorageErr(err)
+		}
+
+		digester := digest.Algorithm().Hash()
+
+		if _, err := io.Copy(io.MultiWriter(writer, digester), reader); err != nil {
+			_ = writer.Close()
+
+			return err
+		}
+
+		if err := writer.Commit(context.Background()); err != nil {
+			_ = writer.Close()
+
+			return err
+		}
+
+		if err := writer.Close(); err != nil {
+			return err
+		}
+
+		if godigest.NewDigest(digest.Algorithm(), digester) != digest {
+			return zerr.ErrBadBlobDigest
+		}
+
+		return nil
+	}()
+	if err != nil {
+		if derr := is.storeDriver.Delete(snapshot); derr != nil && !errclass.IsStorageObjectMissing(derr) {
+			is.log.Error().Err(derr).Str("snapshot", snapshot).Msg("failed to remove upload snapshot")
+		}
+
+		return "", err
+	}
+
+	return snapshot, nil
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.

@@ -3,6 +3,7 @@ package imagestore_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -11,6 +12,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -289,5 +291,74 @@ func TestDedupeBlobKeepsUploadUntilLinked(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(ok, ShouldBeTrue)
 		So(blobSize, ShouldEqual, len(content))
+	})
+}
+
+func TestDedupeBlobNeverRepairsFromAChangedUpload(t *testing.T) {
+	Convey("An upload changed after it was verified never overwrites a healthy origin", t, func() {
+		content := []byte("dedupe-origin-content")
+		digest := godigest.FromBytes(content)
+
+		for _, testCase := range []struct {
+			name     string
+			driver   storageTypes.Driver
+			relPaths bool
+		}{
+			{"remote", &remoteNamedDriver{Driver: local.New(true)}, false},
+			{"local", local.New(true), true},
+		} {
+			Convey(testCase.name, func() {
+				dir := t.TempDir()
+				log := zlog.NewTestLogger()
+
+				cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+					RootDir:     dir,
+					Name:        "cache",
+					UseRelPaths: testCase.relPaths,
+				}, log)
+				So(err, ShouldBeNil)
+
+				imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+					testCase.driver, cacheDriver, nil, nil)
+
+				ctx := context.Background()
+
+				_, _, err = imgStore.FullBlobUpload(ctx, "repo-origin", bytes.NewReader(content), digest)
+				So(err, ShouldBeNil)
+
+				origin := imgStore.BlobPath("repo-origin", digest)
+
+				// what a chunk upload racing the finalization leaves: the verified bytes, then more
+				So(imgStore.InitRepo(ctx, "repo-push"), ShouldBeNil)
+
+				src := path.Join(dir, "repo-push", storageConstants.BlobUploadDir, "racing-upload")
+				So(os.MkdirAll(path.Dir(src), storageConstants.DefaultDirPerms), ShouldBeNil)
+				So(os.WriteFile(src, append(append([]byte{}, content...), "appended"...),
+					storageConstants.DefaultFilePerms), ShouldBeNil)
+
+				// FinishBlobUpload creates the blob's directory before it dedupes
+				dst := imgStore.BlobPath("repo-push", digest)
+				So(os.MkdirAll(path.Dir(dst), storageConstants.DefaultDirPerms), ShouldBeNil)
+
+				err = imgStore.DedupeBlob(src, digest, "repo-push", dst)
+				So(errors.Is(err, zerr.ErrBadBlobDigest), ShouldBeTrue)
+
+				// the origin keeps its content, the upload is left in place, and no snapshot remains
+				data, err := os.ReadFile(origin)
+				So(err, ShouldBeNil)
+				So(data, ShouldResemble, content)
+
+				_, err = os.Stat(src)
+				So(err, ShouldBeNil)
+
+				_, err = os.Stat(src + ".verified")
+				So(os.IsNotExist(err), ShouldBeTrue)
+
+				ok, blobSize, err := imgStore.CheckBlob(ctx, "repo-origin", digest)
+				So(err, ShouldBeNil)
+				So(ok, ShouldBeTrue)
+				So(blobSize, ShouldEqual, len(content))
+			})
+		}
 	})
 }
