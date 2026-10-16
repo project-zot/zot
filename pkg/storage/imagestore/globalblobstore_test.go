@@ -17,9 +17,11 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	image "zotregistry.dev/zot/v2/pkg/test/image-utils"
 )
 
@@ -240,5 +242,114 @@ func TestLocalGlobalBlobstore(t *testing.T) {
 			_, err = os.Stat(path.Join(dir, storageConstants.GlobalBlobsRepo))
 			So(os.IsNotExist(err), ShouldBeTrue)
 		})
+	})
+}
+
+func TestUpgradeLocalStoreToGlobalBlobstore(t *testing.T) {
+	content := []byte("legacy-dedupe-content")
+	digest := godigest.FromBytes(content)
+
+	// legacyStore lays out what an earlier release left with dedupe on: two repos sharing an
+	// inode, the first one recorded in the cache as the origin, and no migration marker
+	legacyStore := func(dir string, cacheDriver storageTypes.Cache) (string, string) {
+		repoA := path.Join(dir, "repo-a", ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+		repoB := path.Join(dir, "repo-b", ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+
+		oldStore := imagestore.NewImageStore(dir, dir, false, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			So(oldStore.InitRepo(context.Background(), repo), ShouldBeNil)
+		}
+
+		So(os.MkdirAll(path.Dir(repoA), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.MkdirAll(path.Dir(repoB), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(repoA, content, storageConstants.DefaultFilePerms), ShouldBeNil)
+		So(os.Link(repoA, repoB), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, repoA), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, repoB), ShouldBeNil)
+
+		return repoA, repoB
+	}
+
+	newCache := func(dir string) storageTypes.Cache {
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, zlog.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		return cacheDriver
+	}
+
+	openStore := func(dir string, cacheDriver storageTypes.Cache) storageTypes.ImageStore {
+		return imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), cacheDriver, nil, nil)
+	}
+
+	Convey("The upgrade makes the global blobstore copy the origin an earlier release recorded", t, func() {
+		dir := t.TempDir()
+		cacheDriver := newCache(dir)
+		repoA, repoB := legacyStore(dir, cacheDriver)
+
+		So(openStore(dir, cacheDriver), ShouldNotBeNil)
+
+		globalBlobPath := path.Join(dir, storageConstants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+			digest.Algorithm().String(), digest.Encoded())
+
+		record, err := cacheDriver.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(path.Join(dir, record), ShouldEqual, globalBlobPath)
+		So(cacheDriver.HasBlob(digest, repoA), ShouldBeTrue)
+		So(cacheDriver.HasBlob(digest, repoB), ShouldBeTrue)
+
+		_, err = os.Stat(path.Join(dir, storageConstants.BlobstoreMigratedMarker))
+		So(err, ShouldBeNil)
+	})
+
+	Convey("An upgrade that fails is not marked done, and the next start completes it", t, func() {
+		dir := t.TempDir()
+		boltCache := newCache(dir)
+		legacyStore(dir, boltCache)
+
+		So(openStore(dir, &failingSetOriginCache{Cache: boltCache, failures: 1}), ShouldBeNil)
+
+		_, err := os.Stat(path.Join(dir, storageConstants.BlobstoreMigratedMarker))
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		So(openStore(dir, boltCache), ShouldNotBeNil)
+
+		_, err = os.Stat(path.Join(dir, storageConstants.BlobstoreMigratedMarker))
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Deleting a migrated manifest reclaims its global blobstore copy", t, func() {
+		dir := t.TempDir()
+
+		oldStore := imagestore.NewImageStore(dir, dir, false, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+
+		img := image.CreateRandomImage()
+		So(image.WriteImageToFileSystem(img, "repo", "tag", storage.StoreController{DefaultStore: oldStore}),
+			ShouldBeNil)
+
+		imgStore := openStore(dir, newCache(dir))
+		So(imgStore, ShouldNotBeNil)
+
+		manifestDigest := img.Digest()
+		globalManifestPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, manifestDigest)
+
+		_, err := os.Stat(globalManifestPath)
+		So(err, ShouldBeNil)
+
+		// by digest, so that no index entry keeps the manifest blob
+		So(imgStore.DeleteImageManifest(context.Background(), "repo", manifestDigest.String(), false), ShouldBeNil)
+
+		_, err = os.Stat(imgStore.BlobPath("repo", manifestDigest))
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		_, err = os.Stat(globalManifestPath)
+		So(os.IsNotExist(err), ShouldBeTrue)
 	})
 }
