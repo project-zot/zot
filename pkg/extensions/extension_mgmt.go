@@ -109,14 +109,19 @@ func SetupMgmtRoutes(conf *config.Config, router *mux.Router, gcOnDemand func(st
 	mgmtRouter := router.PathPrefix(constants.ExtMgmt).Subrouter()
 	mgmtRouter.Use(zcommon.CORSHeadersMiddleware(conf.HTTP.AllowOrigin))
 	mgmtRouter.Use(zcommon.AddExtensionSecurityHeaders())
-	mgmtRouter.Use(zcommon.ACHeadersMiddleware(conf, allowedMethods...))
 
-	// registered before the config handler, which handles any GET under the mgmt prefix
+	// registered before the config handler, which handles any GET under the mgmt prefix;
+	// ACHeadersMiddleware answers the OPTIONS preflight before the admin check
 	gcHandler := GCHandler{GCOnDemand: gcOnDemand, Log: log}
-	mgmtRouter.HandleFunc(constants.MgmtGC, gcHandler.RunGC).Methods(http.MethodPost)
-	mgmtRouter.HandleFunc(constants.MgmtGC, gcHandler.GetGCStatus).Methods(http.MethodGet)
+	gcRouter := mgmtRouter.Path(constants.MgmtGC).Subrouter()
+	gcRouter.Use(zcommon.ACHeadersMiddleware(conf, zcommon.AllowedMethods(http.MethodGet, http.MethodPost)...))
+	gcRouter.Use(zcommon.AuthzOnlyAdminsMiddleware(conf))
+	gcRouter.Methods(http.MethodPost).HandlerFunc(gcHandler.RunGC)
+	gcRouter.Methods(http.MethodGet).HandlerFunc(gcHandler.GetGCStatus)
+	gcRouter.Methods(http.MethodOptions).HandlerFunc(func(http.ResponseWriter, *http.Request) {})
 
-	mgmtRouter.Methods(allowedMethods...).HandlerFunc(mgmt.HandleGetConfig)
+	mgmtRouter.Methods(allowedMethods...).
+		Handler(zcommon.ACHeadersMiddleware(conf, allowedMethods...)(http.HandlerFunc(mgmt.HandleGetConfig)))
 
 	log.Info().Msg("finished setting up mgmt routes")
 }

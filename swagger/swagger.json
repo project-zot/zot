@@ -204,6 +204,12 @@
                             "type": "string"
                         }
                     },
+                    "401": {
+                        "description": "unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "403": {
                         "description": "forbidden",
                         "schema": {
@@ -257,6 +263,12 @@
                     },
                     "400": {
                         "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "unauthorized",
                         "schema": {
                             "type": "string"
                         }

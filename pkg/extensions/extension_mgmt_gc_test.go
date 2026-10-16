@@ -40,7 +40,7 @@ func TestMgmtGC(t *testing.T) {
 		enable := true
 
 		conf := config.New()
-		conf.HTTP.Port = test.GetFreePort()
+		conf.HTTP.Port = "0"
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
 		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
@@ -87,6 +87,18 @@ func TestMgmtGC(t *testing.T) {
 			resp, err = resty.R().SetQueryParam("store", "/").Post(gcURL)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+
+		Convey("a cross-origin preflight allows POST, while the config endpoint stays read only", func() {
+			resp, err := resty.R().SetHeader("Origin", "https://example.com").
+				SetHeader("Access-Control-Request-Method", http.MethodPost).Options(gcURL)
+			So(err, ShouldBeNil)
+			So(resp.IsSuccess(), ShouldBeTrue)
+			So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldContainSubstring, http.MethodPost)
+
+			resp, err = resty.R().SetBasicAuth(adminUser, adminPass).Post(baseURL + constants.FullMgmt)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
 		})
 
 		Convey("unknown stores and repos are rejected", func() {
@@ -211,7 +223,7 @@ func TestMgmtGCWithoutAccessControl(t *testing.T) {
 
 	newConf := func() *config.Config {
 		conf := config.New()
-		conf.HTTP.Port = test.GetFreePort()
+		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Storage.GC = true
 		conf.Storage.GCInterval = time.Hour
@@ -223,7 +235,7 @@ func TestMgmtGCWithoutAccessControl(t *testing.T) {
 		return conf
 	}
 
-	Convey("Without accessControl every authenticated user is an admin", t, func() {
+	Convey("With authentication but without accessControl no user is an admin", t, func() {
 		username, password := "user", "user-pass"
 
 		conf := newConf()
@@ -236,7 +248,36 @@ func TestMgmtGCWithoutAccessControl(t *testing.T) {
 		resp, err := resty.R().SetBasicAuth(username, password).SetQueryParam("store", "/").
 			Post(baseURL + constants.FullMgmt + constants.MgmtGC)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+	})
+
+	Convey("An admin whose adminPolicy conditions deny the request can't use it", t, func() {
+		adminUser, adminPass := "admin", "admin-pass"
+
+		conf := newConf()
+		conf.HTTP.Auth.HTPasswd.Path = test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(adminUser, adminPass))
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			AdminPolicy: config.Policy{
+				Users:      []string{adminUser},
+				Conditions: []config.Condition{{Expression: "req.tls.enabled", Message: "admin access requires TLS"}},
+			},
+		}
+
+		ctlrManager := test.NewControllerManager(api.NewController(conf))
+		baseURL := ctlrManager.StartAndWait()
+		defer ctlrManager.StopServer()
+
+		// the server is plain HTTP, so the TLS condition denies the listed admin
+		gcURL := baseURL + constants.FullMgmt + constants.MgmtGC
+
+		resp, err := resty.R().SetBasicAuth(adminUser, adminPass).SetQueryParam("store", "/").Post(gcURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+		So(string(resp.Body()), ShouldContainSubstring, "admin access requires TLS")
+
+		resp, err = resty.R().SetBasicAuth(adminUser, adminPass).SetQueryParam("store", "/").Get(gcURL)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 	})
 
 	Convey("Without authentication and accessControl anyone is an admin", t, func() {
