@@ -82,7 +82,7 @@ function teardown_file() {
 }
 
 @test "[release] push image index" {
-    helper_push_image_index docker://public.ecr.aws/docker/library/busybox:latest busybox latest
+    helper_push_image_index docker://ghcr.io/project-zot/test-images/busybox:1.38 busybox latest
 }
 
 @test "[release] pull image index" {
@@ -280,7 +280,7 @@ function teardown_file() {
 }
 
 @test "[new] push image index" {
-    helper_push_image_index docker://public.ecr.aws/docker/library/busybox:latest busybox latest
+    helper_push_image_index docker://ghcr.io/project-zot/test-images/busybox:1.38 busybox latest
 }
 
 @test "[new] pull image index" {

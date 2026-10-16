@@ -101,7 +101,7 @@ jobs:
         run: |
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-referrers-bench-s3-localstack.json &
             sleep 10
-            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080 --skip-cleanup
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd --max-timeout-failures 1 http://localhost:8080 --skip-cleanup
 
             killall --wait -r zot-*
 
@@ -145,7 +145,7 @@ jobs:
         run: |
             ./bin/zot-linux-amd64 serve test/gc-stress/config-gc-bench-s3-localstack.json &
             sleep 10
-            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080 --skip-cleanup
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd --max-timeout-failures 1 http://localhost:8080 --skip-cleanup
 
             killall --wait -r zot-*
 

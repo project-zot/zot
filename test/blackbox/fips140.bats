@@ -29,7 +29,7 @@ function teardown_file() {
 }
 
 @test "push image index" {
-    helper_push_image_index docker://public.ecr.aws/docker/library/busybox:latest busybox latest
+    helper_push_image_index docker://ghcr.io/project-zot/test-images/busybox:1.38 busybox latest
 }
 
 @test "pull image index" {

@@ -16,6 +16,11 @@ function verify_prerequisites {
         return 1
     fi
 
+    if [ ! $(command -v regctl) ]; then
+        echo "you need to install regctl as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
     return 0
 }
 
@@ -26,6 +31,11 @@ function setup_file() {
     fi
     # Download test data to folder common for the entire suite, not just this file
     skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/test-images/alpine:3.17.3 oci:${TEST_DATA_DIR}/alpine:1
+    # Multi-arch busybox index for push/pull tests. Prefer GHCR over
+    # public.ecr.aws/docker/library/busybox:latest (anonymous ECR rate limits on GHA).
+    skopeo --insecure-policy copy --format=oci --multi-arch=all \
+        docker://ghcr.io/project-zot/test-images/busybox:1.38 \
+        oci:${TEST_DATA_DIR}/busybox:1.38
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -189,10 +199,11 @@ function get_zot_port() {
 @test "push image index - dedupe running" {
     zot_port=$(get_zot_port)
     # --multi-arch below pushes an image index (containing many images) instead
-    # of an image manifest (single image)
+    # of an image manifest (single image). Source is the GHCR busybox:1.38
+    # fixture prefetched in setup_file, not a live ECR pull.
     start=`date +%s`
     run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
-        docker://public.ecr.aws/docker/library/busybox:latest \
+        oci:${TEST_DATA_DIR}/busybox:1.38 \
         docker://127.0.0.1:${zot_port}/busybox:latest
     [ "$status" -eq 0 ]
     end=`date +%s`

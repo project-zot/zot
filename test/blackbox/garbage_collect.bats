@@ -28,7 +28,7 @@ function setup_file() {
         docker://ghcr.io/project-zot/test-images/alpine:3.17.3 \
         oci:${TEST_DATA_DIR}/alpine:3.17.3
     skopeo --insecure-policy copy --format=oci --multi-arch=all \
-        docker://public.ecr.aws/docker/library/busybox:latest \
+        docker://ghcr.io/project-zot/test-images/busybox:1.38 \
         oci:${TEST_DATA_DIR}/busybox:latest
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot

@@ -284,7 +284,7 @@ run-bench: $(ZOT_BIN_DEP) $(ZB_DEP)
 	curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 180 --retry-connrefused http://localhost:8080/v2/
 	curl -fsS --retry 5 --retry-delay 1 http://localhost:8080/v2/_catalog
 	curl -fsS http://localhost:8080/v2/_catalog
-	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) http://localhost:8080
+	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) --max-timeout-failures 1 http://localhost:8080
 	@if [ -e zot.PID ]; then \
 		kill -TERM $$(cat zot.PID) || true; \
 	fi; \
