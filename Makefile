@@ -19,6 +19,8 @@ COSIGN_VERSION := 3.0.6
 HELM := $(TOOLSDIR)/bin/helm
 ORAS := $(TOOLSDIR)/bin/oras
 ORAS_VERSION := 1.2.1
+MODCTL := $(TOOLSDIR)/bin/modctl
+MODCTL_VERSION := 0.2.2
 HELM_VERSION := v3.9.1
 REGCLIENT := $(TOOLSDIR)/bin/regctl
 REGCLIENT_VERSION := v0.10.0
@@ -310,6 +312,12 @@ $(ORAS):
 	tar xvzf oras.tar.gz -C $(TOOLSDIR)/bin  oras
 	rm oras.tar.gz
 
+$(MODCTL):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo modctl.tar.gz https://github.com/modelpack/modctl/releases/download/v$(MODCTL_VERSION)/modctl-$(MODCTL_VERSION)-$(OS)-$(ARCH).tar.gz
+	tar xvzf modctl.tar.gz -C $(TOOLSDIR)/bin modctl
+	rm modctl.tar.gz
+
 $(HELM):
 	mkdir -p $(TOOLSDIR)/bin
 	curl -Lo helm.tar.gz https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
@@ -561,11 +569,12 @@ $(SKOPEO):
 	rm -rf skopeo-src
 
 .PHONY: check-blackbox-prerequisites
-check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(KIND)
+check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(MODCTL) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(KIND)
 	which skopeo && skopeo --version; \
 	which stacker && stacker --version; \
 	which regctl && regctl version; \
 	which oras && oras version; \
+	which modctl && modctl version; \
 	which helm && helm version; \
 	which crictl && crictl version; \
 	which notation && notation version; \
@@ -574,7 +583,7 @@ check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(OR
 
 # Download blackbox client tools into hack/tools/bin (includes skopeo for CI artifacts).
 .PHONY: blackbox-tools
-blackbox-tools: $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(KIND) $(SKOPEO)
+blackbox-tools: $(BATS) $(REGCLIENT) $(ORAS) $(MODCTL) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(KIND) $(SKOPEO)
 
 .PHONY: run-blackbox-tests
 run-blackbox-tests: $(BATS_TEST_FILE_PATH) check-blackbox-prerequisites $(ZOT_BIN_DEP) $(ZOT_MIN_DEP) $(ZLI_DEP) $(ZB_DEP)
