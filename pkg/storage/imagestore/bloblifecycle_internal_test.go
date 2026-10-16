@@ -313,6 +313,11 @@ func TestBlobLifecycle(t *testing.T) {
 			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 		})
 
+		Convey("repairs shared content by moving the upload onto the origin", func() {
+			So(lifecycle.RepairSharedContent("/upload", "/origin"), ShouldBeNil)
+			So(storeDriver.moves, ShouldResemble, [][2]string{{"/upload", "/origin"}})
+		})
+
 		Convey("can lose shared content to a delete", func() {
 			So(lifecycle.DeletesCanDestroySharedContent(), ShouldBeTrue)
 		})

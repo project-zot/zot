@@ -182,27 +182,12 @@ func (d *DynamoDBDriver) Name() string {
 	return "dynamodb"
 }
 
-// GetBlob returns the original blob.
+// GetBlob returns the original blob. It reads strongly consistently: a stale origin could steer a
+// dedupe repair or a delete hand-off to the wrong copy. This does not serialize operations across
+// instances.
 func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
-	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(d.tableName),
-		Key: map[string]types.AttributeValue{
-			"Digest": &types.AttributeValueMemberS{Value: digest.String()},
-		},
-	})
+	out, err := d.readBlob(digest)
 	if err != nil {
-		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
-
-		return "", err
-	}
-
-	out := Blob{}
-
-	if resp.Item == nil {
-		return "", zerr.ErrCacheMiss
-	}
-
-	if err := d.decodeBlob(resp.Item, &out); err != nil {
 		return "", err
 	}
 

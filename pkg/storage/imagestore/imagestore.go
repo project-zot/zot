@@ -1630,7 +1630,9 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 	return uuid, nbytes, nil
 }
 
-func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo string, dst string) error {
+// DedupeBlob's repo argument is unused: the shared content is checked against the verified
+// upload, not against the repo's blob descriptor. It stays because ImageStore declares it.
+func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string, dst string) error {
 	for {
 		is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe begin")
 
@@ -1703,7 +1705,17 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			continue
 		}
 
-		// prevent overwrite original blob
+		// The upload's digest has been verified, so its size is what the origin's content must be.
+		uploadInfo, err := is.storeDriver.Stat(src)
+		if err != nil {
+			is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").Msg("failed to stat upload")
+
+			return mapStorageErr(err)
+		}
+
+		// prevent overwrite original blob; when dst already is the origin's content (the same file
+		// remotely, a hardlink of it locally), there is nothing to link, and the size check below
+		// still repairs wrong content
 		if !is.storeDriver.SameFile(dst, dstRecord) {
 			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
@@ -1718,23 +1730,41 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 				return err
 			}
-		} else {
-			// if it's same file then it was already uploaded, check if blob is corrupted
-			if desc, err := common.GetBlobDescriptorFromRepo(is, dstRepo, dstDigest, is.log); err == nil {
-				// blob corrupted, replace content
-				if desc.Size != blobInfo.Size() {
-					if err := is.storeDriver.Move(src, dst); err != nil {
-						is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-							Msg("failed to rename blob")
+		}
 
-						return err
-					}
+		/* An origin whose size differs from the upload's holds wrong content: empty, truncated,
+		or left partly rewritten by an earlier repair that failed. Every copy shares it, dst
+		included now, so repair it, which repairs them all. The upload was verified before this
+		store lock was taken, and an upload can still be appended to without it, so the repair
+		uses a snapshot verified here instead: unverified bytes must never reach shared content.
+		This comes last, so that until it succeeds the upload stays in place for the client to
+		retry, and a retry after a partial repair sees the wrong size again. */
+		if blobInfo.Size() != uploadInfo.Size() {
+			is.log.Warn().Str("origin", dstRecord).Int64("originSize", blobInfo.Size()).
+				Int64("uploadSize", uploadInfo.Size()).Str("component", "dedupe").
+				Msg("dedupe origin does not match the upload, repairing it")
 
-					is.log.Debug().Str("src", src).Str("component", "dedupe").Msg("remove")
+			snapshot, err := is.verifiedSnapshot(src, dstDigest, uploadInfo.Size())
+			if err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
+					Msg("failed to take a verified snapshot of the upload")
 
-					return nil
-				}
+				return err
 			}
+
+			if err := is.lifecycle.RepairSharedContent(snapshot, dstRecord); err != nil {
+				is.log.Error().Err(err).Str("src", snapshot).Str("origin", dstRecord).Str("component", "dedupe").
+					Msg("failed to repair shared blob content")
+
+				// the upload stays for the retry, which takes a new snapshot
+				if derr := is.storeDriver.Delete(snapshot); derr != nil && !errclass.IsStorageObjectMissing(derr) {
+					is.log.Error().Err(derr).Str("snapshot", snapshot).Msg("failed to remove upload snapshot")
+				}
+
+				return err
+			}
+
+			// the repair consumed the snapshot only: the upload is removed below, as after a link
 		}
 
 		// remove temp blobupload
@@ -1749,6 +1779,69 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 
 		return nil
 	}
+}
+
+// verifiedSnapshot copies the upload at src to a path only this call writes, hashing the copy
+// on the way, and returns that path once the copy matches digest. The upload itself can still
+// change under a concurrent chunk upload; the snapshot cannot. Its name is random: it sits next
+// to uploads, and the upload endpoints accept any session ID, so a name derived from src could
+// be written through them. At most size bytes are copied: a local read follows a file that is
+// still being appended to, so an unbounded copy could be kept from ever ending while the store
+// lock is held. On a mismatch, the snapshot is removed and ErrBadBlobDigest is returned.
+func (is *ImageStore) verifiedSnapshot(src string, digest godigest.Digest, size int64) (string, error) {
+	snapshotID, err := guuid.NewV4()
+	if err != nil {
+		return "", err
+	}
+
+	snapshot := src + "." + snapshotID.String() + ".verified"
+
+	err = func() error {
+		reader, err := is.storeDriver.Reader(src, 0)
+		if err != nil {
+			return mapStorageErr(err)
+		}
+
+		defer reader.Close()
+
+		writer, err := is.storeDriver.Writer(snapshot, false)
+		if err != nil {
+			return mapStorageErr(err)
+		}
+
+		digester := digest.Algorithm().Hash()
+
+		if _, err := io.Copy(io.MultiWriter(writer, digester), io.LimitReader(reader, size)); err != nil {
+			_ = writer.Close()
+
+			return err
+		}
+
+		if err := writer.Commit(context.Background()); err != nil {
+			_ = writer.Close()
+
+			return err
+		}
+
+		if err := writer.Close(); err != nil {
+			return err
+		}
+
+		if godigest.NewDigest(digest.Algorithm(), digester) != digest {
+			return zerr.ErrBadBlobDigest
+		}
+
+		return nil
+	}()
+	if err != nil {
+		if derr := is.storeDriver.Delete(snapshot); derr != nil && !errclass.IsStorageObjectMissing(derr) {
+			is.log.Error().Err(derr).Str("snapshot", snapshot).Msg("failed to remove upload snapshot")
+		}
+
+		return "", err
+	}
+
+	return snapshot, nil
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
