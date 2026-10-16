@@ -1740,7 +1740,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 				Int64("uploadSize", uploadInfo.Size()).Str("component", "dedupe").
 				Msg("dedupe origin does not match the upload, repairing it")
 
-			snapshot, err := is.verifiedSnapshot(src, dstDigest)
+			snapshot, err := is.verifiedSnapshot(src, dstDigest, uploadInfo.Size())
 			if err != nil {
 				is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").
 					Msg("failed to take a verified snapshot of the upload")
@@ -1779,9 +1779,10 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 // on the way, and returns that path once the copy matches digest. The upload itself can still
 // change under a concurrent chunk upload; the snapshot cannot. Its name is random: it sits next
 // to uploads, and the upload endpoints accept any session ID, so a name derived from src could
-// be written through them. On a mismatch, the snapshot is removed and ErrBadBlobDigest is
-// returned.
-func (is *ImageStore) verifiedSnapshot(src string, digest godigest.Digest) (string, error) {
+// be written through them. At most size bytes are copied: a local read follows a file that is
+// still being appended to, so an unbounded copy could be kept from ever ending while the store
+// lock is held. On a mismatch, the snapshot is removed and ErrBadBlobDigest is returned.
+func (is *ImageStore) verifiedSnapshot(src string, digest godigest.Digest, size int64) (string, error) {
 	snapshotID, err := guuid.NewV4()
 	if err != nil {
 		return "", err
@@ -1804,7 +1805,7 @@ func (is *ImageStore) verifiedSnapshot(src string, digest godigest.Digest) (stri
 
 		digester := digest.Algorithm().Hash()
 
-		if _, err := io.Copy(io.MultiWriter(writer, digester), reader); err != nil {
+		if _, err := io.Copy(io.MultiWriter(writer, digester), io.LimitReader(reader, size)); err != nil {
 			_ = writer.Close()
 
 			return err

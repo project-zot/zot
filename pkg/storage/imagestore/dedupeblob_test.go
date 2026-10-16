@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
@@ -355,8 +356,9 @@ func TestDedupeBlobNeverRepairsFromAChangedUpload(t *testing.T) {
 				_, err = os.Stat(src)
 				So(err, ShouldBeNil)
 
-				_, err = os.Stat(src + ".verified")
-				So(os.IsNotExist(err), ShouldBeTrue)
+				snapshots, err := filepath.Glob(src + ".*.verified")
+				So(err, ShouldBeNil)
+				So(snapshots, ShouldBeEmpty)
 
 				ok, blobSize, err := imgStore.CheckBlob(ctx, "repo-origin", digest)
 				So(err, ShouldBeNil)
@@ -465,6 +467,95 @@ func TestDedupeBlobRepairSnapshot(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(snapshotsLeft(dir), ShouldBeEmpty)
 
+		data, err := os.ReadFile(emptyOrigin)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+}
+
+// endlessReader produces bytes slowly and never ends, like an upload a client keeps appending to.
+type endlessReader struct{}
+
+func (endlessReader) Read(buf []byte) (int, error) {
+	time.Sleep(time.Millisecond)
+
+	n := min(len(buf), 1024) //nolint:mnd
+
+	for i := range n {
+		buf[i] = 'x'
+	}
+
+	return n, nil
+}
+
+// appendingUploadDriver reads the upload at path as its content followed by endless appends.
+type appendingUploadDriver struct {
+	storageTypes.Driver
+
+	path string
+}
+
+func (d *appendingUploadDriver) Reader(readPath string, offset int64) (io.ReadCloser, error) {
+	reader, err := d.Driver.Reader(readPath, offset)
+	if err != nil || readPath != d.path {
+		return reader, err
+	}
+
+	return struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(reader, endlessReader{}), reader}, nil
+}
+
+func TestDedupeBlobRepairSnapshotIsBounded(t *testing.T) {
+	Convey("A repair copies only the upload's size, however long the upload keeps growing", t, func() {
+		content := []byte("dedupe-origin-content")
+		digest := godigest.FromBytes(content)
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		src := path.Join(dir, "repo-push", storageConstants.BlobUploadDir, "appending-upload")
+		storeDriver := &appendingUploadDriver{Driver: local.New(true), path: src}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			storeDriver, cacheDriver, nil, nil)
+
+		ctx := context.Background()
+
+		// an empty origin, so that the push repairs it from a snapshot of the upload
+		So(imgStore.InitRepo(ctx, "repo-empty"), ShouldBeNil)
+
+		emptyOrigin := imgStore.BlobPath("repo-empty", digest)
+		So(os.MkdirAll(path.Dir(emptyOrigin), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(emptyOrigin, nil, storageConstants.DefaultFilePerms), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, emptyOrigin), ShouldBeNil)
+
+		So(imgStore.InitRepo(ctx, "repo-push"), ShouldBeNil)
+		So(os.MkdirAll(path.Dir(src), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(src, content, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+		dst := imgStore.BlobPath("repo-push", digest)
+		So(os.MkdirAll(path.Dir(dst), storageConstants.DefaultDirPerms), ShouldBeNil)
+
+		done := make(chan error, 1)
+
+		go func() { done <- imgStore.DedupeBlob(src, digest, "repo-push", dst) }()
+
+		select {
+		case err := <-done:
+			So(err, ShouldBeNil)
+		case <-time.After(10 * time.Second):
+			So("the repair", ShouldEqual, "finished, not copying for as long as the upload grows")
+		}
+
+		// the verified bytes, and nothing appended after them
 		data, err := os.ReadFile(emptyOrigin)
 		So(err, ShouldBeNil)
 		So(data, ShouldResemble, content)
