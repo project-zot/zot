@@ -107,7 +107,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		cache:       cacheDriver,
 		compat:      compat,
 		events:      recorder,
-		lifecycle:   newBlobLifecycle(storeDriver, rootDir, metrics),
+		lifecycle:   newBlobLifecycle(storeDriver, rootDir, metrics, log),
 	}
 
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
