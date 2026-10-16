@@ -1,7 +1,6 @@
 package gc
 
 import (
-	"path"
 	"sync"
 	"time"
 
@@ -75,8 +74,9 @@ func (od *OnDemand) CleanRepoNow(repo string) error {
 		return zerr.ErrInvalidRepositoryName
 	}
 
-	if !od.gc.imgStore.DirExists(path.Join(od.gc.imgStore.RootDir(), repo)) {
-		return zerr.ErrRepoNotFound
+	// not DirExists, which reports a storage error as a missing repository
+	if _, _, _, err := od.gc.imgStore.StatIndex(repo); err != nil {
+		return err
 	}
 
 	od.reposLock.Lock()

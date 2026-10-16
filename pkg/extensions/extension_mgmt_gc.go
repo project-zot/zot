@@ -12,7 +12,6 @@ import (
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
 	zreg "zotregistry.dev/zot/v2/pkg/regexp"
-	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
@@ -30,6 +29,7 @@ type GCHandler struct {
 // @Param   repo    query     string   false   "repository name"
 // @Success 202 {string}   string   "accepted"
 // @Failure 400 {string}   string   "bad request"
+// @Failure 401 {string}   string   "unauthorized"
 // @Failure 403 {string}   string   "forbidden"
 // @Failure 404 {string}   string   "store or repository not found"
 // @Failure 409 {string}   string   "gc disabled for the store, or already running"
@@ -79,6 +79,7 @@ func (h *GCHandler) RunGC(response http.ResponseWriter, request *http.Request) {
 // @Param   repo    query     string   false   "repository name"
 // @Success 200 {object}   gc.RunStatus
 // @Failure 400 {string}   string   "bad request"
+// @Failure 401 {string}   string   "unauthorized"
 // @Failure 403 {string}   string   "forbidden"
 // @Failure 404 {string}   string   "store not found, or gc never requested for the repository"
 // @Failure 409 {string}   string   "gc disabled for the store"
@@ -113,18 +114,11 @@ func (h *GCHandler) GetGCStatus(response http.ResponseWriter, request *http.Requ
 	zcommon.WriteData(response, http.StatusOK, constants.DefaultMediaType, body)
 }
 
-// parseRequest checks that the user is an admin, and returns the on-demand GC of the requested store
-// with the store and repository names. It writes the error response and returns false if the request
-// can't be served.
+// parseRequest returns the on-demand GC of the requested store with the store and repository names.
+// It writes the error response and returns false if the request can't be served.
+// Only admins reach it: the route is behind AuthzOnlyAdminsMiddleware.
 func (h *GCHandler) parseRequest(response http.ResponseWriter, request *http.Request,
 ) (*gc.OnDemand, string, string, bool) {
-	userAc, err := reqCtx.UserAcFromContext(request.Context())
-	if err != nil || userAc == nil || !userAc.IsAdmin() {
-		response.WriteHeader(http.StatusForbidden)
-
-		return nil, "", "", false
-	}
-
 	store := request.URL.Query().Get("store")
 	if store == "" {
 		response.WriteHeader(http.StatusBadRequest)
