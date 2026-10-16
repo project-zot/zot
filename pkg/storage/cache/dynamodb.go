@@ -183,26 +183,11 @@ func (d *DynamoDBDriver) Name() string {
 }
 
 // GetBlob returns the original blob.
+// GetBlob reads strongly consistently: dedupe and delete decide from the origin it returns, under
+// the digest lock, and a stale origin would steer a repair or a hand-off to the wrong copy.
 func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
-	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(d.tableName),
-		Key: map[string]types.AttributeValue{
-			"Digest": &types.AttributeValueMemberS{Value: digest.String()},
-		},
-	})
+	out, err := d.readBlob(digest)
 	if err != nil {
-		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
-
-		return "", err
-	}
-
-	out := Blob{}
-
-	if resp.Item == nil {
-		return "", zerr.ErrCacheMiss
-	}
-
-	if err := d.decodeBlob(resp.Item, &out); err != nil {
 		return "", err
 	}
 

@@ -677,6 +677,19 @@ func TestDynamoDBGetAllBlobsReadsConsistently(t *testing.T) {
 		So(transport.bodies[0], ShouldContainSubstring, `"ConsistentRead":true`)
 	})
 
+	Convey("GetBlob asks for a strongly consistent read", t, func() {
+		driver, transport := newScriptedDynamoDriver(scriptedDynamoResponse{http.StatusOK,
+			`{"Item":{"OriginalBlobPath":{"S":"/repo/origin"},` +
+				`"DuplicateBlobPath":{"SS":["/repo/origin","/repo/duplicate"]}}}`})
+
+		origin, err := driver.GetBlob(godigest.FromString("consistent"))
+		So(err, ShouldBeNil)
+		So(origin, ShouldEqual, "/repo/origin")
+
+		So(transport.targets, ShouldResemble, []string{"GetItem"})
+		So(transport.bodies[0], ShouldContainSubstring, `"ConsistentRead":true`)
+	})
+
 	Convey("GetAllBlobs reports a missing record as a cache miss", t, func() {
 		driver, _ := newScriptedDynamoDriver(scriptedDynamoResponse{http.StatusOK, `{}`})
 
