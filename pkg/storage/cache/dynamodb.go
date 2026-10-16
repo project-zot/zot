@@ -182,9 +182,9 @@ func (d *DynamoDBDriver) Name() string {
 	return "dynamodb"
 }
 
-// GetBlob returns the original blob.
-// GetBlob reads strongly consistently: dedupe and delete decide from the origin it returns, under
-// the digest lock, and a stale origin would steer a repair or a hand-off to the wrong copy.
+// GetBlob returns the original blob. It reads strongly consistently: a stale origin could steer a
+// dedupe repair or a delete hand-off to the wrong copy. This does not serialize operations across
+// instances.
 func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	out, err := d.readBlob(digest)
 	if err != nil {
