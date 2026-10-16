@@ -80,6 +80,11 @@ type ImageStore interface { //nolint:interfacebloat
 	BlobPath(repo string, digest godigest.Digest) string
 	CheckBlob(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error)
 	StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
+	// StatBlobEntry stats the object at BlobPath(repo, digest) without resolving through
+	// the dedupe cache to a content original. Use it for age checks (GC delay, idle-repo
+	// reclaim): a remote placeholder's own modtime is when this repo gained the digest,
+	// whereas StatBlob returns the original's modtime.
+	StatBlobEntry(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
 	GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
 	GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)

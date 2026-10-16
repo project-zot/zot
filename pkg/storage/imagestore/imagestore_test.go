@@ -580,6 +580,35 @@ func TestRemoveIdleRepository(t *testing.T) {
 	})
 }
 
+func TestStatBlobEntry(t *testing.T) {
+	Convey("StatBlobEntry rejects an invalid digest", t, func() {
+		store := imagestore.NewImageStore(t.TempDir(), "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+
+		ok, size, modtime, err := store.StatBlobEntry("repo", "inexistent")
+		So(ok, ShouldBeFalse)
+		So(size, ShouldEqual, int64(-1))
+		So(modtime.IsZero(), ShouldBeTrue)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("StatBlobEntry returns the local object without following dedupe", t, func() {
+		store := imagestore.NewImageStore(t.TempDir(), "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+		ctx := context.Background()
+
+		content := []byte("entry blob")
+		digest := godigest.FromBytes(content)
+		_, _, err := store.FullBlobUpload(ctx, "repo", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		ok, size, _, err := store.StatBlobEntry("repo", digest)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, int64(len(content)))
+	})
+}
+
 // TestGetAllBlobsNestedListMissing locks the inventory contract: a Missing
 // List under blobs/<alg>/ after a successful parent List must not surface as
 // ErrStorageMissing (GC soft-empties on that and can prune live index rows).

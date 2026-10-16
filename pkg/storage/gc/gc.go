@@ -844,7 +844,7 @@ func (gc GarbageCollect) removeManifestIfOlderThan(repo string, index *ispec.Ind
 
 	canGC, err := isBlobOlderThan(gc.imgStore, repo, desc.Digest, delay, gc.log)
 	if err != nil {
-		// Do not abort CleanRepo: age checks fail closed on any StatBlob error
+		// Do not abort CleanRepo: age checks fail closed on any StatBlobEntry error
 		// (Missing, Transient, or Permanent). Skip this row and let
 		// removeStaleManifestEntries (GetAllBlobs inventory) drop truly absent
 		// descriptors later in the same CleanRepo pass.
@@ -1172,7 +1172,7 @@ func (gc GarbageCollect) deleteUnreferencedBlobs(repo string, delay time.Duratio
 			if err != nil {
 				// Skip this candidate; do not abort orphan cleanup for the rest of the repo.
 				log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
-					Str("digest", digest.String()).Msg("skipping orphan blob after StatBlob failure, continuing GC")
+					Str("digest", digest.String()).Msg("skipping orphan blob after StatBlobEntry failure, continuing GC")
 
 				continue
 			}
@@ -1207,15 +1207,18 @@ func isManifestReferencedInIndex(index *ispec.Index, digest godigest.Digest) boo
 func isBlobOlderThan(imgStore types.ImageStore, repo string,
 	digest godigest.Digest, delay time.Duration, log zlog.Logger,
 ) (bool, error) {
-	_, _, modtime, err := imgStore.StatBlob(repo, digest)
+	// Use the per-repo object age, not StatBlob: for remote dedupe placeholders
+	// StatBlob returns the content original's mtime, which can be weeks old and
+	// would bypass gcDelay for freshly linked layers.
+	_, _, modtime, err := imgStore.StatBlobEntry(repo, digest)
 	if err != nil {
 		// Fail closed: do not treat Missing (or Transient/Permanent) as age-eligible —
 		// that would risk deleting live index rows during storage blips.
-		// StatBlob preserves ErrStorage*; IsBlobUnavailable soft-skips use that
+		// StatBlobEntry preserves ErrStorage*; IsBlobUnavailable soft-skips use that
 		// elsewhere. Stale prune can still remove truly absent blobs later when
 		// CleanRepo inventory succeeds.
 		log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("digest", digest.String()).
-			Msg("failed to stat blob")
+			Msg("failed to stat blob entry")
 
 		return false, err
 	}

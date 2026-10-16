@@ -4794,14 +4794,22 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 		nonEmptyDigest := godigest.FromBytes(nonEmptyContent)
 		dstRecord := testDir + "/dedupe-src/blobs/sha256/real-blob"
 		realSize := int64(len(nonEmptyContent))
+		entryModTime := time.Now().Add(-time.Minute)
+		originalModTime := time.Now().Add(-7 * 24 * time.Hour)
 
 		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == dstRecord {
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
+					return &mocks.FileInfoMock{
+						SizeFn:    func() int64 { return realSize },
+						ModTimeFn: func() time.Time { return originalModTime },
+					}, nil
 				}
 
-				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+				return &mocks.FileInfoMock{
+					SizeFn:    func() int64 { return 0 },
+					ModTimeFn: func() time.Time { return entryModTime },
+				}, nil
 			},
 		}, &mocks.CacheMock{
 			GetBlobFn: func(digest godigest.Digest) (string, error) {
@@ -4810,10 +4818,18 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 		})
 
 		// StatBlob exercises the deduped-placeholder branch in originalBlobInfo.
-		statOk, statSize, _, statErr := imgStore.StatBlob(repo, nonEmptyDigest)
+		statOk, statSize, statMod, statErr := imgStore.StatBlob(repo, nonEmptyDigest)
 		So(statOk, ShouldBeTrue)
 		So(statSize, ShouldEqual, realSize)
 		So(statErr, ShouldBeNil)
+		So(statMod.Equal(originalModTime), ShouldBeTrue)
+
+		// StatBlobEntry keeps the placeholder's own age for GC delay checks.
+		entryOk, entrySize, entryMod, entryErr := imgStore.StatBlobEntry(repo, nonEmptyDigest)
+		So(entryOk, ShouldBeTrue)
+		So(entrySize, ShouldEqual, 0)
+		So(entryErr, ShouldBeNil)
+		So(entryMod.Equal(entryModTime), ShouldBeTrue)
 	})
 
 	// ------------------------------------------------------------------ //
