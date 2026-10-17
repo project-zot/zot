@@ -521,9 +521,9 @@ func TestGCSDedupe(t *testing.T) {
 	})
 }
 
-// TestGCSRedisDedupePreservesLateOrigin matches the issue-4463 config shape:
-// GCS storageDriver + dedupe + redis remoteCache. Pushing b/img before a/img makes
-// b the cached origin; a startup-style walk must not empty it.
+// TestGCSRedisDedupePreservesLateOrigin matches the issue-4463 config shape: GCS storageDriver +
+// dedupe + redis remoteCache. A startup-style dedupe walk over the repos' placeholders, in any
+// order, must never empty the content they share, which is the global blobstore payload.
 func TestGCSRedisDedupePreservesLateOrigin(t *testing.T) {
 	tskip.SkipGCS(t)
 	gcsemulator.EnsureDummyCreds(t)
@@ -544,32 +544,36 @@ func TestGCSRedisDedupePreservesLateOrigin(t *testing.T) {
 	}
 	defer cleanupStorage(storeDriver, testDir)
 
-	Convey("GCS+redis rebuild must not empty late-sorting origin", t, func() {
+	Convey("GCS+redis rebuild must not empty the shared payload", t, func() {
 		ctx := context.Background()
 		content := []byte("gcs-shared-layer-content-for-dedupe-origin-preserve")
 		digest := godigest.FromBytes(content)
 
+		// the late-sorting repo pushes first, so the early-sorting one is walked first
 		_, _, err := imgStore.FullBlobUpload(ctx, "b/img", bytes.NewReader(content), digest)
 		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.FullBlobUpload(ctx, "a/img", bytes.NewReader(content), digest)
 		So(err, ShouldBeNil)
 
-		originPath := imgStore.BlobPath("b/img", digest)
-		stubPath := imgStore.BlobPath("a/img", digest)
+		originPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+		repoPaths := []string{imgStore.BlobPath("a/img", digest), imgStore.BlobPath("b/img", digest)}
 
 		originInfo, err := storeDriver.Stat(context.Background(), originPath)
 		So(err, ShouldBeNil)
 		So(originInfo.Size(), ShouldBeGreaterThan, 0)
 
-		stubInfo, err := storeDriver.Stat(context.Background(), stubPath)
-		So(err, ShouldBeNil)
-		So(stubInfo.Size(), ShouldEqual, 0)
+		// every repo copy is a placeholder of the payload
+		for _, repoPath := range repoPaths {
+			stubInfo, err := storeDriver.Stat(context.Background(), repoPath)
+			So(err, ShouldBeNil)
+			So(stubInfo.Size(), ShouldEqual, 0)
+		}
 
 		_, imgStore2, err := createObjectsStoreWithRedis(testDir, true, redisAddr)
 		So(err, ShouldBeNil)
 
-		err = imgStore2.RunDedupeForDigest(ctx, digest, true, []string{stubPath, originPath})
+		err = imgStore2.RunDedupeForDigest(ctx, digest, true, repoPaths)
 		So(err, ShouldBeNil)
 
 		originInfo, err = storeDriver.Stat(context.Background(), originPath)
