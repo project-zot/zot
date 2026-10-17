@@ -47,16 +47,21 @@ const (
 type ImageStore struct {
 	rootDir     string
 	storeDriver storageTypes.Driver
-	lock        *sync.RWMutex
-	log         zlog.Logger
-	metrics     monitoring.MetricServer
-	events      events.Recorder
-	cache       storageTypes.Cache
-	lifecycle   blobLifecycle
-	dedupe      bool
-	linter      common.Lint
-	commit      bool
-	compat      []compat.MediaCompatibility
+	// lock gates the store as a whole. Repository-scoped operations take it
+	// shared, plus that repository's own mutex from repoLocks, so unrelated
+	// repositories proceed concurrently. Cross-repository operations take it
+	// exclusively and keep excluding every repository-scoped operation.
+	lock      *sync.RWMutex
+	repoLocks sync.Map
+	log       zlog.Logger
+	metrics   monitoring.MetricServer
+	events    events.Recorder
+	cache     storageTypes.Cache
+	lifecycle blobLifecycle
+	dedupe    bool
+	linter    common.Lint
+	commit    bool
+	compat    []compat.MediaCompatibility
 	// dedupeRebuildDone is set once RunDedupeBlobs has walked all blobs, i.e. the
 	// cache accounts for every pre-existing blob; see deleteBlob.
 	dedupeRebuildDone atomic.Bool
@@ -116,30 +121,27 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	return imgStore
 }
 
-// WithRepoLock runs wrappedFunc while holding the store's single write lock. The repo name
-// does not select anything, and cannot simply start to: see storageTypes.ImageStore for why
-// work on one repo can reach blobs stored under another.
-func (is *ImageStore) WithRepoLock(_ string, wrappedFunc func() error) error {
+// WithRepoLock runs wrappedFunc while holding repo's write lock and the shared store gate.
+func (is *ImageStore) WithRepoLock(repo string, wrappedFunc func() error) error {
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(repo, &lockLatency)
+	defer is.UnlockRepo(repo, &lockLatency)
 
 	return wrappedFunc()
 }
 
 // WithRepoReadLock is WithRepoLock's read-lock counterpart.
-func (is *ImageStore) WithRepoReadLock(_ string, wrappedFunc func() error) error {
+func (is *ImageStore) WithRepoReadLock(repo string, wrappedFunc func() error) error {
 	var lockLatency time.Time
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	return wrappedFunc()
 }
 
-// WithBlobstoreLock runs wrappedFunc while holding the store's single write lock, the same
-// one WithRepoLock takes: see storageTypes.ImageStore.
+// WithBlobstoreLock excludes all repository operations while shared content changes.
 func (is *ImageStore) WithBlobstoreLock(wrappedFunc func() error) error {
 	var lockLatency time.Time
 
@@ -159,12 +161,12 @@ func (is *ImageStore) WithBlobstoreReadLock(wrappedFunc func() error) error {
 	return wrappedFunc()
 }
 
-// WithBlobstoreAndRepoLock takes the single write lock once: it stands for both.
-func (is *ImageStore) WithBlobstoreAndRepoLock(repo string, wrappedFunc func() error) error {
-	return is.WithRepoLock(repo, wrappedFunc)
+// WithBlobstoreAndRepoLock takes the exclusive store gate, which also excludes work on repo.
+func (is *ImageStore) WithBlobstoreAndRepoLock(_ string, wrappedFunc func() error) error {
+	return is.WithBlobstoreLock(wrappedFunc)
 }
 
-// WithBlobstoreReadAndRepoLock needs repo's write lock, which here is the single write lock.
+// WithBlobstoreReadAndRepoLock takes repo's write lock and the shared store gate.
 func (is *ImageStore) WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func() error) error {
 	return is.WithRepoLock(repo, wrappedFunc)
 }
@@ -172,7 +174,12 @@ func (is *ImageStore) WithBlobstoreReadAndRepoLock(repo string, wrappedFunc func
 // WithRepoCleanupLock covers shared content as well as repo: with dedupe, deleting a blob
 // from repo can move or remove content that other repositories link to.
 func (is *ImageStore) WithRepoCleanupLock(repo string, wrappedFunc func() error) error {
-	return is.WithBlobstoreAndRepoLock(repo, wrappedFunc)
+	var lockLatency time.Time
+
+	unlock := is.LockBlobWrite(repo, &lockLatency)
+	defer unlock()
+
+	return wrappedFunc()
 }
 
 // RLock read-lock.
@@ -190,6 +197,80 @@ func (is *ImageStore) RUnlock(lockStart *time.Time) {
 	// includes time spent in acquiring and holding a lock
 	latency := lockEnd.Sub(*lockStart)
 	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RLOCK) // histogram
+}
+
+// repoMutex returns the lock guarding one repository, creating it on first use.
+func (is *ImageStore) repoMutex(repo string) *sync.RWMutex {
+	mu, _ := is.repoLocks.LoadOrStore(repo, &sync.RWMutex{})
+
+	rwmu, _ := mu.(*sync.RWMutex)
+
+	return rwmu
+}
+
+// RLockRepo read-locks a single repository. The store gate is taken shared, so
+// a read never waits on work in an unrelated repository, only on a
+// cross-repository operation holding the gate exclusively.
+func (is *ImageStore) RLockRepo(repo string, lockStart *time.Time) {
+	*lockStart = time.Now()
+
+	is.lock.RLock()
+	is.repoMutex(repo).RLock()
+}
+
+// RUnlockRepo releases RLockRepo, innermost lock first.
+func (is *ImageStore) RUnlockRepo(repo string, lockStart *time.Time) {
+	is.repoMutex(repo).RUnlock()
+	is.lock.RUnlock()
+
+	lockEnd := time.Now()
+	latency := lockEnd.Sub(*lockStart)
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RLOCK)
+}
+
+// LockRepo write-locks a single repository. Writers exclude each other and the
+// readers of that repository; a write no longer stalls reads of every other
+// repository in the store.
+func (is *ImageStore) LockRepo(repo string, lockStart *time.Time) {
+	*lockStart = time.Now()
+
+	is.lock.RLock()
+	is.repoMutex(repo).Lock()
+}
+
+// UnlockRepo releases LockRepo, innermost lock first.
+func (is *ImageStore) UnlockRepo(repo string, lockStart *time.Time) {
+	is.repoMutex(repo).Unlock()
+	is.lock.RUnlock()
+
+	lockEnd := time.Now()
+	latency := lockEnd.Sub(*lockStart)
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK)
+}
+
+// blobsMayBeShared reports whether the cache can link repositories through
+// deduped blobs, including placeholders awaiting restoration after dedupe is
+// disabled. A cache alone does not imply sharing once restoration finishes.
+func (is *ImageStore) blobsMayBeShared() bool {
+	return (is.dedupe || !is.dedupeRebuildDone.Load()) && !is.isCacheNil()
+}
+
+// LockBlobWrite takes the lock a blob write or delete in one repository needs.
+// With dedupe active a blob is shared between repositories through the dedupe
+// cache: an upload in repository A links against B's copy and a delete in A can
+// strip B's, so those writes are cross-repository and hold the whole store.
+// With dedupe off, writes remain store-wide until the restore walk finishes.
+// Manifest writes can repair shared content and follow the same rule.
+func (is *ImageStore) LockBlobWrite(repo string, lockStart *time.Time) func() {
+	if is.blobsMayBeShared() {
+		is.Lock(lockStart)
+
+		return func() { is.Unlock(lockStart) }
+	}
+
+	is.LockRepo(repo, lockStart)
+
+	return func() { is.UnlockRepo(repo, lockStart) }
 }
 
 // Lock write-lock.
@@ -296,8 +377,8 @@ func (is *ImageStore) initRepo(ctx context.Context, name string) error {
 func (is *ImageStore) InitRepo(ctx context.Context, name string) error {
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	is.LockRepo(name, &lockLatency)
+	defer is.UnlockRepo(name, &lockLatency)
 
 	return is.initRepo(ctx, name)
 }
@@ -738,8 +819,8 @@ func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
 		return nil, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -759,9 +840,9 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 
 	var err error
 
-	is.RLock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
 	defer func() {
-		is.RUnlock(&lockLatency)
+		is.RUnlockRepo(repo, &lockLatency)
 
 		if err == nil {
 			monitoring.IncDownloadCounter(is.metrics, repo)
@@ -814,9 +895,9 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 
 	var err error
 
-	is.Lock(&lockLatency)
+	unlock := is.LockBlobWrite(repo, &lockLatency)
 	defer func() {
-		is.Unlock(&lockLatency)
+		unlock()
 
 		if err == nil {
 			is.lifecycle.UpdateStorageUsage(repo)
@@ -1100,8 +1181,8 @@ func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference s
 
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	unlock := is.LockBlobWrite(repo, &lockLatency)
+	defer unlock()
 
 	err := is.deleteImageManifest(ctx, repo, reference, detectCollisions)
 	if err != nil {
@@ -1464,8 +1545,8 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	unlock := is.LockBlobWrite(repo, &lockLatency)
+	defer unlock()
 
 	// Chunk PUT/PATCH no longer call InitRepo (that lock stalled unread bodies vs GC).
 	// Recreate the OCI layout here, while we already hold the store lock for the move,
@@ -1595,8 +1676,8 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 
 	var lockLatency time.Time
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	unlock := is.LockBlobWrite(repo, &lockLatency)
+	defer unlock()
 
 	if err := is.initRepo(ctx, repo); err != nil {
 		return "", -1, err
@@ -1931,11 +2012,11 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	blobPath := is.BlobPath(repo, digest)
 
 	if is.dedupe && !is.isCacheNil() {
-		is.Lock(&lockLatency)
-		defer is.Unlock(&lockLatency)
+		unlock := is.LockBlobWrite(repo, &lockLatency)
+		defer unlock()
 	} else {
-		is.RLock(&lockLatency)
-		defer is.RUnlock(&lockLatency)
+		is.RLockRepo(repo, &lockLatency)
+		defer is.RUnlockRepo(repo, &lockLatency)
 	}
 
 	binfo, err := is.storeDriver.Stat(blobPath)
@@ -2201,8 +2282,8 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 		return nil, -1, -1, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	binfo, err := is.originalBlobInfo(repo, digest)
 	if err != nil {
@@ -2297,8 +2378,8 @@ func (is *ImageStore) GetBlob(repo string, digest godigest.Digest, mediaType str
 		return nil, -1, err
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	binfo, err := is.originalBlobInfo(repo, digest)
 	if err != nil {
@@ -2324,8 +2405,8 @@ func (is *ImageStore) GetBlobRedirectURL(r *http.Request, repo string, digest go
 	}
 
 	return is.lifecycle.RedirectURL(r, func() (string, error) {
-		is.RLock(&lockLatency)
-		defer is.RUnlock(&lockLatency)
+		is.RLockRepo(repo, &lockLatency)
+		defer is.RUnlockRepo(repo, &lockLatency)
 
 		binfo, err := is.originalBlobInfo(repo, digest)
 		if err != nil {
@@ -2394,8 +2475,8 @@ func (is *ImageStore) GetReferrers(repo string, gdigest godigest.Digest, artifac
 ) (ispec.Index, error) {
 	var lockLatency time.Time
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+	is.RLockRepo(repo, &lockLatency)
+	defer is.RUnlockRepo(repo, &lockLatency)
 
 	return common.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
 }
@@ -2517,8 +2598,8 @@ func (is *ImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 		return err
 	}
 
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
+	unlock := is.LockBlobWrite(repo, &lockLatency)
+	defer unlock()
 
 	return is.deleteBlob(repo, digest)
 }
