@@ -5469,9 +5469,9 @@ func TestCheckIsImageSignature(t *testing.T) {
 	})
 }
 
-// TestCloudRemoteCacheDedupePreservesLateOrigin reproduces the issue-4463 setup:
-// remote object store + redis cache + dedupe, late-sorting repo holds the origin,
-// early-sorting repo is a stub; a startup-style dedupe walk must not empty the origin.
+// TestCloudRemoteCacheDedupePreservesLateOrigin: on a remote object store with a redis cache and
+// dedupe, a startup-style dedupe walk over the repos' placeholders, in any order, must never empty
+// the content they share, which is the global blobstore payload.
 func TestCloudRemoteCacheDedupePreservesLateOrigin(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -5526,30 +5526,31 @@ func TestCloudRemoteCacheDedupePreservesLateOrigin(t *testing.T) {
 				content := []byte("shared-layer-content-for-dedupe-origin-preserve")
 				digest := godigest.FromBytes(content)
 
-				// Late-sorting repo first so redis records it as the origin.
+				// the late-sorting repo pushes first, so the early-sorting one is walked first
 				_, _, err := imgStore.FullBlobUpload(ctx, "b/img", bytes.NewReader(content), digest)
 				So(err, ShouldBeNil)
 
-				// Early-sorting repo second: stored as a 0-byte remote Link stub.
 				_, _, err = imgStore.FullBlobUpload(ctx, "a/img", bytes.NewReader(content), digest)
 				So(err, ShouldBeNil)
 
-				originPath := imgStore.BlobPath("b/img", digest)
-				stubPath := imgStore.BlobPath("a/img", digest)
+				originPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+				repoPaths := []string{imgStore.BlobPath("a/img", digest), imgStore.BlobPath("b/img", digest)}
 
 				originInfo, err := store.Stat(originPath)
 				So(err, ShouldBeNil)
 				So(originInfo.Size(), ShouldBeGreaterThan, 0)
 
-				stubInfo, err := store.Stat(stubPath)
-				So(err, ShouldBeNil)
-				So(stubInfo.Size(), ShouldEqual, 0)
+				for _, repoPath := range repoPaths {
+					stubInfo, err := store.Stat(repoPath)
+					So(err, ShouldBeNil)
+					So(stubInfo.Size(), ShouldEqual, 0)
+				}
 
 				// Restart-style: new ImageStore, same remote objects + same redis cache.
 				_, imgStore2, _, err := createObjectsStore(opts)
 				So(err, ShouldBeNil)
 
-				err = imgStore2.RunDedupeForDigest(ctx, digest, true, []string{stubPath, originPath})
+				err = imgStore2.RunDedupeForDigest(ctx, digest, true, repoPaths)
 				So(err, ShouldBeNil)
 
 				originInfo, err = store.Stat(originPath)
