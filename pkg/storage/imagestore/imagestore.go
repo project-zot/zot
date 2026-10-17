@@ -2768,86 +2768,15 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 // caller (GC's CleanupRepo) passes an always-false predicate since it has already filtered to known
 // orphans, while the single-blob DeleteBlob path passes its own IsBlobReferenced check. A non-nil error
 // from isReferenced aborts the delete (fail closed) rather than treating the blob as unreferenced.
-func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isReferenced func() (bool, error)) error {
-	if err := is.deleteRepoBlob(repo, digest, isReferenced); err != nil {
-		return err
-	}
-
-	is.reclaimGlobalBlob(digest)
-
-	return nil
-}
-
-// reclaimGlobalBlob deletes the global blobstore copy of digest, and its cache record, once no
-// repo uses it any more (see blobLifecycle.ShouldDeleteGlobalBlob). The repo copy that was
-// deleted before it is gone either way, so a failure here is logged rather than failing that
-// delete: the blobstore copy stays, unused, until a later push of the digest links it again
-// and a later delete reclaims it.
-func (is *ImageStore) reclaimGlobalBlob(digest godigest.Digest) {
-	if !is.lifecycle.KeepsContentInGlobalBlobstore() {
-		return
-	}
-
-	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
-
-	unused, err := is.lifecycle.ShouldDeleteGlobalBlob(globalBlobPath, digest, func(digest godigest.Digest) (bool, error) {
-		return is.globalBlobReferencedInCache(digest, globalBlobPath)
-	})
-	if err != nil {
-		is.log.Error().Err(err).Str("blobPath", globalBlobPath).Str("component", "dedupe").
-			Msg("failed to check whether the global blobstore copy is still used")
-
-		return
-	}
-
-	if !unused {
-		return
-	}
-
-	// the file first: a record left behind names a missing origin, which the write paths heal
-	if err := is.storeDriver.Delete(globalBlobPath); err != nil && !errclass.IsStorageObjectMissing(err) {
-		is.log.Error().Err(err).Str("blobPath", globalBlobPath).Str("component", "dedupe").
-			Msg("failed to delete unused global blobstore copy")
-
-		return
-	}
-
-	if !is.isCacheNil() {
-		if err := is.cache.DeleteBlob(digest, globalBlobPath); err != nil {
-			is.log.Error().Err(err).Str("blobPath", globalBlobPath).Str("component", "dedupe").
-				Msg("failed to remove the global blobstore copy from the cache")
+func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isReferenced func() (bool, error),
+) (deleteErr error) {
+	// once repo's copy is gone, the global blobstore copy may be too
+	defer func() {
+		if deleteErr == nil {
+			is.reclaimGlobalBlob(digest)
 		}
-	}
-}
+	}()
 
-// globalBlobReferencedInCache reports whether the cache records any copy of digest other than
-// the global blobstore's own. Without a cache nothing can be known, so it reports a use, and
-// the copy is kept.
-func (is *ImageStore) globalBlobReferencedInCache(digest godigest.Digest, globalBlobPath string) (bool, error) {
-	if is.isCacheNil() {
-		return true, nil
-	}
-
-	records, err := is.cache.GetAllBlobs(digest)
-	if err != nil {
-		if errors.Is(err, zerr.ErrCacheMiss) {
-			return false, nil
-		}
-
-		return false, err
-	}
-
-	for _, record := range records {
-		if is.cacheRecordPath(record) != globalBlobPath {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-// deleteRepoBlob deletes repo's copy of digest, as deleteBlobChecked describes.
-func (is *ImageStore) deleteRepoBlob(repo string, digest godigest.Digest, isReferenced func() (bool, error)) error {
 	blobPath := is.BlobPath(repo, digest)
 
 	binfo, err := is.storeDriver.Stat(blobPath)
@@ -2954,6 +2883,74 @@ func (is *ImageStore) deleteRepoBlob(repo string, digest godigest.Digest, isRefe
 	}
 
 	return nil
+}
+
+// reclaimGlobalBlob deletes the global blobstore copy of digest, and its cache record, once no
+// repo uses it any more (see blobLifecycle.ShouldDeleteGlobalBlob). The repo copy that was
+// deleted before it is gone either way, so a failure here is logged rather than failing that
+// delete: the blobstore copy stays, unused, until a later push of the digest links it again
+// and a later delete reclaims it.
+func (is *ImageStore) reclaimGlobalBlob(digest godigest.Digest) {
+	if !is.lifecycle.KeepsContentInGlobalBlobstore() {
+		return
+	}
+
+	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+	unused, err := is.lifecycle.ShouldDeleteGlobalBlob(globalBlobPath, digest, func(digest godigest.Digest) (bool, error) {
+		return is.globalBlobReferencedInCache(digest, globalBlobPath)
+	})
+	if err != nil {
+		is.log.Error().Err(err).Str("blobPath", globalBlobPath).Str("component", "dedupe").
+			Msg("failed to check whether the global blobstore copy is still used")
+
+		return
+	}
+
+	if !unused {
+		return
+	}
+
+	// the file first: a record left behind names a missing origin, which the write paths heal
+	if err := is.storeDriver.Delete(globalBlobPath); err != nil && !errclass.IsStorageObjectMissing(err) {
+		is.log.Error().Err(err).Str("blobPath", globalBlobPath).Str("component", "dedupe").
+			Msg("failed to delete unused global blobstore copy")
+
+		return
+	}
+
+	if !is.isCacheNil() {
+		if err := is.cache.DeleteBlob(digest, globalBlobPath); err != nil {
+			is.log.Error().Err(err).Str("blobPath", globalBlobPath).Str("component", "dedupe").
+				Msg("failed to remove the global blobstore copy from the cache")
+		}
+	}
+}
+
+// globalBlobReferencedInCache reports whether the cache records any copy of digest other than
+// the global blobstore's own. Without a cache nothing can be known, so it reports a use, and
+// the copy is kept.
+func (is *ImageStore) globalBlobReferencedInCache(digest godigest.Digest, globalBlobPath string) (bool, error) {
+	if is.isCacheNil() {
+		return true, nil
+	}
+
+	records, err := is.cache.GetAllBlobs(digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	for _, record := range records {
+		if is.cacheRecordPath(record) != globalBlobPath {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // lacksContent reports whether a copy of digest that is size bytes long cannot hold its content:
