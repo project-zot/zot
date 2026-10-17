@@ -3225,6 +3225,19 @@ func TestRoutePrefix(t *testing.T) {
 	})
 }
 
+// reclaimGlobalBlobs runs the reclaim sweep at once, as the scheduler would after gcDelay, so that
+// remote payloads GC left unowned are gone when a test looks.
+func reclaimGlobalBlobs(ctx context.Context, imgStore storageTypes.ImageStore) error {
+	reclaimer, ok := imgStore.(interface {
+		ReclaimGlobalBlobs(ctx context.Context, delay time.Duration) error
+	})
+	if !ok {
+		return nil
+	}
+
+	return reclaimer.ReclaimGlobalBlobs(ctx, 0)
+}
+
 func TestGarbageCollectImageManifest(t *testing.T) {
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
@@ -3359,6 +3372,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					// put artifact referencing above image
 					artifactBlob := []byte("artifact")
@@ -3406,6 +3420,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdigest)
 					So(err, ShouldBeNil)
@@ -3420,6 +3435,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdigest)
 					So(err, ShouldBeNil)
@@ -3640,6 +3656,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, odigest)
 					So(err, ShouldNotBeNil)
@@ -3666,6 +3683,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdigest)
 						So(err, ShouldNotBeNil)
@@ -3701,6 +3719,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdigest)
 						So(err, ShouldBeNil)
@@ -4107,6 +4126,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					hasBlob, _, err := imgStore.CheckBlob(context.Background(), repoName, bdgst)
 					So(err, ShouldBeNil)
@@ -4118,6 +4138,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdgst)
 						So(err, ShouldBeNil)
@@ -4325,6 +4346,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					Convey("delete inner referenced manifest", func() {
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						// check orphan artifact is gc'ed
 						_, _, _, err = imgStore.GetImageManifest(repoName, orphanArtifactManifestDigest.String())
@@ -4344,6 +4366,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
 						So(err, ShouldNotBeNil)
@@ -4355,6 +4378,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					Convey("delete index manifest, references should not be persisted", func() {
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						// check orphan artifact is gc'ed
 						_, _, _, err = imgStore.GetImageManifest(repoName, orphanArtifactManifestDigest.String())
@@ -4374,6 +4398,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
 						So(err, ShouldNotBeNil)
@@ -4835,6 +4860,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				Convey("delete inner referenced manifest", func() {
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					// check orphan artifact is gc'ed
 					_, _, _, err = imgStore.GetImageManifest(repoName, orphanArtifactManifestDigest.String())
@@ -4854,6 +4880,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
 					So(err, ShouldNotBeNil)
@@ -4865,6 +4892,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				Convey("delete index manifest, references should not be persisted", func() {
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					// check orphan artifact is gc'ed
 					_, _, _, err = imgStore.GetImageManifest(repoName, orphanArtifactManifestDigest.String())
@@ -4884,6 +4912,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
 					So(err, ShouldNotBeNil)

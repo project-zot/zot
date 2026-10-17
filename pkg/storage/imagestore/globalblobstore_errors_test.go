@@ -62,6 +62,14 @@ func (d *faultyDriver) Link(src, dest string) error {
 	return d.Driver.Link(src, dest)
 }
 
+func (d *faultyDriver) Move(sourcePath, destPath string) error {
+	if d.failed("Move", destPath) {
+		return errInjectedFault
+	}
+
+	return d.Driver.Move(sourcePath, destPath)
+}
+
 func (d *faultyDriver) Delete(path string) error {
 	if d.failed("Delete", path) {
 		return errInjectedFault
@@ -181,7 +189,7 @@ func TestGlobalBlobstoreFirstPushFailures(t *testing.T) {
 	content := []byte("first-push-failures")
 	digest := godigest.FromBytes(content)
 
-	Convey("A first push that fails before the upload is renamed leaves it for the client to retry", t, func() {
+	Convey("A first push that fails part way leaves the repo without the blob, and a retry succeeds", t, func() {
 		dir := t.TempDir()
 		storeDriver := &faultyDriver{Driver: local.New(true)}
 		cacheDriver := &faultyCache{Cache: newBoltCache(dir)}
@@ -204,8 +212,12 @@ func TestGlobalBlobstoreFirstPushFailures(t *testing.T) {
 				driverFault: func(op, p string) bool { return op == "EnsureDir" && inGlobalBlobstore(p) },
 			},
 			{
-				name:        "linking the upload into the blobstore fails",
-				driverFault: func(op, p string) bool { return op == "Link" && inGlobalBlobstore(p) },
+				name:        "moving the upload into the blobstore fails",
+				driverFault: func(op, p string) bool { return op == "Move" && inGlobalBlobstore(p) },
+			},
+			{
+				name:        "linking the repo copy to the blobstore copy fails",
+				driverFault: func(op, p string) bool { return op == "Link" && !inGlobalBlobstore(p) },
 			},
 			{
 				name:       "recording the blobstore copy fails",
@@ -228,7 +240,7 @@ func TestGlobalBlobstoreFirstPushFailures(t *testing.T) {
 			})
 		}
 
-		Convey("failing to record the repo copy after the rename still commits the blob", func() {
+		Convey("failing to record the repo copy after linking it still commits the blob", func() {
 			cacheDriver.fail = func(op, p string) bool { return op == "PutBlob" && !inGlobalBlobstore(p) }
 			So(push(), ShouldBeNil)
 
