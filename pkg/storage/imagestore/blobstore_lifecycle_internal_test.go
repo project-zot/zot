@@ -22,6 +22,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
 var errInjectedReferenceCheck = errors.New("injected reference-check failure")
@@ -158,16 +159,45 @@ func (w *lifecycleWriterStub) Cancel(_ context.Context) error {
 func TestBlobLifecycleSelection(t *testing.T) {
 	Convey("blobLifecycle selection excludes _blobstore from mount candidates", t, func() {
 		localDriver := &lifecycleStubDriver{nameFn: func() string { return constants.LocalStorageDriverName }}
-		localLifecycle := newBlobLifecycle(localDriver, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+		localLifecycle := newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: localDriver, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		})
 
 		So(localLifecycle.IncludeRepoInMountCandidates(constants.GlobalBlobsRepo), ShouldBeFalse)
 		So(localLifecycle.IncludeRepoInMountCandidates("repo"), ShouldBeTrue)
 
 		remoteDriver := &lifecycleStubDriver{nameFn: func() string { return constants.S3StorageDriverName }}
-		remoteLifecycle := newBlobLifecycle(remoteDriver, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+		remoteLifecycle := newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: remoteDriver, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		})
 
 		So(remoteLifecycle.IncludeRepoInMountCandidates(constants.GlobalBlobsRepo), ShouldBeFalse)
 		So(remoteLifecycle.IncludeRepoInMountCandidates("repo"), ShouldBeTrue)
+	})
+}
+
+func TestRemoteBlobLifecycleGetsTheReferenceIndex(t *testing.T) {
+	Convey("The remote lifecycle records ownership in the store's cache", t, func() {
+		remoteDriver := &lifecycleStubDriver{nameFn: func() string { return constants.S3StorageDriverName }}
+		cacheMock := mocks.CacheMock{}
+
+		refsOf := func(cacheDriver storageTypes.Cache) storageTypes.BlobRefIndex {
+			imgStore, ok := NewImageStore("/root", "/root", true, false, zlog.NewTestLogger(),
+				monitoring.NewNopMetricServer(), nil, remoteDriver, cacheDriver, nil, nil).(*ImageStore)
+			So(ok, ShouldBeTrue)
+
+			lifecycle, ok := imgStore.lifecycle.(*remoteSharedBlobLifecycle)
+			So(ok, ShouldBeTrue)
+
+			return lifecycle.refs
+		}
+
+		So(refsOf(cacheMock), ShouldEqual, cacheMock)
+		So(refsOf(nil), ShouldBeNil)
+
+		// a typed nil is no cache either
+		var noCache *mocks.CacheMock
+		So(refsOf(noCache), ShouldBeNil)
 	})
 }
 
@@ -186,7 +216,9 @@ func TestLocalBlobLifecycleDelegatesToLink(t *testing.T) {
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+		lifecycle := newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		})
 
 		So(lifecycle.PromoteCandidate("src/blob", "dst/blob"), ShouldBeNil)
 		So(lifecycle.LinkBlob("dst/blob", "dst/blob2"), ShouldBeNil)
@@ -208,7 +240,9 @@ func TestLocalBlobLifecycleRemoveMigratedRepoBlobIsNoOp(t *testing.T) {
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+		lifecycle := newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		})
 
 		So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldBeNil)
 		So(linkCalled, ShouldBeFalse)
@@ -231,7 +265,9 @@ func TestRemoteBlobLifecycleRemoveMigratedRepoBlobToleratesMissing(t *testing.T)
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+		lifecycle := newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		})
 
 		So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldBeNil)
 		So(deleted, ShouldResemble, []string{"repo/blob"})
@@ -293,7 +329,9 @@ func TestRemoteBlobLifecyclePromoteStreamsContent(t *testing.T) {
 			},
 		}
 
-		lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+		lifecycle := newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		})
 
 		So(lifecycle.PromoteCandidate("src/blob", "dst/blob"), ShouldBeNil)
 		So(readerCalls, ShouldEqual, 1)
@@ -348,7 +386,9 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				},
 			}
 
-			lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+			lifecycle := newBlobLifecycle(blobLifecycleDeps{
+				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+			})
 
 			err := lifecycle.PromoteCandidate("src", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
@@ -367,7 +407,9 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				},
 			}
 
-			lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+			lifecycle := newBlobLifecycle(blobLifecycleDeps{
+				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+			})
 
 			err := lifecycle.PromoteCandidate("src", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
@@ -398,7 +440,9 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				},
 			}
 
-			lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+			lifecycle := newBlobLifecycle(blobLifecycleDeps{
+				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+			})
 
 			err := lifecycle.PromoteCandidate("src", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
@@ -430,7 +474,9 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				},
 			}
 
-			lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+			lifecycle := newBlobLifecycle(blobLifecycleDeps{
+				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+			})
 
 			err := lifecycle.PromoteCandidate("src", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
@@ -456,7 +502,9 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				},
 			}
 
-			lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+			lifecycle := newBlobLifecycle(blobLifecycleDeps{
+				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+			})
 
 			err := lifecycle.PromoteCandidate("src", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
@@ -478,7 +526,9 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 					},
 				}
 
-				lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+				lifecycle := newBlobLifecycle(blobLifecycleDeps{
+					storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+				})
 
 				err := lifecycle.PromoteCandidate("src", "dst")
 				So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
@@ -496,7 +546,9 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 					},
 				}
 
-				lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+				lifecycle := newBlobLifecycle(blobLifecycleDeps{
+					storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+				})
 
 				err := lifecycle.PromoteCandidate("src", "dst")
 				So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
@@ -512,7 +564,9 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 					},
 				}
 
-				lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+				lifecycle := newBlobLifecycle(blobLifecycleDeps{
+					storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+				})
 
 				err := lifecycle.PromoteCandidate("src", "dst")
 				So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
@@ -531,7 +585,9 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				},
 			}
 
-			lifecycle := newBlobLifecycle(driverStub, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+			lifecycle := newBlobLifecycle(blobLifecycleDeps{
+				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+			})
 
 			err := lifecycle.PromoteCandidate("src", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
@@ -541,9 +597,10 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 
 func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
 	Convey("Local ShouldDeleteGlobalBlob", t, func() {
-		lifecycle := newBlobLifecycle(&lifecycleStubDriver{
-			nameFn: func() string { return constants.LocalStorageDriverName },
-		}, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+		lifecycle := newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: &lifecycleStubDriver{nameFn: func() string { return constants.LocalStorageDriverName }},
+			rootDir:     "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		})
 
 		Convey("missing path is not deleted", func() {
 			deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
@@ -641,9 +698,10 @@ func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
 
 func TestBlobLifecycleShouldDeleteGlobalBlobRemote(t *testing.T) {
 	Convey("Remote ShouldDeleteGlobalBlob", t, func() {
-		lifecycle := newBlobLifecycle(&lifecycleStubDriver{
-			nameFn: func() string { return constants.S3StorageDriverName },
-		}, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger())
+		lifecycle := newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: &lifecycleStubDriver{nameFn: func() string { return constants.S3StorageDriverName }},
+			rootDir:     "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		})
 
 		Convey("delete when digest is unreferenced", func() {
 			callbackCalled := false

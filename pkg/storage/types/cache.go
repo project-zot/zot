@@ -33,6 +33,10 @@ type Cache interface {
 
 	// UsesRelativePaths returns if cache is storing blobs relative to cache rootDir
 	UsesRelativePaths() bool
+
+	// BlobRefIndex records which repositories own a payload in the global blobstore. Remote
+	// stores with dedupe on rely on it; local ones reclaim through hardlink counts instead.
+	BlobRefIndex
 }
 
 // BlobRefIndex records which repositories own a digest whose payload is kept once, in the
