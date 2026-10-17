@@ -1220,7 +1220,7 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 			}
 		}
 
-		is.reclaimGlobalBlob(manifestDesc.Digest)
+		is.reclaimGlobalBlob(manifestDesc.Digest, manifestPath)
 	}
 
 	if is.events != nil {
@@ -1668,10 +1668,10 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 // DedupeBlob's repo argument is unused: the shared content is checked against the verified
 // upload, not against the repo's blob descriptor. It stays because ImageStore declares it.
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string, dst string) error {
-	// Own the payload before relying on it. A failure after this leaves the reference behind,
+	// Record dst as an owner of the payload before relying on it. A failure after this leaves the reference behind,
 	// never removed here: dst may have owned the digest before this push, and a leftover
 	// reference only keeps a payload, it never loses one.
-	if err := is.lifecycle.Own(dstDigest, dst); err != nil {
+	if err := is.lifecycle.PutBlobRef(dstDigest, dst); err != nil {
 		is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to own blob")
 
 		return err
@@ -1830,12 +1830,11 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 	}
 }
 
-// dedupeFirstCopyToGlobalBlobstore stores the first copy of a digest: the content goes to the
-// global blobstore, which the cache records as the origin, and dst becomes its repo copy (see
-// blobLifecycle.PromoteUpload and CommitUpload). Locally the upload is consumed last, by the
-// rename onto dst, so a failure before that leaves it for the client to retry; remotely the
-// promote consumes it, and a retry uploads again. Either way a retry that finds the origin
-// recorded links dst to it like any later copy.
+// dedupeFirstCopyToGlobalBlobstore stores the first copy of a digest: the upload is moved to the
+// global blobstore, which the cache records as the origin, and dst is linked to it like any later
+// copy (a hardlink locally, a placeholder remotely). A failure after the move leaves the content
+// there for a retry, which uploads again and moves onto it, or finds the origin recorded and
+// links dst to it.
 func (is *ImageStore) dedupeFirstCopyToGlobalBlobstore(src string, digest godigest.Digest, dst string) error {
 	// the blobstore path is built from the digest, which must not be malformed
 	if dst == "" {
@@ -1854,14 +1853,14 @@ func (is *ImageStore) dedupeFirstCopyToGlobalBlobstore(src string, digest godige
 		return err
 	}
 
-	if err := is.lifecycle.PromoteUpload(digest, src, globalBlobPath); err != nil {
+	if err := is.storeDriver.Move(src, globalBlobPath); err != nil {
 		is.log.Error().Err(err).Str("src", src).Str("dst", globalBlobPath).Str("component", "dedupe").
-			Msg("failed to promote blob to the global blobstore")
+			Msg("failed to move blob to the global blobstore")
 
 		return err
 	}
 
-	// recorded before the rename, so that a retry after a failed rename links to it
+	// recorded before dst is linked, so that a retry after a failed link links to it
 	if err := is.cache.PutBlob(digest, globalBlobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", globalBlobPath).Str("component", "dedupe").
 			Msg("failed to insert blob record")
@@ -1869,9 +1868,17 @@ func (is *ImageStore) dedupeFirstCopyToGlobalBlobstore(src string, digest godige
 		return err
 	}
 
-	if err := is.lifecycle.CommitUpload(src, globalBlobPath, dst); err != nil {
-		is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
-			Msg("failed to commit blob")
+	// a sweep only claims a digest whose payload is recorded, so it never deletes one it cannot know exists
+	if err := is.lifecycle.PutBlobRef(digest, globalBlobPath); err != nil {
+		is.log.Error().Err(err).Str("blobPath", globalBlobPath).Str("component", "dedupe").
+			Msg("failed to record the global blobstore copy")
+
+		return err
+	}
+
+	if err := is.lifecycle.LinkBlob(globalBlobPath, dst); err != nil {
+		is.log.Error().Err(err).Str("src", globalBlobPath).Str("dst", dst).Str("component", "dedupe").
+			Msg("failed to link blob")
 
 		return err
 	}
@@ -2284,7 +2291,7 @@ func (is *ImageStore) copyBlob(ctx context.Context, repo string, digest godigest
 	}
 
 	// a mount owns the payload before linking to it, as a push does (see DedupeBlob)
-	if err := is.lifecycle.Own(digest, blobPath); err != nil {
+	if err := is.lifecycle.PutBlobRef(digest, blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to own blob")
 
 		return -1, mapStorageErr(err)
@@ -2787,7 +2794,7 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	// once repo's copy is gone, the global blobstore copy may be too
 	defer func() {
 		if deleteErr == nil {
-			is.reclaimGlobalBlob(digest)
+			is.reclaimGlobalBlob(digest, is.BlobPath(repo, digest))
 		}
 	}()
 
@@ -2899,13 +2906,22 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	return nil
 }
 
-// reclaimGlobalBlob deletes the global blobstore copy of digest, and its cache record, once no
-// repo uses it any more (see blobLifecycle.ShouldDeleteGlobalBlob). The repo copy that was
-// deleted before it is gone either way, so a failure here is logged rather than failing that
-// delete: the blobstore copy stays, unused, until a later push of the digest links it again
-// and a later delete reclaims it.
-func (is *ImageStore) reclaimGlobalBlob(digest godigest.Digest) {
+// reclaimGlobalBlob runs once repoPath's copy of digest is gone: it drops that copy's ownership
+// of the global blobstore payload, and deletes the payload, with its cache record, if it is to go
+// now (see blobLifecycle.DeleteBlobRef and ShouldDeleteGlobalBlob; remotely the reclaim sweep deletes
+// it later). The repo copy is gone either way, so a failure here is logged rather than failing
+// that delete: the payload stays, unused, until a later push links it again or a later delete
+// or sweep reclaims it.
+func (is *ImageStore) reclaimGlobalBlob(digest godigest.Digest, repoPath string) {
 	if !is.lifecycle.KeepsContentInGlobalBlobstore() {
+		return
+	}
+
+	// a reference left behind on failure only keeps the payload, it never loses one
+	if err := is.lifecycle.DeleteBlobRef(digest, repoPath); err != nil {
+		is.log.Error().Err(err).Str("blobPath", repoPath).Str("component", "dedupe").
+			Msg("failed to drop ownership of the global blobstore copy")
+
 		return
 	}
 
@@ -2939,6 +2955,12 @@ func (is *ImageStore) reclaimGlobalBlob(digest godigest.Digest) {
 				Msg("failed to remove the global blobstore copy from the cache")
 		}
 	}
+}
+
+// ReclaimGlobalBlobs deletes the global blobstore payloads no repo has owned for at least delay.
+// Only remote stores defer that to this sweep; see blobLifecycle.ReclaimGlobalBlobs.
+func (is *ImageStore) ReclaimGlobalBlobs(ctx context.Context, delay time.Duration) error {
+	return is.lifecycle.ReclaimGlobalBlobs(ctx, delay)
 }
 
 // globalBlobReferencedInCache reports whether the cache records any copy of digest other than

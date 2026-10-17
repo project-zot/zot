@@ -697,56 +697,18 @@ func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
 }
 
 func TestBlobLifecycleShouldDeleteGlobalBlobRemote(t *testing.T) {
-	Convey("Remote ShouldDeleteGlobalBlob", t, func() {
+	Convey("Remote ShouldDeleteGlobalBlob never deletes inline: the reclaim sweep does, under a claim", t, func() {
 		lifecycle := newBlobLifecycle(blobLifecycleDeps{
 			storeDriver: &lifecycleStubDriver{nameFn: func() string { return constants.S3StorageDriverName }},
 			rootDir:     "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 		})
 
-		Convey("delete when digest is unreferenced", func() {
-			callbackCalled := false
-			digest := godigest.FromString("unreferenced")
-
-			deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
-				"ignored/path",
-				digest,
-				func(callbackDigest godigest.Digest) (bool, error) {
-					callbackCalled = true
-					So(callbackDigest, ShouldEqual, digest)
-
-					return false, nil
-				},
-			)
-			So(err, ShouldBeNil)
-			So(callbackCalled, ShouldBeTrue)
-			So(deleteDecision, ShouldBeTrue)
-		})
-
-		Convey("retain when digest is still referenced", func() {
-			deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
-				"ignored/path",
-				godigest.FromString("referenced"),
-				func(godigest.Digest) (bool, error) {
-					return true, nil
-				},
-			)
+		for _, referenced := range []bool{false, true} {
+			deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob("ignored/path", godigest.FromString("digest"),
+				func(godigest.Digest) (bool, error) { return referenced, nil })
 			So(err, ShouldBeNil)
 			So(deleteDecision, ShouldBeFalse)
-		})
-
-		Convey("callback errors are propagated", func() {
-			callbackErr := io.EOF
-
-			deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
-				"ignored/path",
-				godigest.FromString("error-case"),
-				func(godigest.Digest) (bool, error) {
-					return false, callbackErr
-				},
-			)
-			So(errors.Is(err, callbackErr), ShouldBeTrue)
-			So(deleteDecision, ShouldBeFalse)
-		})
+		}
 	})
 }
 
