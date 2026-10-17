@@ -62,9 +62,15 @@ func (driver *Driver) ReadFile(path string) ([]byte, error) {
 }
 
 func (driver *Driver) Delete(path string) error {
+	return driver.DeleteContext(context.Background(), path)
+}
+
+// DeleteContext is Delete bounded by ctx, for callers that must not have a delete (or the
+// SDK's retries of one) land after a deadline.
+func (driver *Driver) DeleteContext(ctx context.Context, path string) error {
 	// Upstream returns PathNotFound (never zot ErrStorageMissing). formatErr may also
 	// synthesize PathNotFound from typed/string not-found fallbacks, then MarkMissing.
-	err := driver.store.Delete(context.Background(), path)
+	err := driver.store.Delete(ctx, path)
 	if err == nil {
 		return nil
 	}

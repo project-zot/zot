@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -168,4 +169,144 @@ func TestRemoteGlobalBlobstore(t *testing.T) {
 			So(refs, ShouldResemble, []string{imgStore.BlobPath("repo-a", digest)})
 		})
 	})
+
+	Convey("Deleting a remote repo copy drops its ownership, and never deletes the payload inline", t, func() {
+		dir := t.TempDir()
+		imgStore, cacheDriver := newRemoteDedupeStoreAt(dir)
+		ctx := context.Background()
+
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+		markerPath := path.Join(dir, storageConstants.GlobalBlobsRepo, "_reclaim", digest.Algorithm().String(),
+			digest.Encoded())
+
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			_, _, err := imgStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+		}
+
+		So(imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+		refs, err := cacheDriver.GetReferences(digest)
+		So(err, ShouldBeNil)
+		So(refs, ShouldResemble, []string{imgStore.BlobPath("repo-b", digest)})
+
+		_, err = os.Stat(markerPath)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		Convey("the last delete leaves the payload, marked for the reclaim sweep", func() {
+			So(imgStore.DeleteBlob("repo-b", digest), ShouldBeNil)
+
+			data, err := os.ReadFile(globalBlobPath)
+			So(err, ShouldBeNil)
+			So(data, ShouldResemble, content)
+
+			marker, err := os.ReadFile(markerPath)
+			So(err, ShouldBeNil)
+			So(string(marker), ShouldContainSubstring, "markedAt")
+
+			// unowned with a recorded payload, so the sweep may claim it
+			claim, err := cacheDriver.ClaimReclaim(digest)
+			So(err, ShouldBeNil)
+			So(cacheDriver.AbandonReclaim(claim), ShouldBeNil)
+
+			Convey("and a re-push meanwhile owns it again, without moving the marker", func() {
+				_, _, err := imgStore.FullBlobUpload(ctx, "repo-a", bytes.NewReader(content), digest)
+				So(err, ShouldBeNil)
+
+				_, err = cacheDriver.ClaimReclaim(digest)
+				So(errors.Is(err, zerr.ErrDigestReferenced), ShouldBeTrue)
+
+				So(imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+				again, err := os.ReadFile(markerPath)
+				So(err, ShouldBeNil)
+				So(again, ShouldResemble, marker)
+			})
+		})
+	})
+
+	Convey("After the cache is lost, the dedupe walk gives every repo copy its ownership back", t, func() {
+		dir := t.TempDir()
+		imgStore, _ := newRemoteDedupeStoreAt(dir)
+		ctx := context.Background()
+
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			_, _, err := imgStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+		}
+
+		// the same bucket, with a cache that knows nothing, as after a fresh local root
+		freshCache := newBoltCacheAbs(t.TempDir())
+		imgStore = imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(), monitoring.NewNopMetricServer(),
+			nil, &remoteNamedDriver{Driver: local.New(true)}, freshCache, nil, nil)
+
+		repoA := imgStore.BlobPath("repo-a", digest)
+		repoB := imgStore.BlobPath("repo-b", digest)
+		repoC := imgStore.BlobPath("repo-c", digest)
+
+		// a push before the walk takes the first-copy path, which records the payload
+		_, _, err := imgStore.FullBlobUpload(ctx, "repo-c", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		So(imgStore.RunDedupeForDigest(ctx, digest, true, []string{repoA, repoB, repoC}), ShouldBeNil)
+
+		refs, err := freshCache.GetReferences(digest)
+		So(err, ShouldBeNil)
+		So(refs, ShouldContain, repoA)
+		So(refs, ShouldContain, repoB)
+
+		// with repo-c gone, the placeholders of repo-a and repo-b still own the payload
+		So(imgStore.DeleteBlob("repo-c", digest), ShouldBeNil)
+
+		_, err = freshCache.ClaimReclaim(digest)
+		So(errors.Is(err, zerr.ErrDigestReferenced), ShouldBeTrue)
+
+		reader, _, err := imgStore.GetBlob("repo-a", digest, "application/octet-stream")
+		So(err, ShouldBeNil)
+
+		data, err := io.ReadAll(reader)
+		So(err, ShouldBeNil)
+		So(reader.Close(), ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+
+	Convey("Failing to drop a remote repo copy's ownership does not fail its delete", t, func() {
+		dir := t.TempDir()
+		boltCache := newBoltCacheAbs(dir)
+		cacheDriver := &failingRemoveReferenceCache{Cache: boltCache}
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(), monitoring.NewNopMetricServer(),
+			nil, &remoteNamedDriver{Driver: local.New(true)}, cacheDriver, nil, nil)
+		ctx := context.Background()
+
+		_, _, err := imgStore.FullBlobUpload(ctx, "repo-a", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		So(imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+		_, err = os.Stat(imgStore.BlobPath("repo-a", digest))
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		// the reference stays, which keeps the payload, never loses it
+		refs, err := boltCache.GetReferences(digest)
+		So(err, ShouldBeNil)
+		So(refs, ShouldResemble, []string{imgStore.BlobPath("repo-a", digest)})
+	})
+}
+
+// failingRemoveReferenceCache is a cache whose RemoveReference always fails.
+type failingRemoveReferenceCache struct {
+	storageTypes.Cache
+}
+
+func (c *failingRemoveReferenceCache) RemoveReference(godigest.Digest, string) (bool, error) {
+	return false, errInjectedFault
+}
+
+// newBoltCacheAbs returns a BoltDB cache recording absolute paths, as remote storage does.
+func newBoltCacheAbs(dir string) storageTypes.Cache {
+	cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{RootDir: dir, Name: "cache"},
+		zlog.NewTestLogger())
+	So(err, ShouldBeNil)
+
+	return cacheDriver
 }
