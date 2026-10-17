@@ -3556,6 +3556,14 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 				return err
 			}
 		}
+
+		// The copy holds its own content now, so the repo no longer owns the global blobstore
+		// payload; once no repo does, the reclaim sweep deletes it. This also covers a copy an
+		// earlier pass restored, and a failure only leaves the payload around longer.
+		if err := is.lifecycle.DeleteBlobRef(digest, blobPath); err != nil {
+			is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").
+				Msg("failed to drop ownership of the global blobstore copy after restoring")
+		}
 	}
 
 	is.log.Info().Str("digest", digest.String()).
