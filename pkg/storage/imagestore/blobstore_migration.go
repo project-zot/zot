@@ -8,6 +8,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 )
@@ -129,6 +130,15 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			return err
 		}
 
+		// The repo owns the payload before its copy gives up the content, so that a failure in
+		// between leaves a copy with content, never a placeholder nothing owns.
+		if err := is.lifecycle.PutBlobRef(ref.digest, ref.blobPath); err != nil {
+			is.log.Error().Err(err).Str("digest", ref.digest.String()).Str("repo", ref.repoName).
+				Msg("failed to record repo blob ownership during upgrade")
+
+			return err
+		}
+
 		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, ref.digest)
 
 		if err := is.lifecycle.RemoveMigratedRepoBlob(globalBlobPath, ref.blobPath); err != nil {
@@ -155,7 +165,11 @@ func (is *ImageStore) promoteBlobCandidate(candidate blobCandidate, digest godig
 			is.log.Info().Str("digest", digest.String()).Str("repo", candidate.repoName).
 				Msg("keeping the global blobstore copy, its repo copies are empty")
 
-			return is.cache.SetOrigin(digest, globalBlobPath)
+			if err := is.cache.SetOrigin(digest, globalBlobPath); err != nil {
+				return err
+			}
+
+			return is.lifecycle.PutBlobRef(digest, globalBlobPath)
 		}
 
 		if err != nil && !errclass.IsStorageObjectMissing(err) {
@@ -176,10 +190,34 @@ func (is *ImageStore) promoteBlobCandidate(candidate blobCandidate, digest godig
 		return err
 	}
 
+	// Repo copies give up their content once the payload is there, so it must be whole: a
+	// remote copy that stopped short would otherwise be all that is left of the content.
+	if !lacksContent(digest, candidate.size) {
+		binfo, err := is.storeDriver.Stat(globalBlobPath)
+		if err != nil {
+			return err
+		}
+
+		if binfo.Size() != candidate.size {
+			is.log.Error().Str("digest", digest.String()).Int64("size", binfo.Size()).
+				Int64("expected", candidate.size).Msg("promoted blob has the wrong size")
+
+			return zerr.ErrBadBlob
+		}
+	}
+
 	// PutBlob never replaces an origin, and an earlier release recorded a repo copy as one
 	if err := is.cache.SetOrigin(digest, globalBlobPath); err != nil {
 		is.log.Error().Err(err).Str("digest", digest.String()).
 			Msg("failed to record the global blobstore copy as origin during upgrade")
+
+		return err
+	}
+
+	// recorded as present: a sweep only ever claims a payload the index records
+	if err := is.lifecycle.PutBlobRef(digest, globalBlobPath); err != nil {
+		is.log.Error().Err(err).Str("digest", digest.String()).
+			Msg("failed to record the global blobstore copy during upgrade")
 
 		return err
 	}

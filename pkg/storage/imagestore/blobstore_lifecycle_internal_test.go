@@ -183,7 +183,8 @@ func TestRemoteBlobLifecycleGetsTheReferenceIndex(t *testing.T) {
 		cacheMock := mocks.CacheMock{}
 
 		refsOf := func(cacheDriver storageTypes.Cache) storageTypes.BlobRefIndex {
-			imgStore, ok := NewImageStore("/root", "/root", true, false, zlog.NewTestLogger(),
+			// dedupe off: the wiring is the same, and the stub driver has no store to upgrade
+			imgStore, ok := NewImageStore("/root", "/root", false, false, zlog.NewTestLogger(),
 				monitoring.NewNopMetricServer(), nil, remoteDriver, cacheDriver, nil, nil).(*ImageStore)
 			So(ok, ShouldBeTrue)
 
@@ -252,17 +253,27 @@ func TestLocalBlobLifecycleRemoveMigratedRepoBlobIsNoOp(t *testing.T) {
 
 // A migration that crashed before writing its marker is re-run from the start and revisits
 // repo objects it already removed; S3's Delete reports those as PathNotFound.
-func TestRemoteBlobLifecycleRemoveMigratedRepoBlobToleratesMissing(t *testing.T) {
-	Convey("Remote RemoveMigratedRepoBlob treats an already-deleted repo object as done", t, func() {
-		var deleteErr error
+func TestRemoteBlobLifecycleRemoveMigratedRepoBlob(t *testing.T) {
+	Convey("Remote RemoveMigratedRepoBlob replaces a copy with content by a placeholder", t, func() {
+		var (
+			statErr error
+			size    int64
+			linked  []string
+		)
 
-		deleted := []string{}
 		driverStub := &lifecycleStubDriver{
 			nameFn: func() string { return constants.S3StorageDriverName },
-			deleteFn: func(path string) error {
-				deleted = append(deleted, path)
+			statFn: func(path string) (driver.FileInfo, error) {
+				if statErr != nil {
+					return nil, statErr
+				}
 
-				return deleteErr
+				return driver.FileInfoInternal{FileInfoFields: driver.FileInfoFields{Path: path, Size: size}}, nil
+			},
+			linkFn: func(src, dest string) error {
+				linked = append(linked, src+"->"+dest)
+
+				return nil
 			},
 		}
 
@@ -270,17 +281,29 @@ func TestRemoteBlobLifecycleRemoveMigratedRepoBlobToleratesMissing(t *testing.T)
 			storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 		})
 
+		size = 10
 		So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldBeNil)
-		So(deleted, ShouldResemble, []string{"repo/blob"})
+		So(linked, ShouldResemble, []string{"global/blob->repo/blob"})
 
-		deleteErr = driver.PathNotFoundError{Path: "repo/blob"}
-		So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldBeNil)
+		Convey("a placeholder, or a copy already gone, is left as it is", func() {
+			linked = nil
 
-		deleteErr = errclass.MarkMissing(driver.PathNotFoundError{Path: "repo/blob"})
-		So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldBeNil)
+			size = 0
+			So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldBeNil)
 
-		deleteErr = errInjectedReferenceCheck
-		So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldEqual, errInjectedReferenceCheck)
+			statErr = driver.PathNotFoundError{Path: "repo/blob"}
+			So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldBeNil)
+
+			statErr = errclass.MarkMissing(driver.PathNotFoundError{Path: "repo/blob"})
+			So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldBeNil)
+
+			So(linked, ShouldBeEmpty)
+		})
+
+		Convey("other errors are returned", func() {
+			statErr = errInjectedReferenceCheck
+			So(lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"), ShouldEqual, errInjectedReferenceCheck)
+		})
 	})
 }
 
