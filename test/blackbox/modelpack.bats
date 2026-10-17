@@ -231,8 +231,14 @@ function teardown_file() {
     mkdir -p ${push_dir} ${pull_dir}
     cp ${BATS_FILE_TMPDIR}/model/{config.json,model.safetensors,README.md} ${push_dir}
 
+    # raw layers are stored uncompressed, so each diffId is the digest of the file, in push order
+    local diff_ids=""
+    local file
+    for file in config.json model.safetensors README.md; do
+        diff_ids="${diff_ids:+${diff_ids},}\"sha256:$(sha256sum ${push_dir}/${file} | awk '{print $1}')\""
+    done
     cat > ${push_dir}/model-config.json<<EOF
-{"descriptor":{"name":"tiny-model","family":"tiny"},"config":{"architecture":"transformer","format":"safetensors"},"modelfs":{"type":"layers","diffIds":[]}}
+{"descriptor":{"name":"tiny-model","family":"tiny"},"config":{"architecture":"transformer","format":"safetensors"},"modelfs":{"type":"layers","diffIds":[${diff_ids}]}}
 EOF
     cat > ${BATS_FILE_TMPDIR}/spec-annotations.json<<EOF
 {
@@ -259,6 +265,13 @@ EOF
     [ $(echo "${output}" | jq -r '.config.mediaType') = "application/vnd.cncf.model.config.v1+json" ]
     [ $(echo "${output}" | jq -r '.layers[] | select(.mediaType == "application/vnd.cncf.model.weight.v1.raw") |
         .annotations["org.cncf.model.filepath"]') = "model.safetensors" ]
+
+    # the config lists the layers' content digests in manifest order
+    local layer_digests=$(echo "${output}" | jq -c '[.layers[].digest]')
+    local config_digest=$(echo "${output}" | jq -r '.config.digest')
+    run curl -s http://127.0.0.1:${zot_port}/v2/${SPEC_MODEL_REPO}/blobs/${config_digest}
+    [ "$status" -eq 0 ]
+    [ "$(echo "${output}" | jq -c '.modelfs.diffIds')" = "${layer_digests}" ]
 
     cd ${pull_dir}
     run oras pull --plain-http 127.0.0.1:${zot_port}/${SPEC_MODEL_REPO}:${MODEL_TAG}
