@@ -72,6 +72,20 @@ func emptyIndexContent() []byte {
 	return content
 }
 
+// upgradedStoreDriver reports the global blobstore upgrade as done, so that a store over a mock
+// driver opens without running it, as the tests built on these helpers expect.
+type upgradedStoreDriver struct {
+	driver.StorageDriver
+}
+
+func (d upgradedStoreDriver) Stat(ctx context.Context, statPath string) (driver.FileInfo, error) {
+	if path.Base(statPath) == storageConstants.BlobstoreMigratedMarker {
+		return driver.FileInfoInternal{FileInfoFields: driver.FileInfoFields{Path: statPath}}, nil
+	}
+
+	return d.StorageDriver.Stat(ctx, statPath)
+}
+
 func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver,
 ) storageTypes.ImageStore {
 	log := log.NewTestLogger()
@@ -89,7 +103,8 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 		}, log)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
+	il := s3.NewImageStore(rootDir, cacheDir, dedupe, false, log, metrics, nil, upgradedStoreDriver{store},
+		cacheDriver, nil, nil)
 
 	return il
 }
@@ -106,7 +121,8 @@ func createMockStorageWithMockCacheDedupe(rootDir string, dedupe bool, store dri
 	log := log.NewTestLogger()
 	metrics := monitoring.NewNopMetricServer()
 
-	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, store, cacheDriver, nil, nil)
+	il := s3.NewImageStore(rootDir, "", dedupe, false, log, metrics, nil, upgradedStoreDriver{store}, cacheDriver,
+		nil, nil)
 
 	return il
 }
