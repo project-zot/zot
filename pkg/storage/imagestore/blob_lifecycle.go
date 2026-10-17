@@ -137,14 +137,26 @@ type blobLifecycle interface { //nolint:interfacebloat
 	KeepsContentInGlobalBlobstore() bool
 }
 
-func newBlobLifecycle(storeDriver storageTypes.Driver, rootDir string,
-	metrics monitoring.MetricServer, log zlog.Logger,
-) blobLifecycle {
-	if storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		return &localHardlinkBlobLifecycle{storeDriver: storeDriver, rootDir: rootDir, metrics: metrics, statFn: os.Stat}
+// blobLifecycleDeps is what a blob lifecycle is built with.
+type blobLifecycleDeps struct {
+	storeDriver storageTypes.Driver
+	rootDir     string
+	metrics     monitoring.MetricServer
+	log         zlog.Logger
+	// refs is the store's cache, nil without one. Only the remote lifecycle uses it: there a
+	// repo copy is a placeholder, so ownership of a payload is recorded in the cache.
+	refs storageTypes.BlobRefIndex
+}
+
+// newBlobLifecycle picks the lifecycle for the store's driver, once, when the store is created.
+func newBlobLifecycle(deps blobLifecycleDeps) blobLifecycle {
+	if deps.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		return &localHardlinkBlobLifecycle{
+			storeDriver: deps.storeDriver, rootDir: deps.rootDir, metrics: deps.metrics, statFn: os.Stat,
+		}
 	}
 
-	return &remoteSharedBlobLifecycle{storeDriver: storeDriver, log: log}
+	return &remoteSharedBlobLifecycle{storeDriver: deps.storeDriver, log: deps.log, refs: deps.refs}
 }
 
 // isEmptyContentDigest reports whether digest is the algorithm's hash of zero bytes.
@@ -338,6 +350,7 @@ func (l *localHardlinkBlobLifecycle) DeletesCanDestroySharedContent() bool {
 type remoteSharedBlobLifecycle struct {
 	storeDriver storageTypes.Driver
 	log         zlog.Logger
+	refs        storageTypes.BlobRefIndex
 }
 
 func (r *remoteSharedBlobLifecycle) IsPlaceholder(digest godigest.Digest, binfo driver.FileInfo) bool {

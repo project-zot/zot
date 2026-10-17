@@ -70,7 +70,9 @@ func TestBlobLifecycle(t *testing.T) {
 	newLifecycle := func(name string) (blobLifecycle, *lifecycleTestDriver) {
 		storeDriver := &lifecycleTestDriver{name: name}
 
-		return newBlobLifecycle(storeDriver, "/root", monitoring.NewNopMetricServer(), zlog.NewTestLogger()), storeDriver
+		return newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: storeDriver, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		}), storeDriver
 	}
 
 	Convey("The driver picks the lifecycle", t, func() {
