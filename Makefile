@@ -628,6 +628,7 @@ run-blackbox-cloud-ci: check-blackbox-prerequisites check-awslocal $(ZOT_BIN_DEP
 	$(BATS) $(BATS_FLAGS) test/blackbox/cloud_only.bats
 	$(BATS) $(BATS_FLAGS) test/blackbox/sync_cloud.bats
 	$(BATS) $(BATS_FLAGS) test/blackbox/redis_s3.bats
+	$(BATS) $(BATS_FLAGS) test/blackbox/upgrade_s3.bats
 
 .PHONY: run-blackbox-dedupe-nightly
 run-blackbox-dedupe-nightly: check-blackbox-prerequisites check-awslocal $(ZOT_BIN_DEP) $(ZOT_MIN_DEP)

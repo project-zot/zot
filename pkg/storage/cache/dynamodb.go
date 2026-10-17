@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -16,6 +17,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
 // maxConditionalAttempts bounds how often PutBlob and DeleteBlob decide again after a write
@@ -25,9 +27,10 @@ import (
 const maxConditionalAttempts = 10
 
 type DynamoDBDriver struct {
-	client    *dynamodb.Client
-	log       zlog.Logger
-	tableName string
+	client     *dynamodb.Client
+	log        zlog.Logger
+	tableName  string
+	claimLease time.Duration // how long a reclaim claim stays live (see types.BlobRefIndex)
 }
 
 type DynamoDBDriverParameters struct {
@@ -154,9 +157,10 @@ func NewDynamoDBCache(parameters any, log zlog.Logger) (*DynamoDBDriver, error) 
 	}
 
 	driver := &DynamoDBDriver{
-		client:    dynamodb.NewFromConfig(cfg, clientOptions...),
-		tableName: properParameters.TableName,
-		log:       log,
+		client:     dynamodb.NewFromConfig(cfg, clientOptions...),
+		tableName:  properParameters.TableName,
+		log:        log,
+		claimLease: constants.DefaultReclaimClaimLease,
 	}
 
 	err = driver.NewTable(driver.tableName)
