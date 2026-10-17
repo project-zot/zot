@@ -211,7 +211,6 @@ func (d *DynamoDBDriver) ClaimReclaim(digest godigest.Digest) (storageTypes.Recl
 }
 
 func (d *DynamoDBDriver) FinishReclaim(claim storageTypes.ReclaimClaim) error {
-	// a reference is only ever added after breaking the claim, so a held claim means none
 	_, err := d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
 		TableName:           &d.tableName,
 		Key:                 blobRefKey(claim.Digest),

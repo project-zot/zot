@@ -113,7 +113,8 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
 	imgStore.dedupeRebuildDone.Store(true)
 
-	// Upgrade a store written by an earlier release before anything is served from it.
+	// Upgrade a store written by an earlier release before anything is served from it. A failed
+	// upgrade fails the store, rather than serving a half-moved layout; the next start resumes it.
 	if dedupe && !imgStore.isCacheNil() && imgStore.lifecycle.KeepsContentInGlobalBlobstore() {
 		if err := imgStore.upgradeToGlobalBlobstore(); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to upgrade to global blobstore")
@@ -1668,6 +1669,7 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 			return err
 		}
 
+		// the first copy of a digest: its content goes to the global blobstore
 		if dstRecord == "" && is.lifecycle.KeepsContentInGlobalBlobstore() {
 			return is.dedupeFirstCopyToGlobalBlobstore(src, dstDigest, dst)
 		}
@@ -1840,6 +1842,7 @@ func (is *ImageStore) dedupeFirstCopyToGlobalBlobstore(src string, digest godige
 		return err
 	}
 
+	// recorded before the rename, so that a retry after a failed rename links to it
 	if err := is.cache.PutBlob(digest, globalBlobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", globalBlobPath).Str("component", "dedupe").
 			Msg("failed to insert blob record")
@@ -1856,7 +1859,7 @@ func (is *ImageStore) dedupeFirstCopyToGlobalBlobstore(src string, digest godige
 
 	if err := is.cache.PutBlob(digest, dst); err != nil {
 		// dst holds the content already, as a hardlink of the origin; failing the upload
-		// would report an error for a blob that exists. The dedupe walk records it later.
+		// would report an error for a blob that exists. The next dedupe walk records it.
 		is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
 			Msg("failed to insert blob record after move; leaving blob committed")
 	}

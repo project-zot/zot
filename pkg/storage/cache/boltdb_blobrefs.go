@@ -276,7 +276,6 @@ func (d *BoltDBDriver) FinishReclaim(claim storageTypes.ReclaimClaim) error {
 			return err
 		}
 
-		// a reference is only ever added after breaking the claim, so a held claim means none
 		if record == nil {
 			return zerr.ErrReclaimClaimLost
 		}
