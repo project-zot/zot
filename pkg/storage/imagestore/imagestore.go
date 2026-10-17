@@ -107,8 +107,14 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		cache:       cacheDriver,
 		compat:      compat,
 		events:      recorder,
-		lifecycle:   newBlobLifecycle(storeDriver, rootDir, metrics, log),
 	}
+
+	lifecycleDeps := blobLifecycleDeps{storeDriver: storeDriver, rootDir: rootDir, metrics: metrics, log: log}
+	if !imgStore.isCacheNil() {
+		lifecycleDeps.refs = cacheDriver
+	}
+
+	imgStore.lifecycle = newBlobLifecycle(lifecycleDeps)
 
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
 	imgStore.dedupeRebuildDone.Store(true)
