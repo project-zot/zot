@@ -477,6 +477,12 @@
       "end": 11519
     }
   },
+  "blackbox/upgrade_s3.bats": {
+    "zot": {
+      "begin": 11670,
+      "end": 11679
+    }
+  },
   "blackbox/dynamic_tls.bats": {
     "zot": {
       "begin": 11520,
