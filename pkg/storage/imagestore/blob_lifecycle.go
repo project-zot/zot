@@ -101,8 +101,7 @@ type blobLifecycle interface { //nolint:interfacebloat
 	RepairSharedContent(uploadPath, originPath string) error
 
 	// The methods below serve the global blobstore (GlobalBlobsRepo), which holds the one
-	// copy of each deduped blob. They keep the names and meaning they have in the common
-	// blobstore refactor (#4137).
+	// copy of each deduped blob.
 
 	// PromoteCandidate makes the global blobstore copy at dstPath out of a repo's copy at
 	// srcPath, making it the canonical copy for that digest. Local: hardlink (cheap, same
@@ -376,6 +375,7 @@ func (r *remoteSharedBlobLifecycle) RepairSharedContent(uploadPath, originPath s
 }
 
 func (r *remoteSharedBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
+	// a copy, not a Move: the repo copy at srcPath is still served until it is replaced
 	blobReader, err := r.storeDriver.Reader(srcPath, 0)
 	if err != nil {
 		return err

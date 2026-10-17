@@ -63,7 +63,8 @@ type BlobRefIndex interface {
 	ClaimReclaim(digest godigest.Digest) (ReclaimClaim, error)
 
 	// FinishReclaim deletes the record of claim's digest, once its payload is deleted. It fails
-	// with ErrReclaimClaimLost when claim is no longer held.
+	// with ErrReclaimClaimLost when claim is no longer held. A held claim means no owners: a
+	// reference can only be added once the claim is broken.
 	FinishReclaim(claim ReclaimClaim) error
 
 	// AbandonReclaim drops claim and keeps the record. It does nothing when claim is no longer held.

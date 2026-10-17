@@ -1,7 +1,7 @@
 package imagestore
 
 // The one-time upgrade of a store from the per-repo blob layout of earlier releases to the
-// global blobstore. Names follow the common blobstore refactor (#4137).
+// global blobstore.
 
 import (
 	"path"
