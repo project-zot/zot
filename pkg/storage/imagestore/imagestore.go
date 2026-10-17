@@ -121,10 +121,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 
 	// Upgrade a store written by an earlier release before anything is served from it. A failed
 	// upgrade fails the store, rather than serving a half-moved layout; the next start resumes it.
-	// Remote stores keep their earlier layout until the remote upgrade lands: their pushes already
-	// go to the global blobstore, and their earlier origins stay readable meanwhile.
-	if dedupe && !imgStore.isCacheNil() && imgStore.lifecycle.KeepsContentInGlobalBlobstore() &&
-		storeDriver.Name() == storageConstants.LocalStorageDriverName {
+	if dedupe && !imgStore.isCacheNil() && imgStore.lifecycle.KeepsContentInGlobalBlobstore() {
 		if err := imgStore.upgradeToGlobalBlobstore(); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to upgrade to global blobstore")
 
