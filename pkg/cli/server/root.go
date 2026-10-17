@@ -72,6 +72,9 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 		Long:    "`serve` stores and distributes OCI images",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Do not show usage on errors which are not related to command line arguments
+			cmd.SilenceUsage = true
+
 			logger := zlog.NewLogger("info", "")
 
 			if len(args) > 0 {
@@ -92,10 +95,20 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 
 			defer hotReloader.Stop()
 
-			initShutDownRoutine(ctlr, hotReloader)
+			shutdownDone := initShutDownRoutine(ctlr, hotReloader)
 
 			if err := ctlr.Run(); err != nil {
+				// Serve returns ErrServerClosed as soon as a signal starts the shutdown;
+				// wait for in-flight requests to finish and for the controller to close.
+				if errors.Is(err, http.ErrServerClosed) {
+					<-shutdownDone
+
+					return nil
+				}
+
 				logger.Error().Err(err).Msg("failed to start controller, exiting")
+
+				return err
 			}
 
 			return nil
