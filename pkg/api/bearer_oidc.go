@@ -2,17 +2,25 @@ package api
 
 import (
 	"context"
+	"crypto"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/sync/singleflight"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -20,10 +28,10 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
-// oidcProviderRefreshInterval defines the target interval for refreshing the public keys.
-// With a 1 minute interval, repeated calls will generally reuse cached keys and only trigger
-// a refresh roughly once per minute, but this is best-effort and not a strict upper bound.
+// oidcProviderRefreshInterval defines the target interval for refreshing discovery metadata and signing keys.
 const oidcProviderRefreshInterval = 1 * time.Minute
+
+const oidcHTTPTimeout = 10 * time.Second
 
 var bearerOIDCTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
 
@@ -48,6 +56,92 @@ type oidcProvider struct {
 	verifier         *oidc.IDTokenVerifier
 	verifierMu       sync.RWMutex
 	verifierDeadline time.Time
+	refreshDone      chan struct{}
+}
+
+// refreshedOIDCKeySet holds an issuer's signing keys. The last successful fetch is the only key set
+// trusted: a token signed by a key it lacks fetches the keys again, and that fetch replaces the set,
+// so keys the issuer removed stop validating tokens. A failed fetch keeps the previous set.
+type refreshedOIDCKeySet struct {
+	jwksURL string
+	fetch   func(ctx context.Context, jwksURL string) (*cachedOIDCKeySet, error)
+	fetches singleflight.Group
+
+	mu      sync.RWMutex
+	current *cachedOIDCKeySet
+}
+
+type cachedOIDCKeySet struct {
+	keys []jose.JSONWebKey
+}
+
+func (keySet *cachedOIDCKeySet) VerifySignature(ctx context.Context, token string) ([]byte, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("%w: expected three segments", zerr.ErrInvalidBearerToken)
+	}
+
+	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("parsing jwt header: %w", err)
+	}
+
+	var header struct {
+		KeyID string `json:"kid"`
+	}
+	if err := json.Unmarshal(headerJSON, &header); err != nil {
+		return nil, fmt.Errorf("parsing jwt header: %w", err)
+	}
+
+	publicKeys := make([]crypto.PublicKey, 0, len(keySet.keys))
+	for _, key := range keySet.keys {
+		if header.KeyID == "" || key.KeyID == header.KeyID {
+			publicKeys = append(publicKeys, key.Key)
+		}
+	}
+
+	return (&oidc.StaticKeySet{PublicKeys: publicKeys}).VerifySignature(ctx, token)
+}
+
+func (keySet *refreshedOIDCKeySet) VerifySignature(ctx context.Context, token string) ([]byte, error) {
+	keySet.mu.RLock()
+	current := keySet.current
+	keySet.mu.RUnlock()
+
+	payload, err := current.VerifySignature(ctx, token)
+	if err == nil {
+		return payload, nil
+	}
+
+	// Concurrent callers share one fetch. It outlives a caller that gives up, and the provider's
+	// HTTP client timeout bounds it.
+	fetched := keySet.fetches.DoChan("", func() (any, error) {
+		keys, err := keySet.fetch(context.WithoutCancel(ctx), keySet.jwksURL)
+		if err != nil {
+			return nil, err
+		}
+
+		keySet.mu.Lock()
+		keySet.current = keys
+		keySet.mu.Unlock()
+
+		return nil, nil //nolint:nilnil // the result is keySet.current
+	})
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-fetched:
+		if result.Err != nil {
+			return nil, fmt.Errorf("%w; failed to refresh signing keys: %w", err, result.Err)
+		}
+	}
+
+	keySet.mu.RLock()
+	current = keySet.current
+	keySet.mu.RUnlock()
+
+	return current.VerifySignature(ctx, token)
 }
 
 // NewOIDCBearerAuthorizer creates a new OIDC bearer token authorizer.
@@ -93,9 +187,30 @@ func (a *OIDCBearerAuthorizer) AuthenticateRequest(ctx context.Context,
 // Authenticate validates an OIDC token and extracts the identity.
 // Returns the username and groups extracted from the token claims.
 func (a *OIDCBearerAuthorizer) Authenticate(ctx context.Context, header string) (*cel.ClaimResult, error) {
+	if header == "" {
+		return nil, zerr.ErrNoBearerToken
+	}
+	tokenString := bearerOIDCTokenMatch.ReplaceAllString(header, "$1")
+	if tokenString == "" || tokenString == header {
+		return nil, zerr.ErrInvalidBearerToken
+	}
+	claims := jwt.MapClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(tokenString, claims); err != nil {
+		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
+	}
+	issuer, err := claims.GetIssuer()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
+	}
+
 	errs := make([]error, 0, len(a.providers))
 
 	for _, provider := range a.providers {
+		// The unverified issuer only selects candidates; each candidate still verifies the token.
+		googleIssuerAlias := provider.issuer == "https://accounts.google.com" && issuer == "accounts.google.com"
+		if !provider.skipIssuerCheck && provider.issuer != issuer && !googleIssuerAlias {
+			continue
+		}
 		res, err := provider.authenticate(ctx, header)
 		if err == nil {
 			return res, nil
@@ -136,7 +251,7 @@ func newOIDCProvider(oidcConfig *config.BearerOIDCConfig, log log.Logger) (*oidc
 		}
 	}
 
-	var httpClient *http.Client
+	httpClient := &http.Client{Timeout: oidcHTTPTimeout}
 	if len(caCert) > 0 {
 		certPool := x509.NewCertPool()
 		if !certPool.AppendCertsFromPEM(caCert) {
@@ -151,7 +266,7 @@ func newOIDCProvider(oidcConfig *config.BearerOIDCConfig, log log.Logger) (*oidc
 			RootCAs:    certPool,
 			MinVersion: tls.VersionTLS12,
 		}
-		httpClient = &http.Client{Transport: testTransport}
+		httpClient.Transport = testTransport
 	}
 
 	return &oidcProvider{
@@ -212,35 +327,168 @@ func (a *oidcProvider) authenticate(ctx context.Context, header string) (*cel.Cl
 
 // getVerifier retrieves or refreshes the oidc.IDTokenVerifier as needed.
 func (o *oidcProvider) getVerifier(ctx context.Context) (*oidc.IDTokenVerifier, error) {
-	// If the verifier is still fresh, return it.
-	o.verifierMu.RLock()
-	verifier, deadline := o.verifier, o.verifierDeadline
-	o.verifierMu.RUnlock()
-	if verifier != nil && time.Now().Before(deadline) {
+	o.verifierMu.Lock()
+	verifier := o.verifier
+	done := o.refreshDone
+	if done == nil && (verifier == nil || !time.Now().Before(o.verifierDeadline)) {
+		done = make(chan struct{})
+		o.refreshDone = done
+
+		go o.refreshVerifier(context.WithoutCancel(ctx), done)
+	}
+	o.verifierMu.Unlock()
+
+	if verifier != nil {
 		return verifier, nil
 	}
 
-	// Time to refresh the verifier.
-	if hc := o.httpClient; hc != nil {
-		ctx = oidc.ClientContext(ctx, hc)
+	// Only initial discovery blocks authentication. Other requests share the refresh.
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+		o.verifierMu.RLock()
+		defer o.verifierMu.RUnlock()
+		if o.verifier == nil {
+			return nil, fmt.Errorf("%w: failed to discover OIDC provider from issuer %s",
+				zerr.ErrInvalidOrUnreachableOIDCIssuer, o.issuer)
+		}
+
+		return o.verifier, nil
 	}
-	p, err := oidc.NewProvider(ctx, o.issuer)
+}
+
+func (o *oidcProvider) refreshVerifier(ctx context.Context, done chan struct{}) {
+	ctx, cancel := context.WithTimeout(ctx, oidcHTTPTimeout)
+	defer cancel()
+	ctx = oidc.ClientContext(ctx, o.httpClient)
+	provider, err := oidc.NewProvider(ctx, o.issuer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to refresh OIDC provider from issuer %s: %w", o.issuer, err)
+		o.log.Err(err).Str("issuer", o.issuer).Msg("failed to refresh OIDC provider")
+
+		o.finishVerifierRefresh(done, nil)
+
+		return
 	}
-	verifier = p.Verifier(&oidc.Config{
-		ClientID:          "", // We'll check audiences manually
-		SkipIssuerCheck:   o.skipIssuerCheck,
-		SkipClientIDCheck: true, // Check audiences manually to support multiple
-		SkipExpiryCheck:   false,
-		Now:               time.Now,
+
+	var current oidc.ProviderConfig
+	if err := provider.Claims(&current); err != nil {
+		o.log.Err(err).Msg("failed to read OIDC provider metadata")
+
+		o.finishVerifierRefresh(done, nil)
+
+		return
+	}
+
+	currentKeySet, err := o.fetchKeySet(ctx, current.JWKSURL)
+	if err != nil {
+		o.log.Err(err).Str("issuer", o.issuer).Msg("failed to refresh OIDC provider signing keys")
+
+		o.finishVerifierRefresh(done, nil)
+
+		return
+	}
+	keySet := &refreshedOIDCKeySet{
+		jwksURL: current.JWKSURL,
+		fetch:   o.fetchKeySet,
+		current: currentKeySet,
+	}
+
+	verifier := oidc.NewVerifier(o.issuer, keySet, &oidc.Config{
+		ClientID:             "", // We'll check audiences manually
+		SkipIssuerCheck:      o.skipIssuerCheck,
+		SkipClientIDCheck:    true, // Check audiences manually to support multiple
+		SkipExpiryCheck:      false,
+		Now:                  time.Now,
+		SupportedSigningAlgs: supportedOIDCSigningAlgorithms(current.Algorithms),
 	})
 
-	// Update the verifier and deadline.
+	o.finishVerifierRefresh(done, verifier)
+}
+
+func supportedOIDCSigningAlgorithms(advertised []string) []string {
+	supported := make([]string, 0, len(advertised))
+
+	for _, algorithm := range advertised {
+		switch algorithm {
+		case oidc.RS256, oidc.RS384, oidc.RS512,
+			oidc.ES256, oidc.ES384, oidc.ES512,
+			oidc.PS256, oidc.PS384, oidc.PS512,
+			oidc.EdDSA:
+			supported = append(supported, algorithm)
+		}
+	}
+
+	return supported
+}
+
+func (o *oidcProvider) fetchKeySet(ctx context.Context, jwksURL string) (*cachedOIDCKeySet, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create JWKS request: %w", err)
+	}
+	request.Header.Set("Cache-Control", "no-cache")
+
+	response, err := o.httpClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch JWKS: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: %s", zerr.ErrOIDCJWKSFetchFailed, response.Status)
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read JWKS response: %w", err)
+	}
+
+	var rawKeySet struct {
+		Keys []json.RawMessage `json:"keys"`
+	}
+	if err := json.Unmarshal(body, &rawKeySet); err != nil {
+		return nil, fmt.Errorf("failed to decode JWKS: %w", err)
+	}
+
+	keySet := &cachedOIDCKeySet{keys: make([]jose.JSONWebKey, 0, len(rawKeySet.Keys))}
+	for _, rawKey := range rawKeySet.Keys {
+		// Like go-oidc, skip a key for an unsupported algorithm before decoding it: go-jose cannot
+		// decode some of them (ES256K's secp256k1 curve), which must not fail the whole set.
+		var metadata struct {
+			Algorithm string `json:"alg"`
+		}
+		if err := json.Unmarshal(rawKey, &metadata); err != nil {
+			return nil, fmt.Errorf("failed to decode JWK: %w", err)
+		}
+		if metadata.Algorithm != "" && len(supportedOIDCSigningAlgorithms([]string{metadata.Algorithm})) == 0 {
+			continue
+		}
+
+		var key jose.JSONWebKey
+		if err := json.Unmarshal(rawKey, &key); err != nil {
+			if errors.Is(err, jose.ErrUnsupportedKeyType) {
+				continue
+			}
+
+			return nil, fmt.Errorf("failed to decode JWK: %w", err)
+		}
+
+		if key.IsPublic() {
+			keySet.keys = append(keySet.keys, key)
+		}
+	}
+
+	return keySet, nil
+}
+
+func (o *oidcProvider) finishVerifierRefresh(done chan struct{}, verifier *oidc.IDTokenVerifier) {
 	o.verifierMu.Lock()
-	o.verifier = verifier
+	if verifier != nil {
+		o.verifier = verifier
+	}
+	o.refreshDone = nil
 	o.verifierDeadline = time.Now().Add(oidcProviderRefreshInterval)
 	o.verifierMu.Unlock()
-
-	return verifier, nil
+	close(done)
 }

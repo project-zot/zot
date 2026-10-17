@@ -196,6 +196,7 @@ var (
 	ErrTokenRequestBodyTooLarge         = errors.New("token request body too large")
 	ErrInvalidWrappedBearerCredential   = errors.New("invalid wrapped bearer credential")
 	ErrInvalidOrUnreachableOIDCIssuer   = errors.New("invalid or unreachable oidc issuer")
+	ErrOIDCJWKSFetchFailed              = errors.New("failed to fetch OIDC JWKS")
 	ErrInsufficientScope                = errors.New("bearer token does not have sufficient scope")
 	ErrCouldNotLoadPublicKey            = errors.New("failed to load public key")
 	ErrEventTypeEmpty                   = errors.New("event type empty")
