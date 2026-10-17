@@ -79,7 +79,7 @@ jobs:
   floci-gc-referrers-stress-s3:
     name: floci GC(with referrers) on S3(floci) with short interval
     needs: build-binaries
-    runs-on: cncf-ubuntu-16-64-x86
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,7 +123,7 @@ jobs:
   floci-gc-stress-s3:
     name: floci GC(without referrers) on S3(floci) with short interval
     needs: build-binaries
-    runs-on: cncf-ubuntu-16-64-x86
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
