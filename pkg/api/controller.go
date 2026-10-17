@@ -744,6 +744,11 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 
 	// Enable running garbage-collect periodically for DefaultStore
 	storageConfig := conf.CopyStorageConfig()
+
+	// not gated on GC: blobs deleted through the API need their shared payload reclaimed too
+	gc.RunGlobalBlobReclaimPeriodically(storeController.DefaultStore, storageConfig.GCDelay,
+		storageConfig.GCInterval, taskScheduler, logger)
+
 	if storageConfig.GC {
 		gc := gc.NewGarbageCollect(storeController.DefaultStore, metaDB, gc.Options{
 			Delay:             storageConfig.GCDelay,
@@ -759,6 +764,9 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 	// Handle subpaths
 	if storageConfig.SubPaths != nil {
 		for route, subStorageConfig := range storageConfig.SubPaths {
+			gc.RunGlobalBlobReclaimPeriodically(storeController.SubStore[route], subStorageConfig.GCDelay,
+				subStorageConfig.GCInterval, taskScheduler, logger)
+
 			// Enable running garbage-collect periodically for subImageStore
 			if subStorageConfig.GC {
 				gc := gc.NewGarbageCollect(storeController.SubStore[route], metaDB,

@@ -17,6 +17,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
@@ -697,56 +698,18 @@ func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
 }
 
 func TestBlobLifecycleShouldDeleteGlobalBlobRemote(t *testing.T) {
-	Convey("Remote ShouldDeleteGlobalBlob", t, func() {
+	Convey("Remote ShouldDeleteGlobalBlob never deletes inline: the reclaim sweep does, under a claim", t, func() {
 		lifecycle := newBlobLifecycle(blobLifecycleDeps{
 			storeDriver: &lifecycleStubDriver{nameFn: func() string { return constants.S3StorageDriverName }},
 			rootDir:     "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 		})
 
-		Convey("delete when digest is unreferenced", func() {
-			callbackCalled := false
-			digest := godigest.FromString("unreferenced")
-
-			deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
-				"ignored/path",
-				digest,
-				func(callbackDigest godigest.Digest) (bool, error) {
-					callbackCalled = true
-					So(callbackDigest, ShouldEqual, digest)
-
-					return false, nil
-				},
-			)
-			So(err, ShouldBeNil)
-			So(callbackCalled, ShouldBeTrue)
-			So(deleteDecision, ShouldBeTrue)
-		})
-
-		Convey("retain when digest is still referenced", func() {
-			deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
-				"ignored/path",
-				godigest.FromString("referenced"),
-				func(godigest.Digest) (bool, error) {
-					return true, nil
-				},
-			)
+		for _, referenced := range []bool{false, true} {
+			deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob("ignored/path", godigest.FromString("digest"),
+				func(godigest.Digest) (bool, error) { return referenced, nil })
 			So(err, ShouldBeNil)
 			So(deleteDecision, ShouldBeFalse)
-		})
-
-		Convey("callback errors are propagated", func() {
-			callbackErr := io.EOF
-
-			deleteDecision, err := lifecycle.ShouldDeleteGlobalBlob(
-				"ignored/path",
-				godigest.FromString("error-case"),
-				func(godigest.Digest) (bool, error) {
-					return false, callbackErr
-				},
-			)
-			So(errors.Is(err, callbackErr), ShouldBeTrue)
-			So(deleteDecision, ShouldBeFalse)
-		})
+		}
 	})
 }
 
@@ -780,3 +743,33 @@ func (f fileInfoWithSys) Mode() os.FileMode  { return 0 }
 func (f fileInfoWithSys) ModTime() time.Time { return time.Time{} }
 func (f fileInfoWithSys) IsDir() bool        { return false }
 func (f fileInfoWithSys) Sys() any           { return f.sys }
+
+// stallingDeleteDriver is a remote driver whose deletes do not return until their context ends.
+type stallingDeleteDriver struct {
+	lifecycleStubDriver
+}
+
+func (s *stallingDeleteDriver) DeleteContext(ctx context.Context, _ string) error {
+	<-ctx.Done()
+
+	return ctx.Err()
+}
+
+func TestDeleteClaimedPayloadDeadline(t *testing.T) {
+	Convey("A claimed payload delete is bounded by the claim's deadline", t, func() {
+		lifecycle := &remoteSharedBlobLifecycle{storeDriver: &stallingDeleteDriver{}}
+
+		Convey("a delete still running at the deadline is cancelled, not left to land later", func() {
+			start := time.Now()
+
+			err := lifecycle.deleteClaimedPayload("/root/_blobstore/blobs/sha256/x", start.Add(100*time.Millisecond))
+			So(errors.Is(err, context.DeadlineExceeded), ShouldBeTrue)
+			So(time.Since(start), ShouldBeLessThan, 5*time.Second)
+		})
+
+		Convey("a deadline already passed deletes nothing", func() {
+			err := lifecycle.deleteClaimedPayload("/root/_blobstore/blobs/sha256/x", time.Now().Add(-time.Second))
+			So(errors.Is(err, zerr.ErrReclaimClaimLost), ShouldBeTrue)
+		})
+	})
+}
