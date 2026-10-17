@@ -112,10 +112,11 @@ type blobLifecycle interface { //nolint:interfacebloat
 	PromoteCandidate(srcPath, dstPath string) error
 
 	// RemoveMigratedRepoBlob runs once per pre-existing repo copy during the one-time
-	// upgrade to the global blobstore, after PromoteCandidate has made the canonical copy:
-	// every repo copy that holds the content itself must go, so the content exists once.
-	// Local: no-op, repo copies are hardlinks of the canonical copy's inode. Remote: deletes
-	// repoBlobPath; one already gone is not an error.
+	// upgrade to the global blobstore, after PromoteCandidate has made the canonical copy and
+	// the repo copy is recorded as an owner: every repo copy that holds the content itself
+	// must give it up, so the content exists once. Local: no-op, repo copies are hardlinks of
+	// the canonical copy's inode. Remote: a copy with content is replaced by a placeholder;
+	// one already a placeholder, or gone, is left as it is.
 	RemoveMigratedRepoBlob(globalBlobPath, repoBlobPath string) error
 
 	// ShouldDeleteGlobalBlob reports whether the global blobstore copy of digest at
@@ -490,19 +491,28 @@ func (r *remoteSharedBlobLifecycle) abortWrite(blobWriter driver.FileWriter, blo
 	}
 }
 
-func (r *remoteSharedBlobLifecycle) RemoveMigratedRepoBlob(_, repoBlobPath string) error {
-	// A migration re-run after a crash revisits repo objects it already removed, which a
-	// driver may report as a plain PathNotFoundError: either way the object is gone.
-	err := r.storeDriver.Delete(repoBlobPath)
-	if err == nil || errclass.IsStorageObjectMissing(err) {
+func (r *remoteSharedBlobLifecycle) RemoveMigratedRepoBlob(globalBlobPath, repoBlobPath string) error {
+	binfo, err := r.storeDriver.Stat(repoBlobPath)
+	if err != nil {
+		// A migration re-run after a crash, or a repo deleted meanwhile, may find the copy gone,
+		// which a driver may report as a plain PathNotFoundError: there is nothing to give up.
+		if errclass.IsStorageObjectMissing(err) {
+			return nil
+		}
+
+		if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
+			return nil
+		}
+
+		return err
+	}
+
+	// already a placeholder, as later copies of an earlier release, or a re-run, left it
+	if binfo.Size() == 0 {
 		return nil
 	}
 
-	if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
-		return nil
-	}
-
-	return err
+	return linkDistinct(r.storeDriver, globalBlobPath, repoBlobPath)
 }
 
 func (r *remoteSharedBlobLifecycle) ShouldDeleteGlobalBlob(_ string, _ godigest.Digest,
