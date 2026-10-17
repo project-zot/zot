@@ -57,6 +57,16 @@ func (r *remoteSharedBlobLifecycle) DeleteBlobRef(digest godigest.Digest, repoPa
 		return err
 	}
 
+	// Only a payload the index records is for the sweep: a digest it does not know, such as a
+	// copy pushed with dedupe off, has none, and a marker for it would never be cleared.
+	if _, err := r.refs.GetReferences(digest); err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return nil
+		}
+
+		return err
+	}
+
 	return r.markGlobalBlobReclaimable(digest)
 }
 
