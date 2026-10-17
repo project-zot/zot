@@ -1107,7 +1107,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "storage temporarily unavailable or synchronization failed",
+                        "description": "storage temporarily unavailable",
                         "schema": {
                             "type": "string"
                         }
