@@ -1,6 +1,8 @@
 package imagestore
 
 import (
+	"time"
+
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -21,4 +23,11 @@ func UpgradeToGlobalBlobstore(store storageTypes.ImageStore) error {
 	imgStore, _ := store.(*ImageStore)
 
 	return imgStore.upgradeToGlobalBlobstore()
+}
+
+// SetLinkerClaimWait shortens how long a push to a remote store waits for a reclaim claim to clear.
+func SetLinkerClaimWait(store storageTypes.ImageStore, wait time.Duration) {
+	imgStore, _ := store.(*ImageStore)
+	lifecycle, _ := imgStore.lifecycle.(*remoteSharedBlobLifecycle)
+	lifecycle.claimWait = wait
 }
