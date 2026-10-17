@@ -546,5 +546,11 @@
       "begin": 11620,
       "end": 11629
     }
+  },
+  "blackbox/modelpack.bats": {
+    "zot": {
+      "begin": 11660,
+      "end": 11669
+    }
   }
 }
