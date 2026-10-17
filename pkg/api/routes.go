@@ -454,7 +454,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Success 200 {string} string "ok"
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
-// @Failure 503 {string} string "storage temporarily unavailable or synchronization failed"
+// @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodOptions {
@@ -495,13 +495,11 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrManifestNotFound) {
+		} else if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrSyncInternal) {
+			// Push clients use HEAD to check existence before uploading. An upstream sync
+			// failure must not prevent uploading a manifest that is missing locally.
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrSyncInternal) {
-			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN)
-			e.Message = zerr.ErrSyncInternal.Error()
-			zcommon.WriteJSON(response, http.StatusServiceUnavailable, apiErr.NewErrorList(e))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)

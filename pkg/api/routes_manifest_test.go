@@ -550,10 +550,8 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 }
 
 func TestCheckManifestOnDemandSyncErrors(t *testing.T) {
-	Convey("CheckManifest maps opaque sync sentinels only when the cache is empty", t, func() {
-		const reference = "v1.0"
-
-		newReq := func() *http.Request {
+	Convey("CheckManifest allows pushes despite upstream sync failures", t, func() {
+		newReq := func(reference string) *http.Request {
 			req := httptest.NewRequestWithContext(
 				context.Background(),
 				http.MethodHead,
@@ -567,27 +565,84 @@ func TestCheckManifestOnDemandSyncErrors(t *testing.T) {
 			})
 		}
 
-		Convey("returns 503 when sync reports an internal failure", func() {
+		for _, reference := range []string{"v1.0", godigest.FromString("manifest").String()} {
+			for _, localErr := range []error{
+				zerr.ErrRepoNotFound, zerr.ErrManifestNotFound, zerr.ErrStorageTransient, zerr.ErrStoragePermanent, nil,
+			} {
+				Convey(fmt.Sprintf("reference %s with local error %v", reference, localErr), func() {
+					localManifest := []byte(`{"schemaVersion":2}`)
+					localDigest := godigest.FromBytes(localManifest)
+					syncCalls := 0
+					handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
+						GetImageManifestFn: func(_, _ string) ([]byte, godigest.Digest, string, error) {
+							if localErr != nil {
+								return nil, "", "", localErr
+							}
+
+							return localManifest, localDigest, ispec.MediaTypeImageManifest, nil
+						},
+					}, &mockSyncOnDemand{
+						syncImageFn: func(_ context.Context, _, _ string) error {
+							syncCalls++
+
+							return zerr.ErrSyncInternal
+						},
+					})
+
+					rec := httptest.NewRecorder()
+					handler.CheckManifest(rec, newReq(reference))
+
+					resp := rec.Result()
+					defer resp.Body.Close()
+
+					body, readErr := io.ReadAll(resp.Body)
+					So(readErr, ShouldBeNil)
+
+					switch localErr { //nolint:errorlint // test cases use exact sentinels
+					case zerr.ErrRepoNotFound, zerr.ErrManifestNotFound:
+						So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+						So(string(body), ShouldContainSubstring, "MANIFEST_UNKNOWN")
+						So(string(body), ShouldNotContainSubstring, zerr.ErrSyncInternal.Error())
+					case zerr.ErrStorageTransient:
+						So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
+					case zerr.ErrStoragePermanent:
+						So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+					default:
+						So(resp.StatusCode, ShouldEqual, http.StatusOK)
+						So(resp.Header.Get(constants.DistContentDigestKey), ShouldEqual, localDigest.String())
+					}
+
+					if localErr != nil || reference == "v1.0" {
+						So(syncCalls, ShouldEqual, 1)
+					} else {
+						So(syncCalls, ShouldEqual, 0)
+					}
+				})
+			}
+		}
+
+		Convey("returns 404 when a streaming sync fails and the manifest is missing", func() {
 			handler := newSyncTestRouteHandler(t, mocks.MockedImageStore{
 				GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
 					return nil, "", "", zerr.ErrManifestNotFound
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
-					return zerr.ErrSyncInternal
+				isStreamingEnabledForRepoFn: func(_ string) bool { return true },
+				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
+					return nil, fmt.Errorf("%w: %w", zerr.ErrSyncNotStreamed, zerr.ErrSyncInternal)
 				},
 			})
 
 			rec := httptest.NewRecorder()
-			handler.CheckManifest(rec, newReq())
+			handler.CheckManifest(rec, newReq("v1.0"))
 
 			resp := rec.Result()
 			defer resp.Body.Close()
 
 			body, readErr := io.ReadAll(resp.Body)
 			So(readErr, ShouldBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
-			So(string(body), ShouldContainSubstring, zerr.ErrSyncInternal.Error())
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+			So(string(body), ShouldContainSubstring, "MANIFEST_UNKNOWN")
 		})
 	})
 }

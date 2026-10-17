@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path"
@@ -345,6 +346,52 @@ func makeInsecureDownstreamServerFixedPort(
 	dctlr := api.NewController(destConfig)
 
 	return dctlr, destBaseURL, destDir, client
+}
+
+func TestPushWithOnDemandSyncAuthFailure(t *testing.T) {
+	Convey("Upstream authentication failures do not block local pushes", t, func() {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="upstream"`)
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer upstream.Close()
+
+		enabled, tlsVerify := true, false
+		controller, _, client := makeDownstreamServer(t, false, &syncconf.Config{
+			Enable: &enabled,
+			Registries: []syncconf.RegistryConfig{{
+				URLs:       []string{upstream.URL},
+				OnDemand:   true,
+				TLSVerify:  &tlsVerify,
+				MaxRetries: &maxRetries,
+			}},
+		})
+		manager := test.NewControllerManager(controller)
+		baseURL := manager.StartAndWait()
+		defer manager.StopServer()
+
+		image := CreateDefaultImage()
+
+		for i, reference := range []string{image.DigestStr(), "latest"} {
+			repo := fmt.Sprintf("local/image%d", i)
+			manifestURL := baseURL + "/v2/" + repo + "/manifests/" + reference
+
+			response, err := client.R().Get(manifestURL)
+			So(err, ShouldBeNil)
+			So(response.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
+
+			response, err = client.R().Head(manifestURL)
+			So(err, ShouldBeNil)
+			So(response.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			So(UploadImage(image, baseURL, repo, reference), ShouldBeNil)
+
+			response, err = client.R().Head(manifestURL)
+			So(err, ShouldBeNil)
+			So(response.StatusCode(), ShouldEqual, http.StatusOK)
+			So(response.Header().Get(constants.DistContentDigestKey), ShouldEqual, image.DigestStr())
+		}
+	})
 }
 
 func TestOnDemand(t *testing.T) {
