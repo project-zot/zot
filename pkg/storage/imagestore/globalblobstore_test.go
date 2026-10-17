@@ -219,29 +219,16 @@ func TestLocalGlobalBlobstore(t *testing.T) {
 		So(recordPath(dir, record), ShouldEqual, globalBlobPath)
 	})
 
-	Convey("Without the global blobstore in use, pushes never create it", t, func() {
-		Convey("remote storage keeps its origin in a repo until it moves too", func() {
-			dir := t.TempDir()
-			imgStore, _ := newLocalDedupeStoreAt(dir, &remoteNamedDriver{Driver: local.New(true)})
+	Convey("A local store with dedupe off stores each copy in its repo, never in the global blobstore", t, func() {
+		dir := t.TempDir()
+		imgStore := imagestore.NewImageStore(dir, dir, false, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
 
-			_, _, err := imgStore.FullBlobUpload(context.Background(), "repo-a", bytes.NewReader(content), digest)
-			So(err, ShouldBeNil)
+		_, _, err := imgStore.FullBlobUpload(context.Background(), "repo-a", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
 
-			_, err = os.Stat(path.Join(dir, storageConstants.GlobalBlobsRepo))
-			So(os.IsNotExist(err), ShouldBeTrue)
-		})
-
-		Convey("a local store with dedupe off stores each copy in its repo", func() {
-			dir := t.TempDir()
-			imgStore := imagestore.NewImageStore(dir, dir, false, true, zlog.NewTestLogger(),
-				monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
-
-			_, _, err := imgStore.FullBlobUpload(context.Background(), "repo-a", bytes.NewReader(content), digest)
-			So(err, ShouldBeNil)
-
-			_, err = os.Stat(path.Join(dir, storageConstants.GlobalBlobsRepo))
-			So(os.IsNotExist(err), ShouldBeTrue)
-		})
+		_, err = os.Stat(path.Join(dir, storageConstants.GlobalBlobsRepo))
+		So(os.IsNotExist(err), ShouldBeTrue)
 	})
 }
 

@@ -3,11 +3,13 @@ package imagestore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path"
 	"reflect"
+	"time"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -131,11 +133,36 @@ type blobLifecycle interface { //nolint:interfacebloat
 	IncludeRepoInMountCandidates(repo string) bool
 
 	// KeepsContentInGlobalBlobstore reports whether deduped content lives in the global
-	// blobstore, with repo copies only referring to it. Local: yes, repo copies are
-	// hardlinks of the blobstore copy. Remote: not yet, the origin is still a repo's copy;
-	// this goes away once remote storage moves to the global blobstore too.
+	// blobstore, with repo copies only referring to it. Both do now (local repo copies are
+	// hardlinks of the payload, remote ones placeholders); this goes away once nothing still
+	// handles the earlier remote layout, where the origin was a repo's copy.
 	KeepsContentInGlobalBlobstore() bool
+
+	// Own records that repoPath owns the global blobstore payload of digest. It runs before
+	// anything relies on the payload, so that from then on no reclaim sweep deletes it.
+	// Local: nothing to record, the hardlink keeps the payload. Remote: a reference in the
+	// cache; while a sweep holds a claim on digest, it waits for the claim to clear, up to
+	// linkerClaimWait, then fails with a transient error for the client to retry.
+	Own(digest godigest.Digest, repoPath string) error
+
+	// PromoteUpload makes the verified upload at uploadPath the global blobstore payload of
+	// digest, at globalBlobPath. Local: a hardlink, leaving the upload for CommitUpload.
+	// Remote: a move, which consumes the upload, and the payload is recorded in the cache.
+	PromoteUpload(digest godigest.Digest, uploadPath, globalBlobPath string) error
+
+	// CommitUpload makes repoPath the repo copy of the payload PromoteUpload just made.
+	// Local: the upload is renamed onto repoPath, by then the payload's inode. Remote: a
+	// placeholder, the upload being gone already.
+	CommitUpload(uploadPath, globalBlobPath, repoPath string) error
 }
+
+const (
+	// linkerClaimWait bounds how long Own waits for a reclaim sweep's claim to clear. A sweep
+	// holds one for as long as its payload delete may take, which is well under this.
+	linkerClaimWait = 30 * time.Second
+	// linkerClaimPoll is how often Own retries meanwhile.
+	linkerClaimPoll = 250 * time.Millisecond
+)
 
 // blobLifecycleDeps is what a blob lifecycle is built with.
 type blobLifecycleDeps struct {
@@ -156,7 +183,9 @@ func newBlobLifecycle(deps blobLifecycleDeps) blobLifecycle {
 		}
 	}
 
-	return &remoteSharedBlobLifecycle{storeDriver: deps.storeDriver, log: deps.log, refs: deps.refs}
+	return &remoteSharedBlobLifecycle{
+		storeDriver: deps.storeDriver, log: deps.log, refs: deps.refs, claimWait: linkerClaimWait,
+	}
 }
 
 // isEmptyContentDigest reports whether digest is the algorithm's hash of zero bytes.
@@ -298,6 +327,18 @@ func (l *localHardlinkBlobLifecycle) KeepsContentInGlobalBlobstore() bool {
 	return true
 }
 
+func (l *localHardlinkBlobLifecycle) Own(_ godigest.Digest, _ string) error {
+	return nil
+}
+
+func (l *localHardlinkBlobLifecycle) PromoteUpload(_ godigest.Digest, uploadPath, globalBlobPath string) error {
+	return linkDistinct(l.storeDriver, uploadPath, globalBlobPath)
+}
+
+func (l *localHardlinkBlobLifecycle) CommitUpload(uploadPath, _, repoPath string) error {
+	return l.storeDriver.Move(uploadPath, repoPath)
+}
+
 // hardLinkCount returns a file's hardlink count where the platform reports one. It reads the
 // Nlink field of the platform's stat structure by reflection, so it builds everywhere; where
 // there is no such field (Windows) it reports none, and callers fall back to the cache.
@@ -351,6 +392,7 @@ type remoteSharedBlobLifecycle struct {
 	storeDriver storageTypes.Driver
 	log         zlog.Logger
 	refs        storageTypes.BlobRefIndex
+	claimWait   time.Duration // linkerClaimWait, shorter in tests
 }
 
 func (r *remoteSharedBlobLifecycle) IsPlaceholder(digest godigest.Digest, binfo driver.FileInfo) bool {
@@ -473,7 +515,48 @@ func (r *remoteSharedBlobLifecycle) IncludeRepoInMountCandidates(repo string) bo
 }
 
 func (r *remoteSharedBlobLifecycle) KeepsContentInGlobalBlobstore() bool {
-	return false
+	return true
+}
+
+func (r *remoteSharedBlobLifecycle) Own(digest godigest.Digest, repoPath string) error {
+	// without a cache there is no index, and no other instance to coordinate with
+	if r.refs == nil {
+		return nil
+	}
+
+	deadline := time.Now().Add(r.claimWait)
+
+	for {
+		err := r.refs.AddReference(digest, repoPath)
+		if !errors.Is(err, zerr.ErrDigestClaimed) {
+			return err
+		}
+
+		// a sweep is deleting the payload: once it finishes, the push promotes its own upload
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%w: %w", zerr.ErrStorageTransient, err)
+		}
+
+		time.Sleep(linkerClaimPoll)
+	}
+}
+
+func (r *remoteSharedBlobLifecycle) PromoteUpload(digest godigest.Digest, uploadPath, globalBlobPath string) error {
+	if err := r.storeDriver.Move(uploadPath, globalBlobPath); err != nil {
+		return err
+	}
+
+	if r.refs == nil {
+		return nil
+	}
+
+	// the sweep only claims a digest whose payload is recorded, so it never deletes one it
+	// cannot know exists
+	return r.refs.RecordGlobal(digest)
+}
+
+func (r *remoteSharedBlobLifecycle) CommitUpload(_, globalBlobPath, repoPath string) error {
+	return linkDistinct(r.storeDriver, globalBlobPath, repoPath)
 }
 
 func (r *remoteSharedBlobLifecycle) ValidateBlobsDir(_ string) (bool, error) {
