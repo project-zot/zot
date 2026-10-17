@@ -1,7 +1,6 @@
 package imagestore
 
-// The global blobstore methods of blobLifecycle, with the tests they have in the common
-// blobstore refactor (#4137), adapted to this constructor.
+// Tests of the global blobstore methods of blobLifecycle.
 
 import (
 	"bytes"
@@ -539,7 +538,6 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 		})
 	})
 }
-
 
 func TestBlobLifecycleShouldDeleteGlobalBlobLocal(t *testing.T) {
 	Convey("Local ShouldDeleteGlobalBlob", t, func() {
