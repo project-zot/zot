@@ -38,7 +38,9 @@ import (
 // The lifecycle owns the placeholder model, so the image store never assumes it:
 //   - IsPlaceholder decides whether a read has to go through the cache to find the content,
 //     and which copies the dedupe and restore walks treat as placeholders.
-//   - HandOffContent keeps the content alive when the copy holding it is deleted.
+//   - HandOffContent keeps the content alive when the copy holding it is deleted, which only a
+//     store an earlier release wrote, opened with dedupe off and so never upgraded to the global
+//     blobstore, still has: there a repo's copy is the origin until the restore walk is done.
 //   - RepairSharedContent replaces wrong shared content with a verified upload.
 //   - DeletesCanDestroySharedContent decides whether deletes wait for the dedupe walk.
 //
@@ -85,7 +87,9 @@ type blobLifecycle interface { //nolint:interfacebloat
 
 	// DeletesCanDestroySharedContent reports whether deleting a blob the cache does not know
 	// about can remove content other repos still use, so that such deletes have to wait for
-	// the dedupe walk to have recorded every blob (see RunDedupeBlobs and deleteBlob).
+	// the dedupe walk to have recorded every blob (see RunDedupeBlobs and deleteBlob). Only a
+	// store an earlier release wrote, opened with dedupe off, can still have such a blob: an
+	// upgraded store keeps shared content in the global blobstore, never in a repo copy.
 	// Local: no, an inode with several hard links outlives any one of them. Remote: yes, a
 	// placeholder does not hold the content, which is stored once.
 	DeletesCanDestroySharedContent() bool
@@ -133,12 +137,6 @@ type blobLifecycle interface { //nolint:interfacebloat
 	// IncludeRepoInMountCandidates reports whether repo may be a source for cross-repo blob
 	// mounts. Both exclude the global blobstore, which is never a repository.
 	IncludeRepoInMountCandidates(repo string) bool
-
-	// KeepsContentInGlobalBlobstore reports whether deduped content lives in the global
-	// blobstore, with repo copies only referring to it. Both do now (local repo copies are
-	// hardlinks of the payload, remote ones placeholders); this goes away once nothing still
-	// handles the earlier remote layout, where the origin was a repo's copy.
-	KeepsContentInGlobalBlobstore() bool
 
 	// PutBlobRef records blobPath in the reference index for the global blobstore payload of
 	// digest. For the payload's own path, it records that the payload is there, which a reclaim
@@ -328,10 +326,6 @@ func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath strin
 
 func (l *localHardlinkBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
 	return repo != storageConstants.GlobalBlobsRepo
-}
-
-func (l *localHardlinkBlobLifecycle) KeepsContentInGlobalBlobstore() bool {
-	return true
 }
 
 func (l *localHardlinkBlobLifecycle) PutBlobRef(_ godigest.Digest, _ string) error {
@@ -527,10 +521,6 @@ func (r *remoteSharedBlobLifecycle) ShouldDeleteGlobalBlob(_ string, _ godigest.
 
 func (r *remoteSharedBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
 	return repo != storageConstants.GlobalBlobsRepo
-}
-
-func (r *remoteSharedBlobLifecycle) KeepsContentInGlobalBlobstore() bool {
-	return true
 }
 
 func (r *remoteSharedBlobLifecycle) PutBlobRef(digest godigest.Digest, blobPath string) error {
