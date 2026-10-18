@@ -12,14 +12,20 @@ const (
 	DefaultReclaimClaimLease = 5 * time.Minute
 )
 
+// Lock-wait metric labels for the two lock domains, the global blobstore and each repository.
+const (
+	RepoRLock       = "RepoRLock"
+	RepoRWLock      = "RepoRWLock"
+	BlobstoreRLock  = "BlobstoreRLock"
+	BlobstoreRWLock = "BlobstoreRWLock"
+)
+
 const (
 	// BlobUploadDir defines the upload directory for blob uploads.
 	BlobUploadDir           = ".uploads"
 	SchemaVersion           = 2
 	DefaultFilePerms        = 0o600
 	DefaultDirPerms         = 0o700
-	RLOCK                   = "RLock"
-	RWLOCK                  = "RWLock"
 	BlobsCache              = "blobs"
 	DuplicatesBucket        = "duplicates"
 	OriginalBucket          = "original"
