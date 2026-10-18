@@ -1580,6 +1580,12 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 
 	dst := is.BlobPath(repo, dstDigest)
 
+	if is.dedupe && !is.isCacheNil() {
+		if handled, err := is.dedupeBlobFastPath(context.Background(), src, dstDigest, repo, dst); handled || err != nil {
+			return err
+		}
+	}
+
 	// with dedupe, the upload may become, link to or repair a global blobstore payload
 	if is.dedupe && !is.isCacheNil() {
 		defer is.lockBlobstoreAndRepo(repo)()
@@ -1713,6 +1719,19 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 
 	dst := is.BlobPath(repo, dstDigest)
 
+	if is.dedupe && !is.isCacheNil() {
+		handled, err := is.dedupeBlobFastPath(ctx, src, dstDigest, repo, dst)
+		if err != nil {
+			return "", -1, err
+		}
+
+		if handled {
+			cleanupStaging = false
+
+			return uuid, nbytes, nil
+		}
+	}
+
 	// with dedupe, the upload may become, link to or repair a global blobstore payload
 	if is.dedupe && !is.isCacheNil() {
 		defer is.lockBlobstoreAndRepo(repo)()
@@ -1750,6 +1769,82 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 	cleanupStaging = false
 
 	return uuid, nbytes, nil
+}
+
+// dedupeBlobFastPath links the verified upload at src into repo when the store already holds
+// its content: the cache names a payload that exists and has the upload's size. That only reads
+// the payload, so it needs the blobstore's read lock, not its write lock, and pushes of known
+// content to different repos run side by side. It reports handled=false, having changed nothing
+// but possibly repo's layout and its ownership of digest, whenever DedupeBlob's write-locked path
+// is needed instead: a first copy, a stale cache record, or a payload to repair.
+func (is *ImageStore) dedupeBlobFastPath(ctx context.Context, src string, digest godigest.Digest, repo, dst string,
+) (bool, error) {
+	defer is.rlockBlobstoreAndLockRepo(repo)()
+
+	// repo-local, so the repo's write lock covers it, as on the write-locked path
+	if err := is.initRepo(ctx, repo); err != nil {
+		return false, err
+	}
+
+	if err := is.storeDriver.EnsureDir(path.Dir(dst)); err != nil {
+		is.log.Error().Str("directory", path.Dir(dst)).Err(err).Msg("failed to create dir")
+
+		return false, err
+	}
+
+	record, err := is.cache.GetBlob(digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	// owned before it is relied on, as in DedupeBlob; a sweep's claim makes this wait
+	if err := is.lifecycle.PutBlobRef(digest, dst); err != nil {
+		return false, err
+	}
+
+	record = is.cacheRecordPath(record)
+
+	recordInfo, err := is.storeDriver.Stat(record)
+	if err != nil {
+		// a stale record is healed on the write-locked path
+		return false, nil //nolint:nilerr
+	}
+
+	uploadInfo, err := is.storeDriver.Stat(src)
+	if err != nil {
+		return false, mapStorageErr(err)
+	}
+
+	// wrong shared content is repaired on the write-locked path
+	if recordInfo.Size() != uploadInfo.Size() {
+		return false, nil
+	}
+
+	if !is.storeDriver.SameFile(dst, record) {
+		if err := is.lifecycle.LinkBlob(record, dst); err != nil {
+			is.log.Error().Err(err).Str("blobPath", record).Str("component", "dedupe").Msg("failed to link blobs")
+
+			return false, err
+		}
+
+		if err := is.cache.PutBlob(digest, dst); err != nil {
+			is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").Msg("failed to insert blob record")
+
+			return false, err
+		}
+	}
+
+	if err := is.storeDriver.Delete(src); err != nil {
+		is.log.Error().Err(err).Str("src", src).Str("component", "dedupe").Msg("failed to remove blob")
+
+		return false, err
+	}
+
+	return true, nil
 }
 
 // DedupeBlob's repo argument is unused: the shared content is checked against the verified
