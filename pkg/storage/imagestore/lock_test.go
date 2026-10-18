@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"runtime"
 	"slices"
 	"sync"
@@ -383,6 +384,96 @@ func TestLockOrderFuzzRemote(t *testing.T) {
 			if err != nil || !bytes.Equal(data, content) {
 				t.Fatalf("%s holds %s but cannot read it: %v", repo, digest, err)
 			}
+		}
+	}
+}
+
+// TestDedupeFastPathNeedsOnlyTheBlobstoreReadLock holds the blobstore's read lock and pushes:
+// content the store already holds is linked under that read lock and completes, while the first
+// copy of new content needs the write lock and waits until the read lock is released.
+func TestDedupeFastPathNeedsOnlyTheBlobstoreReadLock(t *testing.T) {
+	t.Parallel()
+
+	imgStore := newDedupeStoreForLockTests(t)
+	ctx := context.Background()
+
+	known := []byte("content the store already holds")
+	knownDigest := godigest.FromBytes(known)
+
+	if _, _, err := imgStore.FullBlobUpload(ctx, "repo-a", bytes.NewReader(known), knownDigest); err != nil {
+		t.Fatalf("first push: %v", err)
+	}
+
+	held, release := make(chan struct{}), make(chan struct{})
+
+	go func() {
+		_ = imgStore.WithBlobstoreReadLock(func() error {
+			close(held)
+			<-release
+
+			return nil
+		})
+	}()
+
+	<-held
+
+	withDeadline(t, 10*time.Second, func() {
+		if _, _, err := imgStore.FullBlobUpload(ctx, "repo-b", bytes.NewReader(known), knownDigest); err != nil {
+			t.Errorf("full upload of known content: %v", err)
+		}
+
+		uuid, err := imgStore.NewBlobUpload(ctx, "repo-c")
+		if err != nil {
+			t.Errorf("new upload: %v", err)
+
+			return
+		}
+
+		if _, err := imgStore.PutBlobChunkStreamed(ctx, "repo-c", uuid, bytes.NewReader(known)); err != nil {
+			t.Errorf("upload chunk: %v", err)
+
+			return
+		}
+
+		if err := imgStore.FinishBlobUpload("repo-c", uuid, bytes.NewReader(nil), knownDigest); err != nil {
+			t.Errorf("finish upload of known content: %v", err)
+		}
+	})
+
+	fresh := []byte("content the store has never seen")
+	freshDigest := godigest.FromBytes(fresh)
+	pushed := make(chan error, 1)
+
+	go func() {
+		_, _, err := imgStore.FullBlobUpload(ctx, "repo-d", bytes.NewReader(fresh), freshDigest)
+		pushed <- err
+	}()
+
+	select {
+	case err := <-pushed:
+		t.Fatalf("first copy of new content finished under another holder's read lock: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(release)
+
+	withDeadline(t, 10*time.Second, func() {
+		if err := <-pushed; err != nil {
+			t.Errorf("first copy of new content: %v", err)
+		}
+	})
+
+	for _, repo := range []string{"repo-a", "repo-b", "repo-c"} {
+		reader, _, err := imgStore.GetBlob(repo, knownDigest, "application/octet-stream")
+		if err != nil {
+			t.Fatalf("read %s: %v", repo, err)
+		}
+
+		data, err := io.ReadAll(reader)
+		_ = reader.Close()
+
+		if err != nil || !bytes.Equal(data, known) {
+			t.Fatalf("read %s: got %q, %v", repo, data, err)
 		}
 	}
 }
