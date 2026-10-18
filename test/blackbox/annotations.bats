@@ -81,7 +81,7 @@ EOF
     org.opencontainers.image.vendor: \${{VENDOR}}
 EOF
     cat > ${BATS_FILE_TMPDIR}/Dockerfile<<EOF
-FROM public.ecr.aws/t0x7q1g8/centos:7
+FROM ghcr.io/project-zot/test-images/centos:7
 CMD ["/bin/sh", "-c", "echo 'It works!'"]
 EOF
     zot_serve ${ZOT_PATH} ${zot_config_file}
@@ -194,7 +194,7 @@ function teardown_file() {
 
     # Dedicated image content so this digest starts with zero referrers.
     cat > ${BATS_FILE_TMPDIR}/Dockerfile.delete-referrer-test<<EOF
-FROM public.ecr.aws/t0x7q1g8/centos:7
+FROM ghcr.io/project-zot/test-images/centos:7
 CMD ["/bin/sh", "-c", "echo 'delete cosign referrer test'"]
 EOF
     run podman build -f ${BATS_FILE_TMPDIR}/Dockerfile.delete-referrer-test -t 127.0.0.1:${zot_port}/annotations:delete-referrer-test . --format oci

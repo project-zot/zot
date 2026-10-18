@@ -270,8 +270,8 @@ testdata-certs:
 testdata-images: check-skopeo
 	mkdir -p ${TESTDATA}; \
 	cd ${TOP_LEVEL}; \
-	skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TESTDATA}/zot-test:0.0.1; \
-	skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TESTDATA}/zot-cve-test:0.0.1; \
+	skopeo --insecure-policy copy -q docker://ghcr.io/project-zot/test-images/centos:7 oci:${TESTDATA}/zot-test:0.0.1; \
+	skopeo --insecure-policy copy -q docker://ghcr.io/project-zot/test-images/centos:8 oci:${TESTDATA}/zot-cve-test:0.0.1; \
 	skopeo --insecure-policy copy -q docker://ghcr.io/project-zot/test-images/java:0.0.1 oci:${TESTDATA}/zot-cve-java-test:0.0.1; \
 	skopeo --insecure-policy copy -q docker://ghcr.io/project-zot/test-images/alpine:3.17.3 oci:${TESTDATA}/alpine:3.17.3; \
 	skopeo --insecure-policy copy -q docker://ghcr.io/project-zot/test-images/spring-web:5.3.31 oci:${TESTDATA}/spring-web:5.3.31; \

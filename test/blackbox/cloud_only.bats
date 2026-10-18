@@ -127,7 +127,7 @@ dex_session () {
 
 @test "check for local disk writes" {
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        docker://centos:centos8 docker://localhost:8080/centos:8
+        docker://ghcr.io/project-zot/test-images/centos:8 docker://localhost:8080/centos:8
     [ "$status" -eq 0 ]
     cat strace.txt | grep openat | grep -v O_RDONLY | grep -Eo '\".*\"' | while read -r line ; do
         echo ${line} >&3
