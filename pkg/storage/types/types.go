@@ -31,10 +31,8 @@ type ImageStore interface { //nolint:interfacebloat
 	// The repo argument names the repository the caller works on. It is not a promise that
 	// only that repository is touched: with dedupe, a blob in one repo can be a link to, or
 	// a placeholder for, content stored under another repo, so reads and writes made under
-	// these locks can reach other repositories' blobs. That is safe only because the default
-	// store has a single lock, which every repo maps to. Locking per repo is therefore not a
-	// change that can be made behind these two methods alone: content shared between
-	// repositories first needs a lock of its own.
+	// these locks can reach other repositories' blobs. A shared store gate protects that
+	// content from cross-repository mutation while repository mutexes guard each repo's state.
 	WithRepoLock(repo string, wrappedFunc func() error) error
 	WithRepoReadLock(repo string, wrappedFunc func() error) error
 	// WithBlobstoreLock and WithBlobstoreReadLock run wrappedFunc while holding the write,
@@ -43,8 +41,8 @@ type ImageStore interface { //nolint:interfacebloat
 	// separately. Callers that work on a repo and can also reach shared content name both,
 	// through the three methods below, instead of nesting the two kinds of lock themselves.
 	//
-	// The default store still has its single lock, and all of these methods take it, once.
-	// They are therefore not reentrant: wrappedFunc must not call another of them.
+	// The default store uses its exclusive gate for shared-content writes and its shared gate
+	// for reads. These methods are not reentrant: wrappedFunc must not call another of them.
 	WithBlobstoreLock(wrappedFunc func() error) error
 	WithBlobstoreReadLock(wrappedFunc func() error) error
 	// WithBlobstoreAndRepoLock holds the write lock on both the shared content and repo.
