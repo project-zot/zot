@@ -31,7 +31,7 @@ jobs:
   blackbox-ci:
     name: Blackbox CI (${{ matrix.shard }})
     needs: build
-    runs-on: cncf-ubuntu-32-128-x86
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -84,7 +84,7 @@ jobs:
   blackbox-cloud:
     name: Blackbox cloud CI
     needs: build
-    runs-on: cncf-ubuntu-32-128-x86
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -116,7 +116,7 @@ jobs:
   scale-out-dynamodb:
     name: Cloud scale-out DynamoDB
     needs: build
-    runs-on: cncf-ubuntu-32-128-x86
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -159,7 +159,7 @@ jobs:
   scale-out-redis:
     name: Cloud scale-out Redis
     needs: build
-    runs-on: cncf-ubuntu-32-128-x86
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
