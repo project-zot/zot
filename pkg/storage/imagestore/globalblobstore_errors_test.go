@@ -427,7 +427,7 @@ func TestUpgradeToGlobalBlobstoreFailures(t *testing.T) {
 		}
 	})
 
-	Convey("A repo that cannot be listed is skipped, and the upgrade is not marked done", t, func() {
+	Convey("A repo that cannot be listed fails the upgrade, and the next start completes it", t, func() {
 		dir := t.TempDir()
 		boltCache := newBoltCache(dir)
 		legacyLayout(dir, boltCache)
@@ -435,7 +435,7 @@ func TestUpgradeToGlobalBlobstoreFailures(t *testing.T) {
 		storeDriver := &faultyDriver{Driver: local.New(true), fail: func(op, p string) bool {
 			return op == "List" && strings.Contains(p, "/repo-b/")
 		}}
-		So(openFaultyStore(dir, storeDriver, &faultyCache{Cache: boltCache}), ShouldNotBeNil)
+		So(openFaultyStore(dir, storeDriver, &faultyCache{Cache: boltCache}), ShouldBeNil)
 		So(markerExists(dir), ShouldBeFalse)
 
 		So(openFaultyStore(dir, &faultyDriver{Driver: local.New(true)}, &faultyCache{Cache: boltCache}),
