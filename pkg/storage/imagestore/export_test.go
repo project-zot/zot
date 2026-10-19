@@ -31,3 +31,11 @@ func SetLinkerClaimWait(store storageTypes.ImageStore, wait time.Duration) {
 	lifecycle, _ := imgStore.lifecycle.(*remoteSharedBlobLifecycle)
 	lifecycle.claimWait = wait
 }
+
+// FinishDedupeWalk marks the startup dedupe walk done, as its OnRunComplete does, for tests that
+// run single digests through RunDedupeForDigest instead of the whole walk.
+func FinishDedupeWalk(store storageTypes.ImageStore) {
+	imgStore, _ := store.(*ImageStore)
+	imgStore.dedupeRebuildDone.Store(true)
+	imgStore.blobRefsRebuilt.Store(true)
+}

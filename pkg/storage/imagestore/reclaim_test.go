@@ -142,6 +142,58 @@ func TestReclaimGlobalBlobs(t *testing.T) {
 		})
 	})
 
+	Convey("After the cache is lost the sweep waits for the dedupe walk", t, func() {
+		dir := t.TempDir()
+		ctx := context.Background()
+
+		openStore := func() storageTypes.ImageStore {
+			// each store gets a cache of its own: the second one has lost what the first recorded
+			return imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+				monitoring.NewNopMetricServer(), nil, &remoteNamedDriver{Driver: local.New(true)},
+				newBoltCacheAbs(t.TempDir()), nil, nil)
+		}
+
+		firstStore := openStore()
+		So(firstStore, ShouldNotBeNil)
+
+		repoPaths := []string{}
+
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			_, _, err := firstStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+
+			repoPaths = append(repoPaths, firstStore.BlobPath(repo, digest))
+		}
+
+		globalBlobPath := firstStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		// the migration marker skips the upgrade, so the new cache knows none of the placeholders
+		store := openStore()
+		So(store, ShouldNotBeNil)
+
+		// a push and delete since record the payload as owned by repo-c alone, then as unowned
+		_, _, err := store.FullBlobUpload(ctx, "repo-c", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+		So(store.DeleteBlob("repo-c", digest), ShouldBeNil)
+
+		So(sweep(store, 0), ShouldBeNil)
+		So(exists(globalBlobPath), ShouldBeTrue)
+
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			data, err := store.GetBlobContent(repo, digest)
+			So(err, ShouldBeNil)
+			So(data, ShouldResemble, content)
+		}
+
+		Convey("and once the walk has recorded the placeholders, it leaves the payload they own", func() {
+			So(store.RunDedupeForDigest(ctx, digest, true, repoPaths), ShouldBeNil)
+			imagestore.FinishDedupeWalk(store)
+
+			So(sweep(store, 0), ShouldBeNil)
+			So(exists(globalBlobPath), ShouldBeTrue)
+		})
+	})
+
 	Convey("The sweep keeps a payload whose ownership the cache cannot tell", t, func() {
 		dir := t.TempDir()
 		imgStore, _ := newRemoteDedupeStoreAt(dir)

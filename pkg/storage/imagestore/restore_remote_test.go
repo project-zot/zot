@@ -76,6 +76,12 @@ func TestRestoreRemoteGlobalBlobstore(t *testing.T) {
 		So(refs, ShouldBeEmpty)
 		So(exists(markerPath(dir)), ShouldBeTrue)
 
+		// the sweep waits for the walk this test runs one digest of
+		So(sweep(store, 0), ShouldBeNil)
+		So(exists(globalBlobPath), ShouldBeTrue)
+
+		imagestore.FinishDedupeWalk(store)
+
 		So(sweep(store, 0), ShouldBeNil)
 		So(exists(globalBlobPath), ShouldBeFalse)
 
@@ -148,6 +154,7 @@ func TestReenablingDedupeUpgradesAgain(t *testing.T) {
 			store := openStore(false)
 			So(store, ShouldNotBeNil)
 			So(store.RunDedupeForDigest(ctx, digest, false, repoPaths), ShouldBeNil)
+			imagestore.FinishDedupeWalk(store)
 			So(sweep(store, 0), ShouldBeNil)
 
 			_, err := os.Stat(path.Join(dir, storageConstants.BlobstoreMigratedMarker))
