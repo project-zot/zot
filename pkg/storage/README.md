@@ -41,7 +41,7 @@ A store written by an earlier release keeps each digest's content in a repositor
 2. Every repository copy is recorded in the cache and, remotely, as an owner, and only then gives up its content: a remote copy with content is replaced by a placeholder.
 3. The marker is written once a pass has covered every repository and promoted at least one digest (a store with no repositories is marked at once); later starts then skip the scan.
 
-Every step repeats harmlessly, so a pass that stops part way, or one that skipped a repository it could not list, simply runs again on the next start; remotely, a failure never leaves a placeholder nothing owns. A storage or cache failure during the pass stops zot from starting. Local copies on separate inodes, written while dedupe was off, are linked to the payload by the dedupe walk that runs after startup.
+Every step repeats harmlessly, so a pass that stops part way simply runs again on the next start; remotely, a failure never leaves a placeholder nothing owns. A storage or cache failure during the pass, including a repository that cannot be listed, stops zot from starting: a repository left out could hold the only copy with content of a digest the others hold placeholders of. Local copies on separate inodes, written while dedupe was off, are linked to the payload by the dedupe walk that runs after startup.
 
 There is no command to run or reverse the upgrade.
 

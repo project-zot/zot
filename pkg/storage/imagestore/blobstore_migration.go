@@ -32,10 +32,10 @@ upgradeToGlobalBlobstore promotes every digest found in a repo into the global b
 makes the blobstore copy its cache origin, unless BlobstoreMigratedMarker shows a previous pass
 completed. It runs while the store is created, before anything is served, so it takes no lock.
 
-The marker is written only after a complete pass: when some repo could not be listed, or repos
-exist but none holds a blob, it is left out and the next start runs the pass again, which is
-safe because every step repeats harmlessly. A storage or cache failure is returned, and the
-store is not created. Repo copies on separate inodes, from a time dedupe was off, are linked to
+The marker is written only after a complete pass: when repos exist but none holds a blob, it
+is left out and the next start runs the pass again, which is safe because every step repeats
+harmlessly. A storage or cache failure, including a repo that cannot be listed, is returned,
+and the store is not created. Repo copies on separate inodes, from a time dedupe was off, are linked to
 the blobstore copy by the dedupe walk that runs at startup.
 */
 func (is *ImageStore) upgradeToGlobalBlobstore() error {
@@ -63,16 +63,16 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 
 	candidates := map[godigest.Digest]blobCandidate{}
 	repoBlobRefs := []repoBlobRef{}
-	skippedRepoListFailures := 0
 
 	for _, repoName := range repos {
+		// A repo left out could hold the only copy with content, an earlier release's origin,
+		// while the repos listed hold placeholders: the pass would then promote a placeholder and
+		// record it as the origin, leaving the content unreachable until another start.
 		repoBlobs, err := is.GetAllBlobs(repoName)
 		if err != nil {
-			skippedRepoListFailures++
+			is.log.Error().Err(err).Str("repo", repoName).Msg("failed to list blobs during upgrade")
 
-			is.log.Warn().Err(err).Str("repo", repoName).Msg("failed to list blobs during upgrade, skipping repo")
-
-			continue
+			return err
 		}
 
 		for _, digest := range repoBlobs {
@@ -149,7 +149,7 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 		}
 	}
 
-	return is.completeBlobstoreUpgrade(markerPath, skippedRepoListFailures, len(candidates), markerOnlyDigests)
+	return is.completeBlobstoreUpgrade(markerPath, len(candidates), markerOnlyDigests)
 }
 
 // promoteBlobCandidate makes the global blobstore copy of digest from candidate and records it
@@ -228,20 +228,11 @@ func (is *ImageStore) promoteBlobCandidate(candidate blobCandidate, digest godig
 	return nil
 }
 
-// completeBlobstoreUpgrade writes the migration marker once a pass has covered every repo and
-// promoted at least one digest; otherwise the next start runs the pass again.
-func (is *ImageStore) completeBlobstoreUpgrade(markerPath string, skippedRepoListFailures int,
-	promotedDigests int, markerOnlyDigests int,
-) error {
+// completeBlobstoreUpgrade writes the migration marker once a pass has promoted at least one
+// digest; otherwise the next start runs the pass again.
+func (is *ImageStore) completeBlobstoreUpgrade(markerPath string, promotedDigests int, markerOnlyDigests int) error {
 	is.log.Info().Int("blobCount", promotedDigests).Int("markerOnlyDigestCount", markerOnlyDigests).
 		Msg("global blobstore upgrade completed")
-
-	if skippedRepoListFailures > 0 {
-		is.log.Warn().Int("skippedRepoCount", skippedRepoListFailures).
-			Msg("blobstore upgrade incomplete: migration marker not written because some repos were skipped")
-
-		return nil
-	}
 
 	if promotedDigests == 0 {
 		is.log.Warn().Msg("blobstore upgrade incomplete: migration marker not written because no digests were promoted")
