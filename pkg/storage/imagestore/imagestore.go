@@ -3476,6 +3476,29 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 	var originalBlob string
 
+	// The global blobstore copy, when it has content, is the origin every repo copy is linked to.
+	// duplicateBlobs lists repo copies only, so without this the first one with content would be
+	// made the origin instead, as in earlier releases: on local storage, where every copy is a
+	// hardlink with content, that happened on each walk. The empty digest, whose copies are all
+	// zero-size, keeps the old selection.
+	if digest.Validate() == nil {
+		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		if binfo, err := is.storeDriver.Stat(globalBlobPath); err == nil {
+			if binfo.Size() > 0 {
+				originalBlob = globalBlobPath
+
+				if origin, err := is.cache.GetBlob(digest); err != nil || origin != globalBlobPath {
+					if err := is.cache.SetOrigin(digest, globalBlobPath); err != nil {
+						return err
+					}
+				}
+			}
+		} else if !errclass.IsStorageObjectMissing(err) {
+			return err
+		}
+	}
+
 	// rebuild from dedupe false to true
 	for _, blobPath := range duplicateBlobs {
 		if zcommon.IsContextDone(ctx) {
