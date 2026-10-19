@@ -14,6 +14,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -164,6 +165,36 @@ func TestUpdateManifestQuotaProjectionFailureFailsClosed(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, response.Code)
 	require.Contains(t, response.Body.String(), "quota accounting unavailable; retry later")
 	require.False(t, putCalled)
+}
+
+func TestCheckRepoByteQuotaInvalidMetadataFailsClosed(t *testing.T) {
+	conf := config.New()
+	conf.Storage.MaxRepoBytes = 1
+
+	controller := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetRepoSizeWithCandidateFn: func(context.Context, string, []string, mTypes.ImageMeta) (int64, int64, error) {
+				return 0, 0, zerr.ErrInvalidRepoSize
+			},
+		},
+		StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+	}
+	handler := &RouteHandler{c: controller}
+	body := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+		`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
+		`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
+		`"size":2},"layers":[]}`)
+	request := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/v1", nil)
+	response := httptest.NewRecorder()
+
+	rejected := handler.checkRepoByteQuota(response, request, "repo", "v1", ispec.MediaTypeImageManifest,
+		body, nil)
+
+	require.True(t, rejected)
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	require.Contains(t, response.Body.String(), "repository size metadata is invalid")
 }
 
 func TestNormalizeBlobRedirectURL(t *testing.T) {

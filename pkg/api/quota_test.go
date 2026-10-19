@@ -151,6 +151,10 @@ func TestRepoByteQuotaRejectsMissingBlob(t *testing.T) {
 		firstErr, ok := errors[0].(map[string]any)
 		So(ok, ShouldBeTrue)
 		So(firstErr["code"], ShouldEqual, "MANIFEST_BLOB_UNKNOWN")
+		detail, ok := firstErr["detail"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(detail["digest"], ShouldEqual,
+			"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
 	})
 }
 
@@ -213,6 +217,31 @@ func TestRepoByteQuotaAllowsMissingForeignLayer(t *testing.T) {
 			Put(baseURL + "/v2/foreign-layer/manifests/v2")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+	})
+}
+
+func TestRepoByteQuotaCountsPresentForeignLayerSize(t *testing.T) {
+	Convey("Given a locally stored non-distributable layer", t, func() {
+		image := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		manifest := image.Manifest
+		manifest.Layers[0].MediaType = "application/vnd.oci.image.layer.nondistributable.v1.tar+gzip"
+		manifest.Layers[0].Size = 0
+		manifestBody, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		limit := image.ConfigDescriptor.Size + int64(len(manifestBody))
+		baseURL, stop := startByteQuotaServer(t, limit)
+		defer stop()
+
+		referrersTag := "sha256-" + strings.Repeat("a", 64)
+		So(UploadImage(image, baseURL, "foreign-layer", referrersTag), ShouldBeNil)
+
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(manifestBody).
+			Put(baseURL + "/v2/foreign-layer/manifests/v1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
 	})
 }
 

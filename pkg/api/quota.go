@@ -22,6 +22,7 @@ import (
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 )
 
 type repoQuotaLock struct {
@@ -173,9 +174,20 @@ func writeQuotaUnavailable(response http.ResponseWriter) {
 		apiErr.NewErrorList(apiErr.NewError(apiErr.DENIED).AddDetail(detail)))
 }
 
-func writeManifestBlobUnknown(response http.ResponseWriter) {
+func writeQuotaMetadataInvalid(response http.ResponseWriter) {
+	detail := map[string]string{"reason": "repository size metadata is invalid"}
+	zcommon.WriteJSON(response, http.StatusInternalServerError,
+		apiErr.NewErrorList(apiErr.NewError(apiErr.DENIED).AddDetail(detail)))
+}
+
+func writeManifestBlobUnknown(response http.ResponseWriter, digest string) {
+	detail := map[string]string{}
+	if digest != "" {
+		detail["digest"] = digest
+	}
+
 	zcommon.WriteJSON(response, http.StatusBadRequest,
-		apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_BLOB_UNKNOWN)))
+		apiErr.NewErrorList(apiErr.NewError(apiErr.MANIFEST_BLOB_UNKNOWN).AddDetail(detail)))
 }
 
 // checkRepoByteQuota checks the projected tag-rooted RepoMeta.Size before the manifest is written.
@@ -218,7 +230,7 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 		if errors.Is(err, zerr.ErrBlobNotFound) {
 			rh.c.Log.Warn().Err(err).Str("repo", repo).
 				Msg("manifest references an unavailable blob, rejecting push")
-			writeManifestBlobUnknown(response)
+			writeManifestBlobUnknown(response, zerr.GetDetails(err)["digest"])
 
 			return true
 		}
@@ -243,7 +255,7 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 		if errors.Is(err, zerr.ErrInvalidRepoSize) {
 			rh.c.Log.Error().Err(err).Str("repo", repo).
 				Msg("repository size metadata is invalid, rejecting push")
-			response.WriteHeader(http.StatusInternalServerError)
+			writeQuotaMetadataInvalid(response)
 
 			return true
 		}
@@ -280,14 +292,10 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 
 	descriptors = append(descriptors, &manifest.Config)
 	for index := range manifest.Layers {
-		if storageCommon.IsNonDistributable(manifest.Layers[index].MediaType) {
-			continue
-		}
-
 		descriptors = append(descriptors, &manifest.Layers[index])
 	}
 
-	knownSizes := map[godigest.Digest]int64{}
+	requirePresent := map[godigest.Digest]bool{}
 
 	for _, descriptor := range descriptors {
 		if descriptor.Digest == "" {
@@ -299,7 +307,14 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 		if descriptor.Size < 0 {
 			return fmt.Errorf("%w: blob %s size is negative", zerr.ErrInvalidRepoSizeCandidate, descriptor.Digest)
 		}
+		if !storageCommon.IsNonDistributable(descriptor.MediaType) {
+			requirePresent[descriptor.Digest] = true
+		}
+	}
 
+	knownSizes := map[godigest.Digest]int64{}
+
+	for _, descriptor := range descriptors {
 		if size, ok := knownSizes[descriptor.Digest]; ok {
 			descriptor.Size = size
 
@@ -317,10 +332,26 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 			return statErr
 		})
 		if err != nil {
+			if errclass.IsBlobUnavailable(err) {
+				if requirePresent[descriptor.Digest] {
+					return zerr.NewError(zerr.ErrBlobNotFound).AddDetail("digest", descriptor.Digest.String())
+				}
+
+				knownSizes[descriptor.Digest] = descriptor.Size
+
+				continue
+			}
+
 			return fmt.Errorf("failed to stat quota blob %s: %w", descriptor.Digest, err)
 		}
 		if !present {
-			return fmt.Errorf("%w: %s", zerr.ErrBlobNotFound, descriptor.Digest)
+			if requirePresent[descriptor.Digest] {
+				return zerr.NewError(zerr.ErrBlobNotFound).AddDetail("digest", descriptor.Digest.String())
+			}
+
+			knownSizes[descriptor.Digest] = descriptor.Size
+
+			continue
 		}
 
 		knownSizes[descriptor.Digest] = size
@@ -401,28 +432,9 @@ func quotaReferences(repo, reference string, body []byte, extraTags []string) ([
 }
 
 func quotaIsImageSignature(repo string, body []byte, reference string) (bool, error) {
-	if zcommon.IsCosignSignature(reference) && !validCosignSignatureTag(reference) {
-		return false, nil
-	}
-
 	isSignature, _, _, err := storage.CheckIsImageSignature(repo, body, reference)
 
 	return isSignature, err
-}
-
-func validCosignSignatureTag(reference string) bool {
-	const (
-		cosignPrefix = "sha256-"
-		digestLength = 64
-	)
-
-	if len(reference) != len(cosignPrefix)+digestLength+len(".sig") {
-		return false
-	}
-
-	_, err := godigest.Parse("sha256:" + reference[len(cosignPrefix):len(cosignPrefix)+digestLength])
-
-	return err == nil
 }
 
 func setupQuotaMiddleware(
