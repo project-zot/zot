@@ -62,6 +62,9 @@ type ImageStore struct {
 	// dedupeRebuildDone is set once RunDedupeBlobs has walked all blobs, i.e. the
 	// cache accounts for every pre-existing blob; see deleteBlob.
 	dedupeRebuildDone atomic.Bool
+	// upgradeInvalidated is set once the restore walk has removed the migration marker; see
+	// invalidateBlobstoreUpgrade.
+	upgradeInvalidated atomic.Bool
 }
 
 // isCacheNil reports whether is.cache is unusable: either the interface itself is nil,
@@ -3657,6 +3660,13 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 		is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to find original blob")
 
 		return errclass.Wrap(zerr.ErrDedupeRebuild, err)
+	}
+
+	// the store leaves the upgraded layout from the first copy restored on
+	if err := is.invalidateBlobstoreUpgrade(); err != nil {
+		is.log.Error().Err(err).Str("component", "dedupe").Msg("failed to invalidate global blobstore upgrade")
+
+		return err
 	}
 
 	for _, blobPath := range duplicateBlobs {
