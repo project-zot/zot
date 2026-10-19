@@ -536,7 +536,9 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 						Dedupe:        true,
 						RootDirectory: t.TempDir(),
 						StorageDriver: map[string]any{
-							"rootDir":        "/a",
+							// keep the store under testDir: rooted at the shared bucket's root, its
+							// startup blobstore upgrade would walk every other test's repos
+							"rootdirectory":  path.Join(testDir, "a"),
 							"name":           "s3",
 							"region":         s3Region,
 							"bucket":         bucket,
