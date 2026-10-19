@@ -33,6 +33,13 @@ Exactly one of a push and a sweep racing on a digest succeeds, so a push never r
 
 A claim older than its lease (5 minutes) belongs to a sweep that stopped, and the next push or sweep breaks it. A sweep starts deleting within 15 seconds of its claim, well inside the lease, and abandons the claim otherwise. On Redis claim times come from the Redis server's clock; on DynamoDB they come from each instance's, so instances sharing a store must agree on the time to within the lease, less those 15 seconds. A delete the object store has already accepted cannot be recalled, which is the one window left.
 
+#### Known limitations
+
+Both concern instances sharing a cache, and are left for a follow-up:
+
+- The sweep's wait for the reference index to be rebuilt is per instance. A shared cache that is flushed or replaced while instances keep running is not noticed by an instance whose dedupe walk finished before then. Keeping the readiness in the cache itself, as an epoch each walk marks rebuilt unless it changed meanwhile, would stop every instance's sweep at once.
+- Link and delete of the same repository and digest are serialized only within an instance. If one instance deletes the placeholder and, before it removes the reference, another pushes the same blob to the same repository, the reference that push relied on is the one removed, and a later sweep can reclaim the payload under it. Generation-tagged references removed only when unchanged, or a per-path lease in the cache, would close it.
+
 ### Upgrading an existing store
 
 A store written by an earlier release keeps each digest's content in a repository: locally every copy, remotely the origin a cache records (later copies being placeholders) and any copies from a time dedupe was off. When such a store is opened with dedupe enabled and has no `_global_blobstore_migrated` marker at its root, it is upgraded while the store is created, before anything is served:
