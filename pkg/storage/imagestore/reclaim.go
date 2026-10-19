@@ -23,6 +23,10 @@ import (
 // reference before relying on the payload, which fails while a claim is held, so the two never
 // both proceed. The markers are only hints telling the sweep where to look; safety comes from the
 // claim alone.
+//
+// What the claim does not cover is a delete and a push of the same repo and digest on two
+// instances: a reference names a path, and the repo lock that orders the two is per instance.
+// See DeleteBlobRef.
 
 const (
 	// _blobstore/_reclaim/<algorithm>/<encoded> holds a digest's reclaim marker.
@@ -52,6 +56,14 @@ func (r *remoteSharedBlobLifecycle) DeleteBlobRef(digest godigest.Digest, repoPa
 		return nil
 	}
 
+	/* The placeholder is gone by now, and its reference goes next, so that a failure in between
+	only leaks the reference. Within an instance the repo lock keeps a push of the same blob to
+	the same repo out of that gap. Across instances nothing does: another instance can add the
+	reference again (a no-op, as the path is still recorded) and write the placeholder anew, and
+	this removal then takes away the reference that push relied on, leaving the payload to a
+	later sweep. Follow-up: tag each reference with a generation, read before the placeholder is
+	deleted, and remove it only if unchanged, with the linker adding again once its placeholder
+	is written; or serialize link and delete per path with a lease in the cache. */
 	unowned, err := r.refs.RemoveReference(digest, repoPath)
 	if err != nil || !unowned {
 		return err
