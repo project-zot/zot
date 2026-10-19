@@ -47,7 +47,7 @@ There is no command to run or reverse the upgrade.
 
 ### Turning dedupe off
 
-Opening a store with dedupe disabled runs the restore walk, which gives every repository a full copy again: each placeholder is filled from the payload. Remotely, each restored repository then drops its reference, and the payload, once no repository owns it, is left to the reclaim sweep. Turning dedupe back on upgrades the store again.
+Opening a store with dedupe disabled runs the restore walk, which gives every repository a full copy again: each placeholder is filled from the payload. Remotely, each restored repository then drops its reference, and the payload, once no repository owns it, is left to the reclaim sweep. Before it restores its first copy the walk removes the `_global_blobstore_migrated` marker, so turning dedupe back on upgrades the store again rather than making a repository copy the origin.
 
 A store an earlier release wrote and that is opened with dedupe disabled is not upgraded. Until its restore walk is done, a repository's copy can still be the content other copies read, so deleting it hands the content to another copy first, and deletes of blobs the cache does not know wait for the walk.
 
