@@ -18,7 +18,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -853,7 +852,6 @@ func TestService(t *testing.T) {
 			// Buffer of one: only the singleflight leader should signal; a second signal
 			// means dedup failed and must not block the test forever.
 			entered := make(chan struct{}, 1)
-			release := make(chan struct{})
 
 			const numCallers = 4
 			errCh := make(chan error, numCallers)
@@ -861,11 +859,17 @@ func TestService(t *testing.T) {
 			var gate sync.WaitGroup
 			gate.Add(numCallers)
 
+			// joined counts callers registered with the group. DoChan registers before it
+			// returns (unlike Do, which gives no signal), so a leader that waits on joined
+			// cannot finish while a caller is still on its way in and would start a second call.
+			var joined sync.WaitGroup
+			joined.Add(numCallers)
+
 			doCall := func() error {
 				gate.Done()
 				gate.Wait()
 
-				_, err, _ := flight.Do(key, func() (any, error) {
+				resCh := flight.DoChan(key, func() (any, error) {
 					syncCalls.Add(1)
 
 					select {
@@ -873,7 +877,7 @@ func TestService(t *testing.T) {
 					default:
 					}
 
-					<-release
+					joined.Wait()
 
 					if wantErr != nil {
 						return nil, wantErr
@@ -881,8 +885,9 @@ func TestService(t *testing.T) {
 
 					return nil, runLeader(context.Background())
 				})
+				joined.Done()
 
-				return err
+				return (<-resCh).Err
 			}
 
 			for range numCallers {
@@ -896,13 +901,6 @@ func TestService(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("timed out waiting for in-flight sync to start")
 			}
-
-			// Give dup waiters time to register inside singleflight before the leader returns.
-			for range 256 {
-				runtime.Gosched()
-			}
-
-			close(release)
 
 			for range numCallers {
 				select {
