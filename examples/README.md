@@ -456,6 +456,10 @@ zot supports several openID/OAuth2 providers:
  - gitlab
  - dex
 
+For OIDC providers (those configured with an `issuer`) zot accepts the ID token signing algorithms
+advertised in the issuer's discovery document (`id_token_signing_alg_values_supported`), for example RS256,
+ES256, PS256 or PS512.
+
 zot can be configured to use the above providers with:
 ```
 {
