@@ -55,6 +55,7 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 
 	if len(repos) == 0 {
 		is.writeBlobstoreMigrationMarker(markerPath)
+		is.blobRefsRebuilt.Store(true)
 
 		return nil
 	}
@@ -148,6 +149,9 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			return err
 		}
 	}
+
+	// every repo copy is recorded now, so the reclaim sweep need not wait for the dedupe walk
+	is.blobRefsRebuilt.Store(true)
 
 	return is.completeBlobstoreUpgrade(markerPath, len(candidates), markerOnlyDigests)
 }
