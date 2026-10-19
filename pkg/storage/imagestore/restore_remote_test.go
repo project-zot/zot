@@ -108,3 +108,110 @@ func TestRestoreRemoteGlobalBlobstore(t *testing.T) {
 		So(exists(markerPath(dir)), ShouldBeFalse)
 	})
 }
+
+func TestReenablingDedupeUpgradesAgain(t *testing.T) {
+	content := []byte("reenable-dedupe-content")
+	digest := godigest.FromBytes(content)
+
+	for _, backend := range []struct {
+		name      string
+		newDriver func() storageTypes.Driver
+	}{
+		{"local", func() storageTypes.Driver { return local.New(true) }},
+		{"remote", func() storageTypes.Driver { return &remoteNamedDriver{Driver: local.New(true)} }},
+	} {
+		Convey("Turning dedupe off, then on again, brings back the "+backend.name+" global blobstore", t, func() {
+			dir := t.TempDir()
+			cacheDriver := newBoltCacheAbs(dir)
+			ctx := context.Background()
+
+			openStore := func(dedupe bool) storageTypes.ImageStore {
+				return imagestore.NewImageStore(dir, dir, dedupe, true, zlog.NewTestLogger(),
+					monitoring.NewNopMetricServer(), nil, backend.newDriver(), cacheDriver, nil, nil)
+			}
+
+			dedupedStore := openStore(true)
+			So(dedupedStore, ShouldNotBeNil)
+
+			repoPaths := []string{}
+
+			for _, repo := range []string{"repo-a", "repo-b"} {
+				_, _, err := dedupedStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+				So(err, ShouldBeNil)
+
+				repoPaths = append(repoPaths, dedupedStore.BlobPath(repo, digest))
+			}
+
+			globalBlobPath := dedupedStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+			// with dedupe off the copies get their content back, and a remote payload is reclaimed
+			store := openStore(false)
+			So(store, ShouldNotBeNil)
+			So(store.RunDedupeForDigest(ctx, digest, false, repoPaths), ShouldBeNil)
+			So(sweep(store, 0), ShouldBeNil)
+
+			_, err := os.Stat(path.Join(dir, storageConstants.BlobstoreMigratedMarker))
+			So(errors.Is(err, os.ErrNotExist), ShouldBeTrue)
+
+			// with dedupe on again the upgrade runs, rather than the walk picking a repo copy as origin
+			store = openStore(true)
+			So(store, ShouldNotBeNil)
+			So(store.RunDedupeForDigest(ctx, digest, true, repoPaths), ShouldBeNil)
+
+			data, err := os.ReadFile(globalBlobPath)
+			So(err, ShouldBeNil)
+			So(data, ShouldResemble, content)
+
+			origin, err := cacheDriver.GetBlob(digest)
+			So(err, ShouldBeNil)
+			So(origin, ShouldEqual, globalBlobPath)
+
+			for _, repo := range []string{"repo-a", "repo-b"} {
+				data, err := store.GetBlobContent(repo, digest)
+				So(err, ShouldBeNil)
+				So(data, ShouldResemble, content)
+			}
+		})
+	}
+
+	Convey("A restore that cannot remove the migration marker restores no copy", t, func() {
+		dir := t.TempDir()
+		cacheDriver := newBoltCacheAbs(dir)
+		ctx := context.Background()
+
+		dedupedStore := newRemoteStore(dir, true, cacheDriver, local.New(true))
+		So(dedupedStore, ShouldNotBeNil)
+
+		repoPaths := []string{}
+
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			_, _, err := dedupedStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+
+			repoPaths = append(repoPaths, dedupedStore.BlobPath(repo, digest))
+		}
+
+		storeDriver := &faultyDriver{Driver: local.New(true), fail: func(op, p string) bool {
+			return op == "Delete" && path.Base(p) == storageConstants.BlobstoreMigratedMarker
+		}}
+		store := newRemoteStore(dir, false, cacheDriver, storeDriver)
+		So(store, ShouldNotBeNil)
+		So(errors.Is(store.RunDedupeForDigest(ctx, digest, false, repoPaths), errInjectedFault), ShouldBeTrue)
+
+		for _, repoPath := range repoPaths {
+			binfo, err := os.Stat(repoPath)
+			So(err, ShouldBeNil)
+			So(binfo.Size(), ShouldEqual, 0)
+		}
+
+		_, err := os.Stat(path.Join(dir, storageConstants.BlobstoreMigratedMarker))
+		So(err, ShouldBeNil)
+	})
+}
+
+func newRemoteStore(dir string, dedupe bool, cacheDriver storageTypes.Cache,
+	storeDriver storageTypes.Driver,
+) storageTypes.ImageStore {
+	return imagestore.NewImageStore(dir, dir, dedupe, true, zlog.NewTestLogger(), monitoring.NewNopMetricServer(),
+		nil, &remoteNamedDriver{Driver: storeDriver}, cacheDriver, nil, nil)
+}

@@ -245,6 +245,27 @@ func (is *ImageStore) completeBlobstoreUpgrade(markerPath string, promotedDigest
 	return nil
 }
 
+// invalidateBlobstoreUpgrade removes the migration marker before the restore walk, run with
+// dedupe off, gives the first repo copy its content back. From then on the store leaves the
+// upgraded layout: on remote storage the sweep reclaims the payloads no repo owns any more. Were
+// the marker kept, turning dedupe back on would skip the upgrade, and with no global blobstore
+// copy left the dedupe walk would make a repo copy the origin again, the layout of earlier
+// releases. A failure fails the digest's restore, so no copy is restored while the marker stays.
+func (is *ImageStore) invalidateBlobstoreUpgrade() error {
+	if is.upgradeInvalidated.Load() {
+		return nil
+	}
+
+	err := is.storeDriver.Delete(path.Join(is.rootDir, storageConstants.BlobstoreMigratedMarker))
+	if err != nil && !errclass.IsStorageObjectMissing(err) {
+		return err
+	}
+
+	is.upgradeInvalidated.Store(true)
+
+	return nil
+}
+
 // writeBlobstoreMigrationMarker records a completed upgrade at the store root, so later starts
 // skip the scan. Failing to write it only means the next start scans again.
 func (is *ImageStore) writeBlobstoreMigrationMarker(markerPath string) {
