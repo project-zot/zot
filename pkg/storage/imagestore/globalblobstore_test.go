@@ -340,3 +340,35 @@ func TestUpgradeLocalStoreToGlobalBlobstore(t *testing.T) {
 		So(os.IsNotExist(err), ShouldBeTrue)
 	})
 }
+
+func TestDedupeWalkKeepsGlobalBlobstoreOrigin(t *testing.T) {
+	Convey("The local dedupe walk keeps the global blobstore copy as the origin", t, func() {
+		content := []byte("dedupe-walk-origin")
+		digest := godigest.FromBytes(content)
+		dir := t.TempDir()
+		ctx := context.Background()
+
+		cacheDriver := newBoltCacheAbs(dir)
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		repoPaths := []string{}
+
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			_, _, err := imgStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+
+			repoPaths = append(repoPaths, imgStore.BlobPath(repo, digest))
+		}
+
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		// every repo copy is a hardlink with content, which the walk once took for an origin
+		So(imgStore.RunDedupeForDigest(ctx, digest, true, repoPaths), ShouldBeNil)
+
+		origin, err := cacheDriver.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(origin, ShouldEqual, globalBlobPath)
+	})
+}
