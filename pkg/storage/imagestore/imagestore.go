@@ -62,6 +62,10 @@ type ImageStore struct {
 	// dedupeRebuildDone is set once RunDedupeBlobs has walked all blobs, i.e. the
 	// cache accounts for every pre-existing blob; see deleteBlob.
 	dedupeRebuildDone atomic.Bool
+	// blobRefsRebuilt is set once this process has seen every repo copy recorded in the
+	// reference index: by a full upgrade pass, or by the startup dedupe walk. Until then the
+	// reclaim sweep does nothing; see ReclaimGlobalBlobs.
+	blobRefsRebuilt atomic.Bool
 	// upgradeInvalidated is set once the restore walk has removed the migration marker; see
 	// invalidateBlobstoreUpgrade.
 	upgradeInvalidated atomic.Bool
@@ -3098,9 +3102,31 @@ func (is *ImageStore) reclaimGlobalBlob(digest godigest.Digest, repoPath string)
 	}
 }
 
-// ReclaimGlobalBlobs deletes the global blobstore payloads no repo has owned for at least delay.
-// Only remote stores defer that to this sweep; see blobLifecycle.ReclaimGlobalBlobs.
+/*
+ReclaimGlobalBlobs deletes the global blobstore payloads no repo has owned for at least delay.
+Only remote stores defer that to this sweep; see blobLifecycle.ReclaimGlobalBlobs.
+
+It waits for the reference index to be rebuilt. The migration marker lives in storage and
+outlives the cache, so after the cache is lost or replaced the upgrade pass is skipped and the
+index knows only what has been pushed since. A push of a digest older placeholders still read
+would record just its own repo, and once that copy was deleted, a sweep would delete the
+payload from under them. The dedupe walk records every placeholder, after which the index is
+whole again.
+
+The gate is per process: it does not cover a cache that is flushed or replaced while instances
+sharing it keep running, since an instance whose walk finished before then would go on
+sweeping. Follow-up: keep the readiness in the cache itself, as an epoch the walk takes when it
+starts and marks rebuilt when it finishes, unless the epoch changed meanwhile, so that losing
+the cache stops every instance's sweep at once. That would also spare an ordinary restart the
+wait for the walk.
+*/
 func (is *ImageStore) ReclaimGlobalBlobs(ctx context.Context, delay time.Duration) error {
+	if !is.blobRefsRebuilt.Load() {
+		is.log.Debug().Msg("skipping global blob reclaim until the dedupe walk has rebuilt the reference index")
+
+		return nil
+	}
+
 	return is.lifecycle.ReclaimGlobalBlobs(ctx, delay)
 }
 
@@ -3808,8 +3834,10 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 				is.log.Info().Str("component", "dedupe").
 					Msg("restore-complete marker present, skipping dedupe restore scan")
 
-				// storage holds no deduped blobs, so deletes are safe without a walk
+				// storage holds no deduped blobs, so deletes are safe without a walk, and there
+				// are no placeholders for the reference index to miss
 				is.dedupeRebuildDone.Store(true)
+				is.blobRefsRebuilt.Store(true)
 
 				return
 			}
@@ -3829,8 +3857,10 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 	}
 
 	generator.OnRunComplete = func() {
-		// walk finished: deferred blob deletes may proceed (see deleteBlob)
+		// walk finished: deferred blob deletes may proceed (see deleteBlob), and so may the
+		// reclaim sweep (see ReclaimGlobalBlobs)
 		is.dedupeRebuildDone.Store(true)
+		is.blobRefsRebuilt.Store(true)
 
 		if is.dedupe {
 			return
