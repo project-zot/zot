@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/go-jose/go-jose/v4"
 	guuid "github.com/gofrs/uuid"
 	"github.com/golang-jwt/jwt/v5"
 	godigest "github.com/opencontainers/go-digest"
@@ -2898,4 +2899,70 @@ func verifySessionCookiesSecureFlag(cookies []*http.Cookie, expectedSecure bool)
 	So(userCookie, ShouldNotBeNil)
 	So(sessionCookie.Secure, ShouldEqual, expectedSecure)
 	So(userCookie.Secure, ShouldEqual, expectedSecure)
+}
+
+func TestOpenIDSigningAlgsFromDiscovery(t *testing.T) {
+	Convey("OpenID login with an issuer which signs ID tokens with PS512", t, func() {
+		// PS512 is outside the relying party library default (RS256, ES256, PS256),
+		// so it is only accepted when taken from the issuer's discovery document.
+		mockOIDCServer, err := authutils.MockOIDCRunWithIDTokenSigningAlg(jose.PS512)
+		So(err, ShouldBeNil)
+
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+		defaultVal := true
+
+		conf := config.New()
+		conf.HTTP.Port = test.GetFreePort()
+		conf.HTTP.Auth = &config.AuthConfig{
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email", "groups"},
+					},
+				},
+			},
+		}
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Search = &extconf.SearchConfig{}
+		conf.Extensions.Search.Enable = &defaultVal
+		conf.Extensions.UI = &extconf.UIConfig{}
+		conf.Extensions.UI.Enable = &defaultVal
+		conf.Storage.RootDirectory = t.TempDir()
+
+		Convey("the relying party accepts exactly the algorithms advertised by the issuer", func() {
+			relyingParty := api.NewRelyingPartyOIDC(context.Background(), conf, "oidc", nil, nil, log.NewTestLogger())
+			So(relyingParty, ShouldNotBeNil)
+			So(relyingParty.IDTokenVerifier().SupportedSignAlgs, ShouldResemble, []string{string(jose.PS512)})
+		})
+
+		Convey("login succeeds", func() {
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+
+			defer cm.StopServer()
+
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "oidc").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			So(resp.Cookies(), ShouldNotBeEmpty)
+		})
+	})
 }

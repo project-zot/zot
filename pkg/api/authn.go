@@ -781,6 +781,11 @@ func NewRelyingPartyOIDC(ctx context.Context, config *config.Config, provider st
 	issuer, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config,
 		provider, hashKey, encryptKey, log)
 
+	// Accept the ID token signing algorithms advertised by the issuer in its discovery document
+	// (id_token_signing_alg_values_supported) instead of the library default of RS256, ES256 and PS256.
+	// If the issuer does not advertise any, the library default is kept.
+	options = append(options, rp.WithSigningAlgsFromDiscovery())
+
 	relyingParty, err := rp.NewRelyingPartyOIDC(ctx, issuer, clientID, clientSecret, redirectURI, scopes, options...)
 	if err != nil {
 		log.Panic().Err(err).Str("issuer", issuer).Str("redirectURI", redirectURI).Strs("scopes", scopes).
