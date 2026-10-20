@@ -2496,6 +2496,13 @@ func (is *ImageStore) writeFileViaStaging(repo, destination string, content []by
 
 	moveErr := is.storeDriver.Move(stagingPath, destination)
 	if moveErr != nil {
+		// A move that landed but could not be made durable is not complete: reading
+		// the destination back would confirm the bytes while the rename is still in
+		// the page cache, and the acknowledged write would be lost on a crash.
+		if errclass.IsStorageNotDurable(moveErr) {
+			return moveErr
+		}
+
 		// Object-store drivers may implement Move as copy-then-delete. If the
 		// copy succeeded but deleting the staging object failed, the destination
 		// already contains the requested content and the write is complete.

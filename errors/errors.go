@@ -237,6 +237,7 @@ var (
 	ErrStorageMissing                   = errors.New("storage object or path is missing")
 	ErrStorageTransient                 = errors.New("storage backend returned a transient error")
 	ErrStoragePermanent                 = errors.New("storage backend returned a permanent error")
+	ErrStorageNotDurable                = errors.New("storage backend could not make the write durable")
 	ErrSyncOnDemandDisabled             = errors.New("sync on demand is disabled")
 	ErrStreamManagerNotInitialized      = errors.New("stream manager not initialized")
 	ErrBlobNotFoundInActiveStreams      = errors.New("blob not found in active streams")

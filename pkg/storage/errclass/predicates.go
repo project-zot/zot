@@ -13,6 +13,14 @@ func IsStorageObjectMissing(err error) bool {
 	return errors.Is(err, zerr.ErrStorageMissing)
 }
 
+// IsStorageNotDurable reports that a write reached the backend but the backend
+// could not make it durable (for example a directory fsync after a rename
+// failed). The bytes are in place; a crash may still lose them, so a caller
+// holding a successful-write guarantee must not report success.
+func IsStorageNotDurable(err error) bool {
+	return errors.Is(err, zerr.ErrStorageNotDurable)
+}
+
 // IsBlobUnavailable reports registry "content not available" suitable for
 // soft-skip inside pkg/storage: ErrBlobNotFound, ErrStorageMissing, or
 // ErrCacheMiss. Transient/Permanent failures do not match.
