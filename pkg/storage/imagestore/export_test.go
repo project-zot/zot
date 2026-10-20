@@ -32,6 +32,13 @@ func SetLinkerClaimWait(store storageTypes.ImageStore, wait time.Duration) {
 	lifecycle.claimWait = wait
 }
 
+// SetReclaimDeleteDeadline shortens how soon after asking for its claim a sweep must delete a payload.
+func SetReclaimDeleteDeadline(store storageTypes.ImageStore, deadline time.Duration) {
+	imgStore, _ := store.(*ImageStore)
+	lifecycle, _ := imgStore.lifecycle.(*remoteSharedBlobLifecycle)
+	lifecycle.deleteDeadline = deadline
+}
+
 // FinishDedupeWalk marks the startup dedupe walk done, as its OnRunComplete does, for tests that
 // run single digests through RunDedupeForDigest instead of the whole walk.
 func FinishDedupeWalk(store storageTypes.ImageStore) {
