@@ -239,6 +239,37 @@ func TestReclaimGlobalBlobs(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 
+	Convey("A push right after a sweep releases its claim keeps the origin it records", t, func() {
+		dir := t.TempDir()
+		hooked := &hookedClaimCache{Cache: newBoltCacheAbs(dir)}
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, &remoteNamedDriver{Driver: local.New(true)}, hooked, nil, nil)
+		ctx := context.Background()
+
+		_, _, err := imgStore.FullBlobUpload(ctx, "repo-a", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+		So(imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+		// a push that waited on the claim stores a new payload at the same path as soon as it is released
+		var pushErr error
+
+		hooked.afterFinish = func() {
+			hooked.afterFinish = nil
+			_, _, pushErr = imgStore.FullBlobUpload(ctx, "repo-b", bytes.NewReader(content), digest)
+		}
+
+		So(sweep(imgStore, 0), ShouldBeNil)
+		So(pushErr, ShouldBeNil)
+
+		origin, err := hooked.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(origin, ShouldEqual, imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest))
+
+		data, err := imgStore.GetBlobContent("repo-b", digest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+
 	Convey("A last owner going while a sweep decides keeps its payload marked", t, func() {
 		dir := t.TempDir()
 		hooked := &hookedClaimCache{Cache: newBoltCacheAbs(dir)}

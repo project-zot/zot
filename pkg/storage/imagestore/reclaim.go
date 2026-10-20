@@ -210,6 +210,18 @@ func (r *remoteSharedBlobLifecycle) reclaimGlobalBlob(digest godigest.Digest, de
 		return err
 	}
 
+	/* The payload's own origin record goes while the claim still fences linkers out. Once
+	FinishReclaim releases it, a waiting push stores a new payload at the same path and records it
+	as the origin; removing the record then would take that origin away and promote the push's
+	placeholder in its place, leaving the pushed blob unreadable. Past the deadline a linker may
+	have broken the claim already, so the record is left: one naming a missing origin is healed
+	by the write paths, as is one left by a failed removal. */
+	if time.Now().Before(deadline) {
+		if err := r.refs.DeleteBlob(digest, globalBlobPath); err != nil {
+			r.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to remove reclaimed global blob from cache")
+		}
+	}
+
 	if err := r.refs.FinishReclaim(claim); err != nil {
 		// Broken after the lease by a linker, which found the payload gone and stored its own.
 		if errors.Is(err, zerr.ErrReclaimClaimLost) {
@@ -219,12 +231,6 @@ func (r *remoteSharedBlobLifecycle) reclaimGlobalBlob(digest godigest.Digest, de
 		}
 
 		return err
-	}
-
-	// the payload's own origin record; a record left behind names a missing origin, which the
-	// write paths heal
-	if err := r.refs.DeleteBlob(digest, globalBlobPath); err != nil {
-		r.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to remove reclaimed global blob from cache")
 	}
 
 	return r.dropReclaimMarker(digest, markerPath)
