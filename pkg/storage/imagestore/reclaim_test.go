@@ -239,6 +239,41 @@ func TestReclaimGlobalBlobs(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 
+	Convey("A sweep whose claim comes back past the delete deadline leaves the payload", t, func() {
+		dir := t.TempDir()
+		hooked := &hookedClaimCache{Cache: newBoltCacheAbs(dir)}
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, &remoteNamedDriver{Driver: local.New(true)}, hooked, nil, nil)
+		ctx := context.Background()
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		_, _, err := imgStore.FullBlobUpload(ctx, "repo-a", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+		So(imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+		// the window runs from asking for the claim, so a slow answer uses it up
+		imagestore.SetReclaimDeleteDeadline(imgStore, 50*time.Millisecond)
+
+		hooked.afterClaim = func() {
+			hooked.afterClaim = nil
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		So(errors.Is(sweep(imgStore, 0), zerr.ErrReclaimClaimLost), ShouldBeTrue)
+		So(exists(globalBlobPath), ShouldBeTrue)
+
+		// the claim was given up, so a push owns the payload at once
+		imagestore.SetLinkerClaimWait(imgStore, 0)
+
+		_, _, err = imgStore.FullBlobUpload(ctx, "repo-b", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		data, err := imgStore.GetBlobContent("repo-b", digest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+
 	Convey("A push right after a sweep releases its claim keeps the origin it records", t, func() {
 		dir := t.TempDir()
 		hooked := &hookedClaimCache{Cache: newBoltCacheAbs(dir)}

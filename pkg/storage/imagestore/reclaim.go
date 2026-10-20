@@ -31,9 +31,9 @@ import (
 const (
 	// _blobstore/_reclaim/<algorithm>/<encoded> holds a digest's reclaim marker.
 	globalReclaimDir = "_reclaim"
-	// reclaimDeleteDeadline is how soon after its claim a sweep must start deleting a payload. It
-	// is well under the claim's lease (constants.DefaultReclaimClaimLease), after which a linker
-	// takes the sweep for stopped, breaks the claim and relies on the payload again.
+	// reclaimDeleteDeadline is how soon after asking for its claim a sweep must start deleting a
+	// payload. It is well under the claim's lease (constants.DefaultReclaimClaimLease), after which
+	// a linker takes the sweep for stopped, breaks the claim and relies on the payload again.
 	reclaimDeleteDeadline = 15 * time.Second
 )
 
@@ -180,6 +180,14 @@ func (r *remoteSharedBlobLifecycle) reclaimGlobalBlob(digest godigest.Digest, de
 		return nil
 	}
 
+	/* The delete has to land while the claim is held: past the lease, a linker may break it and
+	rely on the payload. The lease runs from when the cache took the claim, so the deadline is
+	taken before asking for it: a slow claim response, or a stall before it is acted on, eats into
+	the window instead of starting a fresh one. It is read off this instance's clock, which the
+	monotonic reading keeps from jumping, rather than off claim.At, which may be the cache
+	server's. */
+	deadline := time.Now().Add(r.deleteDeadline)
+
 	claim, err := r.refs.ClaimReclaim(digest)
 
 	switch {
@@ -197,8 +205,6 @@ func (r *remoteSharedBlobLifecycle) reclaimGlobalBlob(digest godigest.Digest, de
 		return err
 	}
 
-	// the delete has to land while the claim is held: past the lease, a linker may break it and rely on the payload
-	deadline := time.Now().Add(reclaimDeleteDeadline)
 	globalBlobPath := path.Join(r.rootDir, storageConstants.GlobalBlobsRepo, "blobs",
 		digest.Algorithm().String(), digest.Encoded())
 

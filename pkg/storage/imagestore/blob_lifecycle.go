@@ -189,7 +189,8 @@ func newBlobLifecycle(deps blobLifecycleDeps) blobLifecycle {
 
 	return &remoteSharedBlobLifecycle{
 		storeDriver: deps.storeDriver, rootDir: deps.rootDir, log: deps.log, refs: deps.refs,
-		claimWait: linkerClaimWait,
+		claimWait:      linkerClaimWait,
+		deleteDeadline: reclaimDeleteDeadline,
 	}
 }
 
@@ -390,11 +391,12 @@ func (l *localHardlinkBlobLifecycle) DeletesCanDestroySharedContent() bool {
 }
 
 type remoteSharedBlobLifecycle struct {
-	storeDriver storageTypes.Driver
-	rootDir     string
-	log         zlog.Logger
-	refs        storageTypes.Cache
-	claimWait   time.Duration // linkerClaimWait, shorter in tests
+	storeDriver    storageTypes.Driver
+	rootDir        string
+	log            zlog.Logger
+	refs           storageTypes.Cache
+	claimWait      time.Duration // linkerClaimWait, shorter in tests
+	deleteDeadline time.Duration // reclaimDeleteDeadline, shorter in tests
 }
 
 func (r *remoteSharedBlobLifecycle) IsPlaceholder(digest godigest.Digest, binfo driver.FileInfo) bool {
