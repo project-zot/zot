@@ -597,7 +597,9 @@ type AccessControlConfig struct {
 	Metrics      Metrics
 
 	// DisableAnonymousCatalog rejects unauthenticated requests to /v2/_catalog
-	// with 401, even if an anonymousPolicy would otherwise allow listing.
+	// with 401, even if an anonymousPolicy would otherwise allow listing. It also makes
+	// the search extension's repository listings (RepoListWithNewestImage, GlobalSearch)
+	// return empty results for unauthenticated requests.
 	DisableAnonymousCatalog bool `json:"disableAnonymousCatalog" mapstructure:"disableAnonymousCatalog"`
 
 	// compiledConditions caches CEL programs for all policy condition

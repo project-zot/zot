@@ -67,6 +67,10 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string, reque
 
 // RepoListWithNewestImage is the resolver for the RepoListWithNewestImage field.
 func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
+	if r.hideRepoListing(ctx) {
+		return &gql_generated.PaginatedReposResult{Page: &gql_generated.PageInfo{}, Results: []*gql_generated.RepoSummary{}}, nil
+	}
+
 	r.log.Info().Str("component", "graphql").Msg("finding image list")
 
 	paginatedReposResult, err := repoListWithNewestImage(ctx, r.cveInfo, r.log, requestedPage, r.metaDB)
@@ -104,6 +108,15 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 func (r *queryResolver) GlobalSearch(ctx context.Context, query string, filter *gql_generated.Filter, requestedPage *gql_generated.PageInput) (*gql_generated.GlobalSearchResult, error) {
 	if err := validateGlobalSearchInput(query, filter, requestedPage); err != nil {
 		return &gql_generated.GlobalSearchResult{}, err
+	}
+
+	if r.hideRepoListing(ctx) {
+		return &gql_generated.GlobalSearchResult{
+			Page:   &gql_generated.PageInfo{},
+			Images: []*gql_generated.ImageSummary{},
+			Repos:  []*gql_generated.RepoSummary{},
+			Layers: []*gql_generated.LayerSummary{},
+		}, nil
 	}
 
 	query = cleanQuery(query)

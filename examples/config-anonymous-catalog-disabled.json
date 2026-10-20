@@ -29,6 +29,11 @@
       }
     }
   },
+  "extensions": {
+    "search": {
+      "enable": true
+    }
+  },
   "log": {
     "level": "debug"
   }

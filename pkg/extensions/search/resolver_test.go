@@ -3264,3 +3264,76 @@ func TestFilterByTagInfoDockerMediaTypes(t *testing.T) {
 		})
 	})
 }
+
+func TestAnonymousListingDisabled(t *testing.T) {
+	Convey("Repo listings are withheld from anonymous callers when disabled", t, func() {
+		log := log.NewTestLogger()
+		anonCtx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+
+		uac := reqCtx.NewUserAccessControl()
+		uac.SetUsername("alice")
+		authCtx := context.WithValue(anonCtx, reqCtx.GetContextKey(), *uac)
+
+		bearerCtx := context.WithValue(anonCtx, reqCtx.GetAuthnMiddlewareCtxKey(),
+			reqCtx.AuthnMiddlewareContext{AuthnType: reqCtx.AuthnTypeBearer})
+
+		disabled := false
+		searchCalls := 0
+
+		metaDB := mocks.MetaDBMock{
+			SearchReposFn: func(ctx context.Context, searchText string) ([]mTypes.RepoMeta, error) {
+				searchCalls++
+
+				return []mTypes.RepoMeta{{Name: "private-team/secret-name"}}, nil
+			},
+		}
+
+		resolver := queryResolver{&Resolver{
+			cveInfo:                  mocks.CveInfoMock{},
+			metaDB:                   metaDB,
+			log:                      log,
+			anonymousListingDisabled: func() bool { return disabled },
+		}}
+
+		Convey("flag off: anonymous callers are served", func() {
+			_, err := resolver.RepoListWithNewestImage(anonCtx, nil)
+			So(err, ShouldBeNil)
+			So(searchCalls, ShouldEqual, 1)
+		})
+
+		Convey("flag on: anonymous callers get empty listings without touching metaDB", func() {
+			disabled = true
+
+			repos, err := resolver.RepoListWithNewestImage(anonCtx, nil)
+			So(err, ShouldBeNil)
+			So(repos.Results, ShouldBeEmpty)
+
+			result, err := resolver.GlobalSearch(anonCtx, "", nil, nil)
+			So(err, ShouldBeNil)
+			So(result.Repos, ShouldBeEmpty)
+			So(result.Images, ShouldBeEmpty)
+			So(result.Layers, ShouldBeEmpty)
+			So(searchCalls, ShouldEqual, 0)
+		})
+
+		Convey("flag on: authenticated and bearer callers are served", func() {
+			disabled = true
+
+			for _, ctx := range []context.Context{authCtx, bearerCtx} {
+				_, err := resolver.RepoListWithNewestImage(ctx, nil)
+				So(err, ShouldBeNil)
+			}
+
+			So(searchCalls, ShouldEqual, 2)
+		})
+
+		Convey("nil check function never hides listings", func() {
+			resolver.anonymousListingDisabled = nil
+
+			_, err := resolver.RepoListWithNewestImage(anonCtx, nil)
+			So(err, ShouldBeNil)
+			So(searchCalls, ShouldEqual, 1)
+		})
+	})
+}

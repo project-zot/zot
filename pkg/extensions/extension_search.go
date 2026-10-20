@@ -123,7 +123,9 @@ func SetupSearchRoutes(conf *config.Config, router *mux.Router, storeController 
 		cveInfo = nil
 	}
 
-	resConfig := search.GetResolverConfig(log, storeController, metaDB, cveInfo)
+	resConfig := search.GetResolverConfig(log, storeController, metaDB, cveInfo, func() bool {
+		return conf.CopyAccessControlConfig().IsAnonymousCatalogDisabled()
+	})
 
 	allowedMethods := zcommon.AllowedMethods(http.MethodGet, http.MethodPost)
 

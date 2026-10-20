@@ -14,6 +14,9 @@ func GetAuthnMiddlewareCtxKey() *Key {
 	return &amwCtxKey
 }
 
+// AuthnTypeBearer is the authn type recorded for traditional bearer token requests.
+const AuthnTypeBearer = "Bearer"
+
 type AuthnMiddlewareContext struct {
 	AuthnType string
 }
@@ -30,4 +33,17 @@ func GetAuthnMiddlewareContext(ctx context.Context) (*AuthnMiddlewareContext, er
 	}
 
 	return nil, nil //nolint: nilnil
+}
+
+// IsAuthenticated reports whether the request was made by an authenticated caller.
+// Traditional bearer tokens never set a username, so the authn context is also consulted.
+func IsAuthenticated(ctx context.Context) bool {
+	userAc, err := UserAcFromContext(ctx)
+	if err == nil && !userAc.IsAnonymous() {
+		return true
+	}
+
+	authnMwCtx, err := GetAuthnMiddlewareContext(ctx)
+
+	return err == nil && authnMwCtx != nil && authnMwCtx.AuthnType == AuthnTypeBearer
 }

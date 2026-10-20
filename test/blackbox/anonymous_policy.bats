@@ -67,6 +67,11 @@ function setup_file() {
             }
         }
     },
+    "extensions": {
+        "search": {
+            "enable": true
+        }
+    },
     "log": {
         "level": "debug",
         "output": "${BATS_FILE_TMPDIR}/zot.log"
@@ -123,4 +128,15 @@ function teardown_file() {
     run curl -s -o /dev/null -w '%{http_code}' -u ${AUTH_USER}:${AUTH_PASS} http://127.0.0.1:${zot_port}/v2/_catalog
     [ "$status" -eq 0 ]
     [ "$output" -eq 200 ]
+}
+
+@test "anonymous search repo listing is empty" {
+    zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    run curl -s -G http://127.0.0.1:${zot_port}/v2/_zot/ext/search --data-urlencode 'query={GlobalSearch(query:""){Repos{Name}}}'
+    [ "$status" -eq 0 ]
+    [ $(echo "$output" | jq '.data.GlobalSearch.Repos | length') -eq 0 ]
+
+    run curl -s -G http://127.0.0.1:${zot_port}/v2/_zot/ext/search --data-urlencode 'query={RepoListWithNewestImage{Results{Name}}}'
+    [ "$status" -eq 0 ]
+    [ $(echo "$output" | jq '.data.RepoListWithNewestImage.Results | length') -eq 0 ]
 }

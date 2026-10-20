@@ -1,6 +1,7 @@
 package requestcontext_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,4 +63,40 @@ func TestIsAdminByPolicy(t *testing.T) {
 	uac.SetIsAdmin(false)
 	uac.SetAdminPolicyEvaluator(func() (bool, string) { return true, "" })
 	require.False(t, isAdminByPolicy(uac))
+}
+
+func TestIsAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no context values is anonymous", func(t *testing.T) {
+		t.Parallel()
+
+		require.False(t, reqCtx.IsAuthenticated(context.Background()))
+	})
+
+	t.Run("user with username is authenticated", func(t *testing.T) {
+		t.Parallel()
+
+		uac := reqCtx.NewUserAccessControl()
+		uac.SetUsername("alice")
+
+		ctx := context.WithValue(context.Background(), reqCtx.GetContextKey(), *uac)
+		require.True(t, reqCtx.IsAuthenticated(ctx))
+	})
+
+	t.Run("bearer authn without username is authenticated", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.WithValue(context.Background(), reqCtx.GetAuthnMiddlewareCtxKey(),
+			reqCtx.AuthnMiddlewareContext{AuthnType: reqCtx.AuthnTypeBearer})
+		require.True(t, reqCtx.IsAuthenticated(ctx))
+	})
+
+	t.Run("non-bearer authn without username is anonymous", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.WithValue(context.Background(), reqCtx.GetAuthnMiddlewareCtxKey(),
+			reqCtx.AuthnMiddlewareContext{AuthnType: "Basic"})
+		require.False(t, reqCtx.IsAuthenticated(ctx))
+	})
 }

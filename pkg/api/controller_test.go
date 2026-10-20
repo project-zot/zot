@@ -7426,6 +7426,78 @@ func TestDisableAnonymousCatalog(t *testing.T) {
 	})
 }
 
+func TestDisableAnonymousCatalogHidesSearchListings(t *testing.T) {
+	Convey("Search repo listings for anonymous users follow disableAnonymousCatalog", t, func() {
+		const (
+			testRepo = "private-team/secret-name"
+			user     = "alice"
+			password = "alicepass"
+		)
+
+		enabled := true
+		conf := config.New()
+		conf.Storage.GC = false
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(user, password)),
+			},
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
+					Policies: []config.Policy{
+						{Users: []string{user}, Actions: []string{"read", "create", "update"}},
+					},
+				},
+			},
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &enabled},
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		err := UploadImageWithBasicAuth(CreateRandomImage(), baseURL, testRepo, "latest", user, password)
+		So(err, ShouldBeNil)
+
+		repoListQuery := `{RepoListWithNewestImage(requestedPage:{limit:10}){Results{Name}}}`
+		globalSearchQuery := `{GlobalSearch(query:""){Repos{Name}}}`
+
+		search := func(query string, authenticated bool) string {
+			req := resty.R()
+			if authenticated {
+				req.SetBasicAuth(user, password)
+			}
+
+			resp, err := req.Get(baseURL + constants.FullSearchPrefix + "?query=" + url.QueryEscape(query))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			return string(resp.Body())
+		}
+
+		// default: anonymous callers can list
+		So(search(repoListQuery, false), ShouldContainSubstring, testRepo)
+		So(search(globalSearchQuery, false), ShouldContainSubstring, testRepo)
+
+		// disable it (read live from config, as on hot reload)
+		conf.HTTP.AccessControl.DisableAnonymousCatalog = true
+
+		So(search(repoListQuery, false), ShouldNotContainSubstring, testRepo)
+		So(search(globalSearchQuery, false), ShouldNotContainSubstring, testRepo)
+
+		// authenticated users can still list
+		So(search(repoListQuery, true), ShouldContainSubstring, testRepo)
+		So(search(globalSearchQuery, true), ShouldContainSubstring, testRepo)
+	})
+}
+
 // anonymous-only (no CookieStore) + UI X-ZOT-API-CLIENT must not panic on search.
 func TestAnonymousOnlyWithUIClientHeader(t *testing.T) {
 	Convey("anonymous-only access with UI client header does not panic", t, func() {

@@ -28,7 +28,7 @@ import (
 
 const (
 	BASIC       = "Basic"
-	BEARER      = "Bearer"
+	BEARER      = reqCtx.AuthnTypeBearer
 	BEARER_OIDC = "BearerOIDC" // OIDC bearer tokens use accessControl config for authorization
 	OPENID      = "OpenID"
 )

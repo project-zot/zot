@@ -41,17 +41,25 @@ type Resolver struct {
 	metaDB          mTypes.MetaDB
 	storeController storage.StoreController
 	log             log.Logger
+	// anonymousListingDisabled is evaluated per request so that config hot reloads apply.
+	anonymousListingDisabled func() bool
+}
+
+// hideRepoListing reports whether repository listings must be withheld from the caller.
+func (r *Resolver) hideRepoListing(ctx context.Context) bool {
+	return r.anonymousListingDisabled != nil && r.anonymousListingDisabled() && !reqCtx.IsAuthenticated(ctx)
 }
 
 // GetResolverConfig ...
 func GetResolverConfig(log log.Logger, storeController storage.StoreController,
-	metaDB mTypes.MetaDB, cveInfo cveinfo.CveInfo,
+	metaDB mTypes.MetaDB, cveInfo cveinfo.CveInfo, anonymousListingDisabled func() bool,
 ) gql_generated.Config {
 	resConfig := &Resolver{
-		cveInfo:         cveInfo,
-		metaDB:          metaDB,
-		storeController: storeController,
-		log:             log,
+		cveInfo:                  cveInfo,
+		metaDB:                   metaDB,
+		storeController:          storeController,
+		log:                      log,
+		anonymousListingDisabled: anonymousListingDisabled,
 	}
 
 	return gql_generated.Config{
