@@ -472,6 +472,23 @@ func (service *BaseService) logManifestCheckTimeout(ctx, checkCtx context.Contex
 		Msg("upstream did not answer the manifest request within the manifest check timeout")
 }
 
+func (service *BaseService) GetRetryOptions() (int, time.Duration) {
+	var (
+		maxRetries int
+		delay      time.Duration
+	)
+
+	if service.config.MaxRetries != nil {
+		maxRetries = *service.config.MaxRetries
+	}
+
+	if service.config.RetryDelay != nil {
+		delay = *service.config.RetryDelay
+	}
+
+	return maxRetries, delay
+}
+
 func (service *BaseService) GetSyncTimeout() time.Duration {
 	if service.config.SyncTimeout == 0 {
 		return syncConstants.DefaultSyncTimeout
