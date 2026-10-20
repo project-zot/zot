@@ -220,7 +220,7 @@ func TestRepoByteQuotaAllowsMissingForeignLayer(t *testing.T) {
 	})
 }
 
-func TestRepoByteQuotaCountsPresentForeignLayerSize(t *testing.T) {
+func TestRepoByteQuotaUsesDeclaredForeignLayerSize(t *testing.T) {
 	Convey("Given a locally stored non-distributable layer", t, func() {
 		image := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
 		manifest := image.Manifest
@@ -241,7 +241,7 @@ func TestRepoByteQuotaCountsPresentForeignLayerSize(t *testing.T) {
 			SetBody(manifestBody).
 			Put(baseURL + "/v2/foreign-layer/manifests/v1")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 	})
 }
 
@@ -285,7 +285,7 @@ func TestRepoByteQuotaAllowsCurrentSizeAndRejectsGrowth(t *testing.T) {
 	})
 }
 
-func TestRepoByteQuotaUsesActualBlobSizes(t *testing.T) {
+func TestRepoByteQuotaUsesManifestDescriptorSizes(t *testing.T) {
 	Convey("Given a repository with a quota equal to current usage plus a candidate manifest", t, func() {
 		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
 		second := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
@@ -311,7 +311,7 @@ func TestRepoByteQuotaUsesActualBlobSizes(t *testing.T) {
 			SetBody(manifestBody).
 			Put(baseURL + "/v2/actual-size/manifests/v2")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 	})
 }
 
@@ -343,6 +343,40 @@ func TestRepoByteQuotaCountsShortSha256Tag(t *testing.T) {
 		So(UploadImage(first, baseURL, "short-sha256-tag", "sha256-x"), ShouldBeNil)
 		So(UploadImage(second, baseURL, "short-sha256-tag", "v2"), ShouldEqual,
 			ErrPutBlob)
+	})
+}
+
+func TestRepoByteQuotaCountsCosignLikeIndexTag(t *testing.T) {
+	Convey("Given an image index with a cosign-like tag", t, func() {
+		indexBody := []byte(`{"schemaVersion":2,"mediaType":"` + ispec.MediaTypeImageIndex + `","manifests":[]}`)
+		baseURL, stop := startByteQuotaServer(t, int64(len(indexBody)-1))
+		defer stop()
+
+		signatureTag := "sha256-" + strings.Repeat("a", 64) + ".sig"
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+			SetBody(indexBody).
+			Put(baseURL + "/v2/index-quota/manifests/" + signatureTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
+	})
+}
+
+func TestRepoByteQuotaCountsCosignLikeIndexExtraTag(t *testing.T) {
+	Convey("Given an image index with a cosign-like extra tag", t, func() {
+		indexBody := []byte(`{"schemaVersion":2,"mediaType":"` + ispec.MediaTypeImageIndex + `","manifests":[]}`)
+		baseURL, stop := startByteQuotaServer(t, int64(len(indexBody)-1))
+		defer stop()
+
+		indexDigest := godigest.FromBytes(indexBody).String()
+		signatureTag := "sha256-" + strings.Repeat("b", 64) + ".sig"
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+			SetQueryParam("tag", signatureTag).
+			SetBody(indexBody).
+			Put(baseURL + "/v2/index-quota/manifests/" + indexDigest)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
 	})
 }
 

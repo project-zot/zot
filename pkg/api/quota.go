@@ -208,7 +208,7 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 		return false
 	}
 
-	references, registerByDigest, ok := quotaReferences(repo, reference, body, extraTags)
+	references, registerByDigest, ok := quotaReferences(repo, reference, mediaType, body, extraTags)
 	if !ok {
 		return false
 	}
@@ -312,22 +312,20 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 		}
 	}
 
-	knownSizes := map[godigest.Digest]int64{}
+	checked := map[godigest.Digest]struct{}{}
 
 	for _, descriptor := range descriptors {
-		if size, ok := knownSizes[descriptor.Digest]; ok {
-			descriptor.Size = size
-
+		if _, ok := checked[descriptor.Digest]; ok {
 			continue
 		}
+		checked[descriptor.Digest] = struct{}{}
 
-		var (
-			present bool
-			size    int64
-		)
+		// StatBlob verifies reachability; logical accounting remains based on the
+		// descriptor sizes supplied in the manifest.
+		var present bool
 		err := imgStore.WithRepoReadLock(repo, func() error {
 			var statErr error
-			present, size, _, statErr = imgStore.StatBlob(repo, descriptor.Digest)
+			present, _, _, statErr = imgStore.StatBlob(repo, descriptor.Digest)
 
 			return statErr
 		})
@@ -336,8 +334,6 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 				if requirePresent[descriptor.Digest] {
 					return zerr.NewError(zerr.ErrBlobNotFound).AddDetail("digest", descriptor.Digest.String())
 				}
-
-				knownSizes[descriptor.Digest] = descriptor.Size
 
 				continue
 			}
@@ -349,13 +345,8 @@ func (rh *RouteHandler) normalizeQuotaImageMeta(repo string, imageMeta *mTypes.I
 				return zerr.NewError(zerr.ErrBlobNotFound).AddDetail("digest", descriptor.Digest.String())
 			}
 
-			knownSizes[descriptor.Digest] = descriptor.Size
-
 			continue
 		}
-
-		knownSizes[descriptor.Digest] = size
-		descriptor.Size = size
 	}
 
 	return nil
@@ -392,7 +383,7 @@ func quotaImageMeta(reference, mediaType string, body []byte) (mTypes.ImageMeta,
 	}
 }
 
-func quotaReferences(repo, reference string, body []byte, extraTags []string) ([]string, bool, bool) {
+func quotaReferences(repo, reference, mediaType string, body []byte, extraTags []string) ([]string, bool, bool) {
 	if zcommon.IsReferrersTag(reference) {
 		return nil, false, true
 	}
@@ -404,7 +395,7 @@ func quotaReferences(repo, reference string, body []byte, extraTags []string) ([
 				continue
 			}
 
-			isSignature, err := quotaIsImageSignature(repo, body, tag)
+			isSignature, err := quotaIsImageSignature(repo, mediaType, body, tag)
 			if err != nil {
 				return nil, false, false
 			}
@@ -416,7 +407,7 @@ func quotaReferences(repo, reference string, body []byte, extraTags []string) ([
 		return references, false, true
 	}
 
-	isSignature, err := quotaIsImageSignature(repo, body, reference)
+	isSignature, err := quotaIsImageSignature(repo, mediaType, body, reference)
 	if err != nil {
 		return nil, false, false
 	}
@@ -431,7 +422,11 @@ func quotaReferences(repo, reference string, body []byte, extraTags []string) ([
 	return []string{reference}, false, true
 }
 
-func quotaIsImageSignature(repo string, body []byte, reference string) (bool, error) {
+func quotaIsImageSignature(repo, mediaType string, body []byte, reference string) (bool, error) {
+	if !compat.IsImageManifestMediaType(mediaType) {
+		return false, nil
+	}
+
 	isSignature, _, _, err := storage.CheckIsImageSignature(repo, body, reference)
 
 	return isSignature, err
