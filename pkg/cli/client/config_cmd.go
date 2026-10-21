@@ -560,6 +560,9 @@ Useful variables:
   url		zot server URL
   showspinner	show spinner while loading data [true/false]
   verify-tls	enable TLS certificate verification of the server [default: true]
+  ca-cert	path to a PEM file with the root CA(s) used to verify the server
+  client-cert	path to the client certificate used for mTLS authentication
+  client-key	path to the client private key used for mTLS authentication
 `
 
 	noArgs    = 0

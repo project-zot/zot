@@ -296,3 +296,51 @@ func TestZliConfig_ResetVar(t *testing.T) {
 		assert.Nil(t, cfg.VerifyTLS)
 	})
 }
+
+func TestZliConfig_CertificateKeys(t *testing.T) {
+	t.Parallel()
+
+	keys := []string{"ca-cert", "client-cert", "client-key"}
+
+	cfg := client.ZliConfig{Name: "main", URL: "https://example.com"}
+
+	for _, key := range keys {
+		got, err := cfg.GetVar(key)
+		require.NoError(t, err)
+		assert.Empty(t, got)
+
+		require.NoError(t, cfg.SetVar(key, "/path/"+key+".pem"))
+
+		got, err = cfg.GetVar(key)
+		require.NoError(t, err)
+		assert.Equal(t, "/path/"+key+".pem", got)
+	}
+
+	// values survive a write/read round trip
+	path := filepath.Join(t.TempDir(), ".zot")
+	require.NoError(t, (&client.ZliConfigFile{Configs: []client.ZliConfig{cfg}}).WriteFile(path))
+
+	read, err := client.ReadZliConfigFile(path)
+	require.NoError(t, err)
+	require.Len(t, read.Configs, 1)
+	assert.Equal(t, "/path/ca-cert.pem", read.Configs[0].CACert)
+	assert.Equal(t, "/path/client-cert.pem", read.Configs[0].ClientCert)
+	assert.Equal(t, "/path/client-key.pem", read.Configs[0].ClientKey)
+
+	for _, key := range keys {
+		require.NoError(t, cfg.ResetVar(key))
+
+		got, err := cfg.GetVar(key)
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	}
+}
+
+func TestReadZliConfigFile_certKeyNotString(t *testing.T) {
+	t.Parallel()
+
+	p := writeZotFile(t, t.TempDir(), `{"configs":[{"_name":"a","url":"https://example.com","ca-cert":1}]}`)
+
+	_, err := client.ReadZliConfigFile(p)
+	assert.ErrorIs(t, err, zerr.ErrCliBadConfig)
+}
