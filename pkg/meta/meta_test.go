@@ -1129,6 +1129,26 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(repoMeta.Vendors, ShouldNotContain, "vendor2")
 			})
 
+			Convey("Removing the last tag keeps statistics of the now untagged manifest", func() {
+				err = metaDB.RemoveRepoReference(repo, tag1, imageMeta1.Digest)
+				So(err, ShouldBeNil)
+
+				repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+				So(err, ShouldBeNil)
+
+				_, ok := repoMeta.Statistics[imageMeta1.Digest.String()]
+				So(ok, ShouldBeTrue)
+
+				err = metaDB.RemoveRepoReference(repo, imageMeta1.Digest.String(), imageMeta1.Digest)
+				So(err, ShouldBeNil)
+
+				repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
+				So(err, ShouldBeNil)
+
+				_, ok = repoMeta.Statistics[imageMeta1.Digest.String()]
+				So(ok, ShouldBeFalse)
+			})
+
 			Convey("Delete inexistent reference from repo", func() {
 				inexistentDigest := godigest.FromBytes([]byte("inexistent"))
 				err := metaDB.RemoveRepoReference(repo, inexistentDigest.String(), inexistentDigest)
