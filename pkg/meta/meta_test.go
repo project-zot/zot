@@ -697,6 +697,36 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(repoMeta.Tags, ShouldContainKey, "tag")
 		})
 
+		Convey("ProjectRepoSize applies tag-rooted digest deduplication without persisting", func() {
+			repo := "projected-repo"
+			first := CreateImageWith().RandomLayers(2, 10).RandomConfig().Build()
+			firstMeta := first.AsImageMeta()
+			firstSize := first.ManifestDescriptor.Size + first.ConfigDescriptor.Size + 2*10
+
+			current, projected, err := metaDB.GetRepoSizeWithCandidate(ctx, repo, []string{"latest"}, firstMeta)
+			So(err, ShouldBeNil)
+			So(current, ShouldEqual, 0)
+			So(projected, ShouldEqual, firstSize)
+
+			_, err = metaDB.GetRepoMeta(ctx, repo)
+			So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+			So(metaDB.SetRepoReference(ctx, repo, "latest", firstMeta), ShouldBeNil)
+
+			second := CreateImageWith().LayerBlobs(first.Layers).RandomConfig().Build()
+			secondMeta := second.AsImageMeta()
+			secondProjected := firstSize + second.ManifestDescriptor.Size + second.ConfigDescriptor.Size
+
+			current, projected, err = metaDB.GetRepoSizeWithCandidate(ctx, repo, []string{"second"}, secondMeta)
+			So(err, ShouldBeNil)
+			So(current, ShouldEqual, firstSize)
+			So(projected, ShouldEqual, secondProjected)
+
+			repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+			So(err, ShouldBeNil)
+			So(repoMeta.Size, ShouldEqual, firstSize)
+		})
+
 		Convey("Test SetRepoReference", func() {
 			var (
 				repo1 = "repo1"

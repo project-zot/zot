@@ -877,7 +877,14 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	releaseRepoByteQuotaLock := rh.acquireRepoByteQuotaLock(name)
+	defer releaseRepoByteQuotaLock()
+
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
+	if rh.checkRepoByteQuota(response, request, name, reference, mediaType, body, digestQueryTags) {
+		return
+	}
 
 	digest, subjectDigest, err := imgStore.PutImageManifest(ctx, name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
@@ -1041,6 +1048,9 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	if userAc != nil {
 		detectCollision = userAc.Can(constants.DetectManifestCollisionPermission, name)
 	}
+
+	releaseRepoByteQuotaLock := rh.acquireRepoByteQuotaLock(name)
+	defer releaseRepoByteQuotaLock()
 
 	manifestBlob, manifestDigest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {

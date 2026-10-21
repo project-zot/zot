@@ -1,6 +1,8 @@
 package common
 
 import (
+	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -294,6 +296,173 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 		})
 
 	return repoMeta, repoBlobs
+}
+
+// ProjectRepoSize applies an image candidate to already-loaded repository metadata and returns
+// the stored size and the projected size. The supplied metadata is intentionally mutated in
+// memory; callers must provide data which is not shared with the database state.
+func ProjectRepoSize(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, references []string,
+	imageMeta mTypes.ImageMeta,
+) (int64, int64, error) {
+	currentSize := repoMeta.Size
+	if currentSize < 0 {
+		return currentSize, math.MaxInt64, fmt.Errorf("%w: stored size is negative", zerr.ErrInvalidRepoSize)
+	}
+
+	if err := validateCandidateRepoSize(repoBlobs, imageMeta); err != nil {
+		return currentSize, math.MaxInt64, err
+	}
+
+	if compat.IsImageManifestMediaType(imageMeta.MediaType) {
+		reconcileExistingImageManifestBlobSizes(repoBlobs, imageMeta)
+
+		var err error
+		currentSize, err = recalculateAggregateSize(repoMeta, repoBlobs)
+		if err != nil {
+			return 0, math.MaxInt64, err
+		}
+	}
+
+	for _, reference := range references {
+		repoMeta.Tags[reference] = &proto_go.TagDescriptor{
+			Digest:    imageMeta.Digest.String(),
+			MediaType: imageMeta.MediaType,
+		}
+	}
+
+	reference := imageMeta.Digest.String()
+	if len(references) > 0 {
+		reference = references[0]
+	}
+
+	AddImageMetaToRepoMeta(repoMeta, repoBlobs, reference, imageMeta)
+
+	projectedSize, err := recalculateAggregateSize(repoMeta, repoBlobs)
+	if err != nil {
+		return currentSize, math.MaxInt64, err
+	}
+
+	return currentSize, projectedSize, nil
+}
+
+func validateCandidateRepoSize(repoBlobs *proto_go.RepoBlobs, imageMeta mTypes.ImageMeta) error {
+	if imageMeta.Size < 0 {
+		return fmt.Errorf("%w: manifest size is negative", zerr.ErrInvalidRepoSizeCandidate)
+	}
+
+	candidateBlobSizes := map[string]int64{}
+
+	validateBlobSize := func(digest godigest.Digest, size int64) error {
+		if size < 0 {
+			return fmt.Errorf("%w: blob %s size is negative", zerr.ErrInvalidRepoSizeCandidate, digest)
+		}
+
+		if candidateSize, ok := candidateBlobSizes[digest.String()]; ok && candidateSize != size {
+			return fmt.Errorf("%w: candidate blob %s size changed", zerr.ErrInvalidRepoSizeCandidate, digest)
+		}
+
+		if !compat.IsImageManifestMediaType(imageMeta.MediaType) {
+			if blobInfo, ok := repoBlobs.Blobs[digest.String()]; ok && blobInfo != nil && blobInfo.Size != size {
+				return fmt.Errorf("%w: blob %s size changed", zerr.ErrInvalidRepoSizeCandidate, digest)
+			}
+		}
+
+		candidateBlobSizes[digest.String()] = size
+
+		return nil
+	}
+
+	switch {
+	case compat.IsImageManifestMediaType(imageMeta.MediaType):
+		if len(imageMeta.Manifests) == 0 {
+			return validateBlobSize(imageMeta.Digest, imageMeta.Size)
+		}
+
+		manifestData := imageMeta.Manifests[0]
+		if err := validateBlobSize(manifestData.Digest, manifestData.Size); err != nil {
+			return err
+		}
+		if err := validateBlobSize(manifestData.Manifest.Config.Digest, manifestData.Manifest.Config.Size); err != nil {
+			return err
+		}
+
+		for _, layer := range manifestData.Manifest.Layers {
+			if err := validateBlobSize(layer.Digest, layer.Size); err != nil {
+				return err
+			}
+		}
+	case compat.IsImageIndexMediaType(imageMeta.MediaType):
+		if imageMeta.Index == nil {
+			return fmt.Errorf("%w: image index is missing", zerr.ErrInvalidRepoSizeCandidate)
+		}
+
+		if err := validateBlobSize(imageMeta.Digest, imageMeta.Size); err != nil {
+			return err
+		}
+
+		for _, manifest := range imageMeta.Index.Manifests {
+			if err := validateBlobSize(manifest.Digest, manifest.Size); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func reconcileExistingImageManifestBlobSizes(repoBlobs *proto_go.RepoBlobs, imageMeta mTypes.ImageMeta) {
+	if len(imageMeta.Manifests) == 0 {
+		return
+	}
+
+	setExistingSize := func(digest godigest.Digest, size int64) {
+		if blobInfo, ok := repoBlobs.Blobs[digest.String()]; ok && blobInfo != nil {
+			blobInfo.Size = size
+		}
+	}
+
+	manifestData := imageMeta.Manifests[0]
+	setExistingSize(manifestData.Digest, manifestData.Size)
+	setExistingSize(manifestData.Manifest.Config.Digest, manifestData.Manifest.Config.Size)
+
+	for _, layer := range manifestData.Manifest.Layers {
+		setExistingSize(layer.Digest, layer.Size)
+	}
+}
+
+func recalculateAggregateSize(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs) (int64, error) {
+	size := int64(0)
+	seen := map[string]struct{}{}
+
+	for _, descriptor := range repoMeta.Tags {
+		if descriptor == nil || descriptor.Digest == "" {
+			continue
+		}
+
+		queue := []string{descriptor.Digest}
+		for len(queue) > 0 {
+			currentBlob := queue[0]
+			queue = queue[1:]
+
+			if _, found := seen[currentBlob]; found {
+				continue
+			}
+
+			blobInfo := repoBlobs.Blobs[currentBlob]
+			if blobInfo == nil {
+				continue
+			}
+			if blobInfo.Size < 0 || size > math.MaxInt64-blobInfo.Size {
+				return 0, fmt.Errorf("%w: aggregate size overflow", zerr.ErrInvalidRepoSize)
+			}
+
+			seen[currentBlob] = struct{}{}
+			size += blobInfo.Size
+			queue = append(queue, blobInfo.SubBlobs...)
+		}
+	}
+
+	return size, nil
 }
 
 func RemoveImageFromRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, ref string,

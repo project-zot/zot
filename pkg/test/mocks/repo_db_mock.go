@@ -96,6 +96,9 @@ type MetaDBMock struct {
 
 	GetRepoMetaFn func(ctx context.Context, repo string) (mTypes.RepoMeta, error)
 
+	GetRepoSizeWithCandidateFn func(ctx context.Context, repo string, references []string,
+		imageMeta mTypes.ImageMeta) (int64, int64, error)
+
 	FilterImageMetaFn func(ctx context.Context, digests []string) (map[string]mTypes.ImageMeta, error)
 
 	RemoveRepoReferenceFn func(repo, reference string, manifestDigest godigest.Digest) error
@@ -361,6 +364,16 @@ func (sdm MetaDBMock) GetRepoMeta(ctx context.Context, repo string) (mTypes.Repo
 	}
 
 	return mTypes.RepoMeta{}, nil
+}
+
+func (sdm MetaDBMock) GetRepoSizeWithCandidate(ctx context.Context, repo string, references []string,
+	imageMeta mTypes.ImageMeta,
+) (int64, int64, error) {
+	if sdm.GetRepoSizeWithCandidateFn != nil {
+		return sdm.GetRepoSizeWithCandidateFn(ctx, repo, references, imageMeta)
+	}
+
+	return 0, 0, nil
 }
 
 func (sdm MetaDBMock) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error) {
