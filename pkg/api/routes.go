@@ -1049,6 +1049,9 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		detectCollision = userAc.Can(constants.DetectManifestCollisionPermission, name)
 	}
 
+	releaseRepoByteQuotaLock := rh.acquireRepoByteQuotaLock(name)
+	defer releaseRepoByteQuotaLock()
+
 	manifestBlob, manifestDigest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
 		details := zerr.GetDetails(err)

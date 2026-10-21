@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
@@ -195,6 +196,89 @@ func TestCheckRepoByteQuotaInvalidMetadataFailsClosed(t *testing.T) {
 	require.True(t, rejected)
 	require.Equal(t, http.StatusInternalServerError, response.Code)
 	require.Contains(t, response.Body.String(), "repository size metadata is invalid")
+}
+
+func TestDeleteManifestHoldsRepoByteQuotaLock(t *testing.T) {
+	conf := config.New()
+	conf.Storage.MaxRepoBytes = 1
+
+	manifestBody := []byte(`{"schemaVersion":2,"mediaType":"` + ispec.MediaTypeImageManifest + `",` +
+		`"config":{"mediaType":"application/vnd.oci.empty.v1+json",` +
+		`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
+		`"size":0},"layers":[]}`)
+	manifestDigest := godigest.FromBytes(manifestBody)
+	deleteStarted := make(chan struct{})
+	allowDelete := make(chan struct{})
+	projectionStarted := make(chan struct{})
+
+	imageStore := mocks.MockedImageStore{
+		GetImageManifestFn: func(string, string) ([]byte, godigest.Digest, string, error) {
+			return manifestBody, manifestDigest, ispec.MediaTypeImageManifest, nil
+		},
+		PutImageManifestFn: func(context.Context, string, string, string, []byte, []string) (
+			godigest.Digest, godigest.Digest, error,
+		) {
+			return manifestDigest, "", nil
+		},
+		DeleteImageManifestFn: func(context.Context, string, string, bool) error {
+			close(deleteStarted)
+			<-allowDelete
+
+			return nil
+		},
+	}
+	controller := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetRepoSizeWithCandidateFn: func(context.Context, string, []string, mTypes.ImageMeta) (int64, int64, error) {
+				close(projectionStarted)
+
+				return 0, 0, nil
+			},
+		},
+		StoreController: storage.StoreController{DefaultStore: imageStore},
+	}
+	handler := &RouteHandler{c: controller}
+
+	deleteRequest := mux.SetURLVars(
+		httptest.NewRequest(http.MethodDelete, "/v2/repo/manifests/referrer", nil),
+		map[string]string{"name": "repo", "reference": "sha256-" + strings.Repeat("a", 64)},
+	)
+	deleteResponse := httptest.NewRecorder()
+	deleteDone := make(chan struct{})
+	go func() {
+		handler.DeleteManifest(deleteResponse, deleteRequest)
+		close(deleteDone)
+	}()
+
+	<-deleteStarted
+
+	updateRequest := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/v1", strings.NewReader(string(manifestBody)))
+	updateRequest.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
+	updateRequest = mux.SetURLVars(updateRequest, map[string]string{"name": "repo", "reference": "v1"})
+	updateResponse := httptest.NewRecorder()
+	updateDone := make(chan struct{})
+	go func() {
+		handler.UpdateManifest(updateResponse, updateRequest)
+		close(updateDone)
+	}()
+
+	select {
+	case <-projectionStarted:
+		close(allowDelete)
+		<-deleteDone
+		<-updateDone
+		t.Fatal("manifest update entered quota projection while delete was in progress")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(allowDelete)
+	<-deleteDone
+	<-updateDone
+
+	require.Equal(t, http.StatusAccepted, deleteResponse.Code)
+	require.Equal(t, http.StatusCreated, updateResponse.Code)
 }
 
 func TestNormalizeBlobRedirectURL(t *testing.T) {
