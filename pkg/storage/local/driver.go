@@ -26,6 +26,12 @@ type Driver struct {
 	commit bool
 }
 
+// syncDirFn makes a directory durable; it is a variable so the tests can observe
+// which directories are synced, since an fsync leaves nothing a unit test can assert on.
+//
+//nolint:gochecknoglobals // test seam, replaced and restored by the local package tests
+var syncDirFn = syncDir
+
 func New(commit bool) *Driver {
 	return &Driver{commit: commit}
 }

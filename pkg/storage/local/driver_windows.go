@@ -28,3 +28,9 @@ func renameReplace(src, dst string, commit bool) error {
 
 	return windows.MoveFileEx(from, to, flags)
 }
+
+// syncDir is a no-op on Windows: MOVEFILE_WRITE_THROUGH already flushes the rename, and a
+// directory cannot be opened for fsync there.
+func syncDir(_ string) error {
+	return nil
+}
