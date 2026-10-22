@@ -434,6 +434,17 @@ func (c *ZliConfig) formatListedVars(isDefault bool) string {
 	fmt.Fprintf(&builder, "%s = %v\n", URLFlag, c.URL)
 	fmt.Fprintf(&builder, "%s = %v\n", showspinnerConfig, c.ShowSpinner)
 	fmt.Fprintf(&builder, "%s = %v\n", verifyTLSConfig, c.VerifyTLS)
+
+	for _, entry := range []struct{ key, value string }{
+		{caCertConfig, c.CACert},
+		{clientCertConfig, c.ClientCert},
+		{clientKeyConfig, c.ClientKey},
+	} {
+		if entry.value != "" {
+			fmt.Fprintf(&builder, "%s = %v\n", entry.key, entry.value)
+		}
+	}
+
 	if isDefault {
 		fmt.Fprintln(&builder, "default = true")
 	}
