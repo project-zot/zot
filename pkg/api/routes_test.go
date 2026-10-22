@@ -3777,3 +3777,76 @@ func TestDeleteManifestSucceedsAfterSignatureSubjectOrphaned(t *testing.T) {
 		So(statusCode, ShouldEqual, http.StatusAccepted)
 	})
 }
+
+func TestFinalBlobPutConsumesChunkedBody(t *testing.T) {
+	Convey("final blob PUT appends a chunked body without length headers", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		defer cm.StopServer()
+
+		client := &http.Client{}
+
+		createReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+			baseURL+"/v2/repo/blobs/uploads/", http.NoBody)
+		So(err, ShouldBeNil)
+		createReq.Header.Set("Content-Type", constants.BinaryMediaType)
+		resp, err := client.Do(createReq)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode, ShouldEqual, http.StatusAccepted)
+		uploadURL := resp.Header.Get("Location")
+		_ = resp.Body.Close()
+		if !strings.HasPrefix(uploadURL, "http") {
+			uploadURL = baseURL + uploadURL
+		}
+
+		prefix := []byte("prefix-")
+		patchReq, err := http.NewRequestWithContext(context.Background(), http.MethodPatch,
+			uploadURL, bytes.NewReader(prefix))
+		So(err, ShouldBeNil)
+
+		resp, err = client.Do(patchReq)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode, ShouldEqual, http.StatusAccepted)
+		_ = resp.Body.Close()
+
+		finalChunk := []byte("remainder")
+		fullPayload := append(append([]byte{}, prefix...), finalChunk...)
+		digest := godigest.FromBytes(fullPayload)
+
+		finalReq, err := http.NewRequestWithContext(context.Background(), http.MethodPut, uploadURL,
+			io.NopCloser(bytes.NewReader(finalChunk)))
+		So(err, ShouldBeNil)
+		finalReq.ContentLength = -1
+		finalReq.TransferEncoding = []string{"chunked"}
+		query := finalReq.URL.Query()
+		query.Set("digest", digest.String())
+		finalReq.URL.RawQuery = query.Encode()
+
+		So(finalReq.Header.Get("Content-Length"), ShouldBeEmpty)
+		So(finalReq.Header.Get("Content-Range"), ShouldBeEmpty)
+
+		resp, err = client.Do(finalReq)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+		blobURL := resp.Header.Get("Location")
+		_ = resp.Body.Close()
+		if !strings.HasPrefix(blobURL, "http") {
+			blobURL = baseURL + blobURL
+		}
+
+		getReq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, blobURL, http.NoBody)
+		So(err, ShouldBeNil)
+		resp, err = client.Do(getReq)
+		So(err, ShouldBeNil)
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		So(err, ShouldBeNil)
+		So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		So(body, ShouldResemble, fullPayload)
+	})
+}
