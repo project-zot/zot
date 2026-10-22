@@ -204,3 +204,45 @@ func TestHTTPClient(t *testing.T) {
 		So(htr.TLSClientConfig.InsecureSkipVerify, ShouldBeFalse)
 	})
 }
+
+func TestCreateHTTPClientExplicitPairTakesPrecedence(t *testing.T) {
+	Convey("an explicit client pair wins over one discovered in certs.d", t, func() {
+		caOpts := &tlsutils.CertificateOptions{CommonName: "*", NotAfter: time.Now().AddDate(10, 0, 0)}
+		caCertPEM, caKeyPEM, err := tlsutils.GenerateCACert(caOpts)
+		So(err, ShouldBeNil)
+
+		writePair := func(dir, commonName string) {
+			So(os.MkdirAll(dir, 0o700), ShouldBeNil)
+			So(os.WriteFile(path.Join(dir, common.CaCertFilename), caCertPEM, 0o600), ShouldBeNil)
+			So(tlsutils.GenerateClientCertToFile(caCertPEM, caKeyPEM,
+				path.Join(dir, common.ClientCertFilename), path.Join(dir, common.ClientKeyFilename),
+				&tlsutils.CertificateOptions{CommonName: commonName, NotAfter: time.Now().AddDate(10, 0, 0)}), ShouldBeNil)
+		}
+
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		writePair(path.Join(home, ".config", "containers", "certs.d", "localhost"), "legacy")
+
+		explicitDir := t.TempDir()
+		writePair(explicitDir, "bob")
+
+		client, err := common.CreateHTTPClient(&common.HTTPClientOptions{
+			TLSEnabled: true,
+			VerifyTLS:  true,
+			Host:       "localhost",
+			CertOptions: common.HTTPClientCertOptions{
+				ClientCertFile: path.Join(explicitDir, common.ClientCertFilename),
+				ClientKeyFile:  path.Join(explicitDir, common.ClientKeyFilename),
+			},
+		})
+		So(err, ShouldBeNil)
+
+		htr, ok := client.Transport.(*http.Transport)
+		So(ok, ShouldBeTrue)
+		So(htr.TLSClientConfig.Certificates, ShouldHaveLength, 2)
+
+		first, err := x509.ParseCertificate(htr.TLSClientConfig.Certificates[0].Certificate[0])
+		So(err, ShouldBeNil)
+		So(first.Subject.CommonName, ShouldEqual, "bob")
+	})
+}

@@ -473,6 +473,21 @@ func TestConfigCmdMain(t *testing.T) {
 			So(errBuff.String(), ShouldEqual, "")
 		})
 
+		Convey("prints the certificate paths of the profile", func() {
+			_ = makeConfigFile(t, `{"configs":[{"_name":"configtest","url":"https://test-url.com",
+				"ca-cert":"/certs/ca.crt","client-cert":"/certs/client.cert","client-key":"/certs/client.key"}]}`)
+
+			cmd := client.NewConfigCommand()
+			outBuff := bytes.NewBufferString("")
+			cmd.SetOut(outBuff)
+			cmd.SetErr(bytes.NewBufferString(""))
+			cmd.SetArgs([]string{"show", "configtest"})
+			So(cmd.Execute(), ShouldBeNil)
+			So(outBuff.String(), ShouldContainSubstring, "ca-cert = /certs/ca.crt")
+			So(outBuff.String(), ShouldContainSubstring, "client-cert = /certs/client.cert")
+			So(outBuff.String(), ShouldContainSubstring, "client-key = /certs/client.key")
+		})
+
 		Convey("rejects stale defaultConfigName", func() {
 			_ = makeConfigFile(t,
 				`{"configs":[{"_name":"configtest","url":"https://test-url.com"}],"defaultConfigName":"missing"}`)

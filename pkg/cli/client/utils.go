@@ -19,6 +19,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/common"
 )
 
 const (
@@ -406,6 +407,15 @@ func GetSearchConfigFromFlags(cmd *cobra.Command, searchService SearchService) (
 		return SearchConfig{}, err
 	}
 
+	certOptions, err := getCliCertOptions(cmd)
+	if err != nil {
+		return SearchConfig{}, err
+	}
+
+	if httpClient := searchService.getHTTPClient(); httpClient != nil {
+		httpClient.setCertOptions(certOptions)
+	}
+
 	flags := cmd.Flags()
 	user := defaultIfError(flags.GetString(UserFlag))
 	fixed := defaultIfError(flags.GetBool(FixedFlag))
@@ -485,6 +495,58 @@ func GetCliConfigOptions(cmd *cobra.Command) (bool, bool, error) {
 	}
 
 	return isSpinner, verifyTLS, nil
+}
+
+// getCliCertOptions returns the CA/client certificate files of the selected zli config, if any.
+func getCliCertOptions(cmd *cobra.Command) (common.HTTPClientCertOptions, error) {
+	configName, err := cmd.Flags().GetString(ConfigFlag)
+	if err != nil {
+		return common.HTTPClientCertOptions{}, err
+	}
+
+	if configName == "" {
+		serverURL, urlErr := cmd.Flags().GetString(URLFlag)
+		if urlErr == nil && serverURL != "" {
+			return common.HTTPClientCertOptions{}, nil
+		}
+	}
+
+	configPath, err := zliUserConfigPath()
+	if err != nil {
+		return common.HTTPClientCertOptions{}, err
+	}
+
+	if configName == "" {
+		configName, err = getDefaultConfigName(configPath)
+		if err != nil {
+			return common.HTTPClientCertOptions{}, err
+		}
+
+		if configName == "" {
+			return common.HTTPClientCertOptions{}, nil
+		}
+	}
+
+	cfg, err := ReadZliConfigFile(configPath)
+	if err != nil {
+		return common.HTTPClientCertOptions{}, err
+	}
+
+	profile, err := cfg.Find(configName)
+	if err != nil {
+		return common.HTTPClientCertOptions{}, err
+	}
+
+	if (profile.ClientCert == "") != (profile.ClientKey == "") {
+		return common.HTTPClientCertOptions{}, fmt.Errorf("%w: %s and %s must be set together",
+			zerr.ErrCliBadConfig, clientCertConfig, clientKeyConfig)
+	}
+
+	return common.HTTPClientCertOptions{
+		ClientCertFile: profile.ClientCert,
+		ClientKeyFile:  profile.ClientKey,
+		RootCaCertFile: profile.CACert,
+	}, nil
 }
 
 func GetServerURLFromFlags(cmd *cobra.Command) (string, error) {

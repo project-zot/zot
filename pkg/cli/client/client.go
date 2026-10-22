@@ -24,8 +24,18 @@ import (
 
 // HTTPClient manages HTTP clients with TLS support and caching.
 type HTTPClient struct {
-	clients map[string]*http.Client
-	mu      sync.Mutex
+	clients     map[string]*http.Client
+	certOptions common.HTTPClientCertOptions
+	mu          sync.Mutex
+}
+
+// setCertOptions sets the CA and client certificate files used for clients created afterwards.
+func (c *HTTPClient) setCertOptions(opts common.HTTPClientCertOptions) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.certOptions = opts
+	c.clients = make(map[string]*http.Client)
 }
 
 // NewHTTPClient creates a new HTTPClient instance.
@@ -107,7 +117,7 @@ func (c *HTTPClient) doHTTPRequest(req *http.Request, verifyTLS bool, debug bool
 			TLSEnabled:  enableTLS,
 			VerifyTLS:   verifyTLS,
 			Host:        host,
-			CertOptions: common.HTTPClientCertOptions{},
+			CertOptions: c.certOptions,
 		})
 		if err != nil {
 			c.mu.Unlock()

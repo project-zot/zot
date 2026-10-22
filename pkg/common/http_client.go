@@ -127,7 +127,9 @@ func CreateHTTPClient(clientOptions *HTTPClientOptions) (*http.Client, error) {
 			return nil, err
 		}
 
-		tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
+		// The explicitly configured pair goes first: Go selects the first compatible certificate,
+		// so it must win over a pair discovered in a certs.d directory.
+		tlsConfig.Certificates = append([]tls.Certificate{cert}, tlsConfig.Certificates...)
 	}
 
 	htr.TLSClientConfig = tlsConfig

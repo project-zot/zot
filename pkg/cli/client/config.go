@@ -25,6 +25,9 @@ const (
 	nameKey              = "_name"
 	showspinnerConfig    = "showspinner"
 	verifyTLSConfig      = "verify-tls"
+	caCertConfig         = "ca-cert"
+	clientCertConfig     = "client-cert"
+	clientKeyConfig      = "client-key"
 )
 
 // ZliConfigFile is the on-disk JSON shape for ~/.zot (zli CLI registry profiles).
@@ -39,6 +42,11 @@ type ZliConfig struct {
 	URL         string `json:"url"`
 	ShowSpinner any    `json:"showspinner,omitempty"`
 	VerifyTLS   any    `json:"verify-tls,omitempty"` //nolint:tagliatelle // hyphenated ~/.zot key
+	// CACert is an optional path to a PEM file with the root CA(s) used to verify the server.
+	CACert string `json:"ca-cert,omitempty"` //nolint:tagliatelle // hyphenated ~/.zot key
+	// ClientCert and ClientKey are optional paths to the client certificate and key (mTLS authentication).
+	ClientCert string `json:"client-cert,omitempty"` //nolint:tagliatelle // hyphenated ~/.zot key
+	ClientKey  string `json:"client-key,omitempty"`  //nolint:tagliatelle // hyphenated ~/.zot key
 }
 
 // isConfigUnavailable reports errors that mean there is no usable ~/.zot config yet (empty file
@@ -149,6 +157,26 @@ func zliConfigFromMap(configMap map[string]any, i int) (ZliConfig, error) {
 
 	if verifyTLS, ok := configMap[verifyTLSConfig]; ok {
 		profile.VerifyTLS = verifyTLS
+	}
+
+	for key, dst := range map[string]*string{
+		caCertConfig:     &profile.CACert,
+		clientCertConfig: &profile.ClientCert,
+		clientKeyConfig:  &profile.ClientKey,
+	} {
+		raw, ok := configMap[key]
+		if !ok {
+			continue
+		}
+
+		str, isStr := raw.(string)
+		if !isStr {
+			return ZliConfig{}, fmt.Errorf(
+				`%w: configs[%d]: %q must be a string`,
+				zerr.ErrCliBadConfig, i, key)
+		}
+
+		*dst = str
 	}
 
 	return profile, nil
@@ -321,18 +349,38 @@ func (c *ZliConfig) GetVar(key string) (string, error) {
 		}
 
 		return fmt.Sprintf("%v", c.VerifyTLS), nil
+	case caCertConfig:
+		return c.CACert, nil
+	case clientCertConfig:
+		return c.ClientCert, nil
+	case clientKeyConfig:
+		return c.ClientKey, nil
 	default:
 		return "", zerr.ErrIllegalConfigKey
 	}
 }
 
-// SetVar updates url / showspinner / verify-tls (does not persist).
+// SetVar updates url / showspinner / verify-tls / ca-cert / client-cert / client-key (does not persist).
 func (c *ZliConfig) SetVar(key, value string) error {
 	if key == nameKey {
 		return zerr.ErrIllegalConfigKey
 	}
 
-	if key != URLFlag && key != showspinnerConfig && key != verifyTLSConfig {
+	switch key {
+	case URLFlag, showspinnerConfig, verifyTLSConfig:
+	case caCertConfig:
+		c.CACert = value
+
+		return nil
+	case clientCertConfig:
+		c.ClientCert = value
+
+		return nil
+	case clientKeyConfig:
+		c.ClientKey = value
+
+		return nil
+	default:
 		return zerr.ErrIllegalConfigKey
 	}
 
@@ -367,6 +415,12 @@ func (c *ZliConfig) ResetVar(key string) error {
 		c.ShowSpinner = nil
 	case verifyTLSConfig:
 		c.VerifyTLS = nil
+	case caCertConfig:
+		c.CACert = ""
+	case clientCertConfig:
+		c.ClientCert = ""
+	case clientKeyConfig:
+		c.ClientKey = ""
 	default:
 		return zerr.ErrIllegalConfigKey
 	}
@@ -380,6 +434,17 @@ func (c *ZliConfig) formatListedVars(isDefault bool) string {
 	fmt.Fprintf(&builder, "%s = %v\n", URLFlag, c.URL)
 	fmt.Fprintf(&builder, "%s = %v\n", showspinnerConfig, c.ShowSpinner)
 	fmt.Fprintf(&builder, "%s = %v\n", verifyTLSConfig, c.VerifyTLS)
+
+	for _, entry := range []struct{ key, value string }{
+		{caCertConfig, c.CACert},
+		{clientCertConfig, c.ClientCert},
+		{clientKeyConfig, c.ClientKey},
+	} {
+		if entry.value != "" {
+			fmt.Fprintf(&builder, "%s = %v\n", entry.key, entry.value)
+		}
+	}
+
 	if isDefault {
 		fmt.Fprintln(&builder, "default = true")
 	}
