@@ -57,6 +57,7 @@ type ImageStore struct {
 	linter      common.Lint
 	commit      bool
 	compat      []compat.MediaCompatibility
+	uploads     uploadSessionRegistry
 	// dedupeRebuildDone is set once RunDedupeBlobs has walked all blobs, i.e. the
 	// cache accounts for every pre-existing blob; see deleteBlob.
 	dedupeRebuildDone atomic.Bool
@@ -1283,25 +1284,35 @@ func (is *ImageStore) NewBlobUpload(ctx context.Context, repo string) (string, e
 // GetBlobUpload returns the current size of a blob upload.
 func (is *ImageStore) GetBlobUpload(repo, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
-
 	if !utf8.ValidString(blobUploadPath) {
 		is.log.Error().Msg("invalid UTF-8 input")
 
 		return -1, zerr.ErrInvalidRepositoryName
 	}
 
-	writer, err := is.storeDriver.Writer(blobUploadPath, true)
-	if err != nil {
-		if errclass.IsStorageObjectMissing(err) {
-			return -1, zerr.ErrUploadNotFound
+	session := is.uploads.get(blobUploadPath)
+	size := int64(-1)
+
+	err := session.withOpen(func() error {
+		writer, err := is.storeDriver.Writer(blobUploadPath, true)
+		if err != nil {
+			if errclass.IsStorageObjectMissing(err) {
+				return zerr.ErrUploadNotFound
+			}
+
+			return err
 		}
 
-		return -1, err
+		defer writer.Close()
+		size = writer.Size()
+
+		return nil
+	})
+	if errors.Is(err, zerr.ErrUploadNotFound) {
+		is.cleanupUploadSessionIfMissing(blobUploadPath, session)
 	}
 
-	defer writer.Close()
-
-	return writer.Size(), nil
+	return size, err
 }
 
 func (is *ImageStore) prepareBlobUploadDir(ctx context.Context, repo string) error {
@@ -1356,20 +1367,41 @@ func closeAfterWrite(w driver.FileWriter, writeErr error) error {
 	return closeErr
 }
 
+func (is *ImageStore) cleanupUploadSessionIfMissing(src string, session *uploadSession) {
+	if session.isSealing() {
+		return
+	}
+
+	if _, err := is.storeDriver.Stat(src); err != nil && errclass.IsStorageObjectMissing(err) {
+		is.uploads.delete(src, session)
+	}
+}
+
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
 func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid string, body io.Reader) (int64, error) {
-	// Validates the repo name and ensures .uploads exists without InitRepo's store lock.
-	file, err := is.openBlobUploadWriter(ctx, repo, uuid)
-	if err != nil {
-		return -1, err
+	src := is.BlobUploadPath(repo, uuid)
+	session := is.uploads.get(src)
+	total := int64(-1)
+
+	err := session.withOpen(func() error {
+		// Validates the repo name and ensures .uploads exists without InitRepo's store lock.
+		file, err := is.openBlobUploadWriter(ctx, repo, uuid)
+		if err != nil {
+			return err
+		}
+
+		fsize := file.Size()
+		n, copyErr := io.Copy(file, body)
+		total = n + fsize
+
+		return closeAfterWrite(file, copyErr)
+	})
+	if errors.Is(err, zerr.ErrUploadNotFound) {
+		is.cleanupUploadSessionIfMissing(src, session)
 	}
 
-	fsize := file.Size()
-
-	n, copyErr := io.Copy(file, body)
-
-	return n + fsize, closeAfterWrite(file, copyErr)
+	return total, err
 }
 
 // PutBlobChunk writes another chunk of data to the specified blob. It returns
@@ -1377,43 +1409,65 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from, to int64,
 	body io.Reader,
 ) (int64, error) {
-	// Validates the repo name and ensures .uploads exists without InitRepo's store lock.
-	file, err := is.openBlobUploadWriter(ctx, repo, uuid)
-	if err != nil {
-		return -1, err
+	src := is.BlobUploadPath(repo, uuid)
+	session := is.uploads.get(src)
+	total := int64(-1)
+
+	err := session.withOpen(func() error {
+		// Validates the repo name and ensures .uploads exists without InitRepo's store lock.
+		file, err := is.openBlobUploadWriter(ctx, repo, uuid)
+		if err != nil {
+			return err
+		}
+
+		fsize := file.Size()
+
+		if from != fsize {
+			_ = file.Close()
+			is.log.Error().Int64("expected", from).Int64("actual", file.Size()).
+				Msg("invalid range start for blob upload")
+
+			return zerr.ErrBadUploadRange
+		}
+
+		n, copyErr := io.Copy(file, body)
+		total = n + fsize
+
+		return closeAfterWrite(file, copyErr)
+	})
+	if errors.Is(err, zerr.ErrUploadNotFound) {
+		is.cleanupUploadSessionIfMissing(src, session)
 	}
 
-	fsize := file.Size()
-
-	if from != fsize {
-		_ = file.Close()
-		is.log.Error().Int64("expected", from).Int64("actual", file.Size()).
-			Msg("invalid range start for blob upload")
-
-		return -1, zerr.ErrBadUploadRange
-	}
-
-	n, copyErr := io.Copy(file, body)
-
-	return n + fsize, closeAfterWrite(file, copyErr)
+	return total, err
 }
 
 // BlobUploadInfo returns the current blob size in bytes.
 func (is *ImageStore) BlobUploadInfo(repo, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
+	session := is.uploads.get(blobUploadPath)
+	size := int64(-1)
 
-	writer, err := is.storeDriver.Writer(blobUploadPath, true)
-	if err != nil {
-		if errclass.IsStorageObjectMissing(err) {
-			return -1, zerr.ErrUploadNotFound
+	err := session.withOpen(func() error {
+		writer, err := is.storeDriver.Writer(blobUploadPath, true)
+		if err != nil {
+			if errclass.IsStorageObjectMissing(err) {
+				return zerr.ErrUploadNotFound
+			}
+
+			return err
 		}
 
-		return -1, err
+		defer writer.Close()
+		size = writer.Size()
+
+		return nil
+	})
+	if errors.Is(err, zerr.ErrUploadNotFound) {
+		is.cleanupUploadSessionIfMissing(blobUploadPath, session)
 	}
 
-	defer writer.Close()
-
-	return writer.Size(), nil
+	return size, err
 }
 
 // FinishBlobUpload finalizes the blob upload and moves blob the repository.
@@ -1423,7 +1477,19 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	session := is.uploads.get(src)
 
+	err := session.finalize(func() error {
+		return is.finishBlobUpload(repo, src, dstDigest)
+	})
+	if err == nil || errors.Is(err, zerr.ErrUploadNotFound) {
+		is.cleanupUploadSessionIfMissing(src, session)
+	}
+
+	return err
+}
+
+func (is *ImageStore) finishBlobUpload(repo, src string, dstDigest godigest.Digest) error {
 	// complete multiUploadPart
 	fileWriter, err := is.storeDriver.Writer(src, true)
 	if err != nil {
@@ -1853,25 +1919,39 @@ func (is *ImageStore) verifiedSnapshot(src string, digest godigest.Digest, size 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
 func (is *ImageStore) DeleteBlobUpload(repo, uuid string) error {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
+	session := is.uploads.get(blobUploadPath)
 
-	writer, err := is.storeDriver.Writer(blobUploadPath, true)
-	if err != nil {
-		if errclass.IsStorageObjectMissing(err) {
-			return zerr.ErrUploadNotFound
+	cancel := func() error {
+		writer, err := is.storeDriver.Writer(blobUploadPath, true)
+		if err != nil {
+			if errclass.IsStorageObjectMissing(err) {
+				return zerr.ErrUploadNotFound
+			}
+
+			return err
 		}
 
-		return err
+		defer writer.Close()
+
+		if err := writer.Cancel(context.Background()); err != nil {
+			is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).
+				Msg("failed to delete blob upload")
+
+			return err
+		}
+
+		return nil
 	}
 
-	defer writer.Close()
-
-	if err := writer.Cancel(context.Background()); err != nil {
-		is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).Msg("failed to delete blob upload")
-
-		return err
+	err := session.finalize(cancel)
+	if errors.Is(err, zerr.ErrUploadNotFound) && session.isSealed() {
+		err = session.cleanupSealed(cancel)
+	}
+	if err == nil || errors.Is(err, zerr.ErrUploadNotFound) {
+		is.cleanupUploadSessionIfMissing(blobUploadPath, session)
 	}
 
-	return nil
+	return err
 }
 
 // BlobPath returns the repository path of a blob.
