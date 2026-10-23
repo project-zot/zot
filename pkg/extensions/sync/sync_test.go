@@ -5784,12 +5784,19 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
 
-		scm.StartServer()
+		// Bring upstream up only once the routine's first attempt has failed too: the remote
+		// client's own retries are spent by then, so only the routine retrying can sync it.
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"sync routine: retrying copy image", 60*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		scm.StartAndWait()
 
 		defer scm.StopServer()
 
 		// in the meantime ondemand should retry syncing
-		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+		found, err = test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
 			"successfully synced image", 60*time.Second)
 		if err != nil {
 			panic(err)
