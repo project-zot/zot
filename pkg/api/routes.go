@@ -2502,6 +2502,8 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 // @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [put].
+//
+//nolint:gocyclo // Handles multiple valid upload modes and their status mappings.
 func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	name, ok := vars["name"]
@@ -2587,39 +2589,44 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 	if shouldPutBlobChunk {
 		_, err = imgStore.PutBlobChunk(ctx, name, sessionID, from, to, request.Body)
-		if err != nil { //nolint:dupl
-			details := zerr.GetDetails(err)
-			if rh.writeBlobUploadStorageError(response, err, imgStore, name, sessionID,
-				"failed to update blob upload due to storage failure") {
-				return
-			}
+	} else if !contentLenHeaderPresent && !contentRangePresent {
+		// A chunked final PUT may contain a body without either length header.
+		// Consume it as a streamed final chunk before finalizing the upload.
+		_, err = imgStore.PutBlobChunkStreamed(ctx, name, sessionID, request.Body)
+	}
 
-			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-				details["session_id"] = sessionID
-				e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
-				zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
-			} else if errors.Is(err, zerr.ErrRepoNotFound) {
-				details["name"] = name
-				e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-			} else if errors.Is(err, zerr.ErrUploadNotFound) {
-				details["session_id"] = sessionID
-				e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
-				zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-			} else {
-				// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
-				rh.c.Log.Error().Err(err).Msg("unexpected error, removing .uploads/ files")
-
-				if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
-					rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
-						Msg("failed to remove blobUpload in repo")
-				}
-
-				response.WriteHeader(http.StatusInternalServerError)
-			}
-
+	if err != nil { //nolint:dupl
+		details := zerr.GetDetails(err)
+		if rh.writeBlobUploadStorageError(response, err, imgStore, name, sessionID,
+			"failed to update blob upload due to storage failure") {
 			return
 		}
+
+		if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
+		} else if errors.Is(err, zerr.ErrRepoNotFound) {
+			details["name"] = name
+			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+		} else if errors.Is(err, zerr.ErrUploadNotFound) {
+			details["session_id"] = sessionID
+			e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+		} else {
+			// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
+			rh.c.Log.Error().Err(err).Msg("unexpected error, removing .uploads/ files")
+
+			if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
+				rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
+					Msg("failed to remove blobUpload in repo")
+			}
+
+			response.WriteHeader(http.StatusInternalServerError)
+		}
+
+		return
 	}
 
 	// blob chunks already transferred, just finish
