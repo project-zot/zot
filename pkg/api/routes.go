@@ -817,7 +817,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	mediaType := request.Header.Get("Content-Type")
+	mediaType := zcommon.GetContentType(request)
 	compatConfig := rh.c.Config.GetCompat()
 
 	if !storageCommon.IsSupportedMediaType(compatConfig, mediaType) {
@@ -2199,7 +2199,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		if contentType := request.Header.Get("Content-Type"); contentType != constants.BinaryMediaType {
+		if contentType := zcommon.GetContentType(request); contentType != constants.BinaryMediaType {
 			rh.c.Log.Warn().Str("actual", contentType).Str("expected", constants.BinaryMediaType).Msg("invalid media type")
 			response.WriteHeader(http.StatusUnsupportedMediaType)
 
