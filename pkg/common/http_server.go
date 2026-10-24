@@ -1,7 +1,9 @@
 package common
 
 import (
+	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -215,4 +217,17 @@ func QueryHasParams(values url.Values, params []string) bool {
 	}
 
 	return true
+}
+
+// GetContentType returns the lowercased media type of the request's Content-Type header without its parameters.
+// A header whose media type does not parse is returned as is, so the error detail shows what the client sent.
+func GetContentType(request *http.Request) string {
+	contentType := request.Header.Get("Content-Type")
+
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil && !errors.Is(err, mime.ErrInvalidMediaParameter) {
+		return contentType
+	}
+
+	return mediaType
 }

@@ -603,6 +603,35 @@ func TestRoutes(t *testing.T) {
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+
+			Convey("parameters on the Content-Type header are ignored", func() {
+				for _, contentType := range []string{
+					ispec.MediaTypeImageManifest + "; charset=utf-8",
+					ispec.MediaTypeImageManifest + "; charset",
+				} {
+					var storedMediaType string
+
+					ctlr.StoreController.DefaultStore = &mocks.MockedImageStore{
+						PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+							body []byte, extraTags []string,
+						) (godigest.Digest, godigest.Digest, error) {
+							storedMediaType = mediaType
+
+							return "", "", zerr.ErrBadManifest
+						},
+					}
+					request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL,
+						bytes.NewBufferString("test"))
+					request = mux.SetURLVars(request, map[string]string{"name": "test", "reference": "v1"})
+					request.Header.Add("Content-Type", contentType)
+					response := httptest.NewRecorder()
+
+					rthdlr.UpdateManifest(response, request)
+
+					So(response.Code, ShouldEqual, http.StatusBadRequest)
+					So(storedMediaType, ShouldEqual, ispec.MediaTypeImageManifest)
+				}
+			})
 		})
 
 		Convey("UpdateManifest digest query tags with MetaDB", func() {
@@ -1346,6 +1375,23 @@ func TestRoutes(t *testing.T) {
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusUnsupportedMediaType)
+
+			// a full blob upload ignores parameters on the content type
+			statusCode = testCreateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+				},
+				map[string]string{
+					"Content-Type": constants.BinaryMediaType + "; charset=binary",
+				},
+				&mocks.MockedImageStore{
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader,
+						digest godigest.Digest,
+					) (string, int64, error) {
+						return sessionStr, 0, nil
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusCreated)
 
 			// invalid digest query value
 			statusCode = testCreateBlobUpload(
