@@ -58,12 +58,18 @@ func (r *remoteSharedBlobLifecycle) DeleteBlobRef(digest godigest.Digest, repoPa
 
 	/* The placeholder is gone by now, and its reference goes next, so that a failure in between
 	only leaks the reference. Within an instance the repo lock keeps a push of the same blob to
-	the same repo out of that gap. Across instances nothing does: another instance can add the
-	reference again (a no-op, as the path is still recorded) and write the placeholder anew, and
-	this removal then takes away the reference that push relied on, leaving the payload to a
-	later sweep. Follow-up: tag each reference with a generation, read before the placeholder is
-	deleted, and remove it only if unchanged, with the linker adding again once its placeholder
-	is written; or serialize link and delete per path with a lease in the cache. */
+	the same repo out of that gap.
+
+	Known limitation, scale-out only (several instances sharing remote storage and a Redis or
+	DynamoDB cache; BoltDB cannot be shared, local storage keeps no index): across instances
+	nothing keeps a push out of the gap. Another instance can add the reference again (a no-op,
+	as the path is still recorded) and write the placeholder anew, and this removal then takes
+	away the reference that push relied on, leaving its payload to a later sweep. The same class
+	as #4543 on main; see "Known limitations" in pkg/storage/README.md.
+	Follow-up: a generation per digest record, bumped by every AddReference and read before the
+	placeholder is deleted; the removal then succeeds only while it is unchanged, and is skipped
+	once the placeholder is back. The linker adds its reference again once its placeholder is
+	written, and checks the payload survived (see PutBlobRef). */
 	unowned, err := r.refs.RemoveReference(digest, repoPath)
 	if err != nil || !unowned {
 		return err

@@ -38,7 +38,7 @@ A claim older than its lease (5 minutes) belongs to a sweep that stopped, and th
 Both concern instances sharing a cache, and are left for a follow-up:
 
 - The sweep's wait for the reference index to be rebuilt is per instance. A shared cache that is flushed or replaced while instances keep running is not noticed by an instance whose dedupe walk finished before then. Keeping the readiness in the cache itself, as an epoch each walk marks rebuilt unless it changed meanwhile, would stop every instance's sweep at once.
-- Link and delete of the same repository and digest are serialized only within an instance. If one instance deletes the placeholder and, before it removes the reference, another pushes the same blob to the same repository, the reference that push relied on is the one removed, and a later sweep can reclaim the payload under it. Generation-tagged references removed only when unchanged, or a per-path lease in the cache, would close it.
+- Link and delete of the same repository and digest are serialized only within an instance. If one instance deletes the placeholder and, before it removes the reference, another pushes the same blob to the same repository, the reference that push relied on is the one removed, and a later sweep can reclaim the payload under it. A generation per digest record, bumped by every reference added and checked by the removal, would close it (see `DeleteBlobRef`).
 
 ### Upgrading an existing store
 
