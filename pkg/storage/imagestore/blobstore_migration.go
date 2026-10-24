@@ -6,6 +6,7 @@ package imagestore
 import (
 	"path"
 
+	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -187,15 +188,24 @@ func (is *ImageStore) promoteBlobCandidate(candidate blobCandidate, digest godig
 		return err
 	}
 
-	if err := is.lifecycle.PromoteCandidate(candidate.blobPath, globalBlobPath); err != nil {
+	// staged as a push is, so that the stray copy a stop leaves behind is a stale upload for GC
+	stagingUUID, err := guuid.NewV4()
+	if err != nil {
+		return err
+	}
+
+	stagingPath := is.BlobUploadPath(candidate.repoName, stagingUUID.String())
+
+	if err := is.lifecycle.PromoteCandidate(digest, candidate.size, candidate.blobPath, stagingPath,
+		globalBlobPath); err != nil {
 		is.log.Error().Err(err).Str("src", candidate.blobPath).Str("dst", globalBlobPath).
 			Msg("failed to promote blob to global blobstore")
 
 		return err
 	}
 
-	// Repo copies give up their content once the payload is there, so it must be whole: a
-	// remote copy that stopped short would otherwise be all that is left of the content.
+	// Repo copies give up their content once the payload is there, so it must be whole. The
+	// remote lifecycle verifies what it publishes; this also covers what it chose to keep.
 	if !lacksContent(digest, candidate.size) {
 		binfo, err := is.storeDriver.Stat(globalBlobPath)
 		if err != nil {

@@ -230,4 +230,65 @@ func TestUpgradeRemoteStoreToGlobalBlobstore(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(data, ShouldResemble, shared)
 	})
+
+	Convey("Two instances upgrading one remote store together keep every payload", t, func() {
+		dir := t.TempDir()
+		cacheDriver := newBoltCacheAbs(dir)
+		legacyRemoteStore(dir, cacheDriver)
+
+		/* Instance B chooses its candidates, then, as it opens the first one to copy, instance A
+		runs a whole pass: it publishes each payload and replaces every repo copy with a
+		placeholder. B's candidates are stale from then on, the one it is opening empty. */
+		otherPassRun := false
+		storeDriver := &faultyDriver{
+			Driver: &remoteNamedDriver{Driver: local.New(true)},
+			fail: func(op, _ string) bool {
+				if op == "Reader" && !otherPassRun {
+					otherPassRun = true
+
+					So(openStore(dir, cacheDriver), ShouldNotBeNil)
+				}
+
+				return false
+			},
+		}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, storeDriver, cacheDriver, nil, nil)
+		So(otherPassRun, ShouldBeTrue)
+
+		testCases := []struct {
+			digest  godigest.Digest
+			content []byte
+			repos   []string
+		}{
+			{sharedDigest, shared, []string{"repo-a", "repo-b"}},
+			{copiedDigest, copied, []string{"repo-a", "repo-c"}},
+		}
+
+		// B never copies its emptied candidate over the payload A published
+		for _, testCase := range testCases {
+			data, err := os.ReadFile(globalBlob(dir, testCase.digest))
+			So(err, ShouldBeNil)
+			So(data, ShouldResemble, testCase.content)
+		}
+
+		So(imgStore, ShouldNotBeNil)
+		So(markerExists(dir), ShouldBeTrue)
+
+		for _, testCase := range testCases {
+			for _, repo := range testCase.repos {
+				data, err := imgStore.GetBlobContent(repo, testCase.digest)
+				So(err, ShouldBeNil)
+				So(data, ShouldResemble, testCase.content)
+			}
+		}
+
+		// B's discarded copy is not left behind
+		for _, repo := range []string{"repo-a", "repo-b", "repo-c"} {
+			uploads, err := imgStore.ListBlobUploads(repo)
+			So(err, ShouldBeNil)
+			So(uploads, ShouldBeEmpty)
+		}
+	})
 }

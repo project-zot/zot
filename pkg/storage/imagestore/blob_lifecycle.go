@@ -110,10 +110,14 @@ type blobLifecycle interface { //nolint:interfacebloat
 	// copy of each deduped blob.
 
 	// PromoteCandidate makes the global blobstore copy at dstPath out of a repo's copy at
-	// srcPath, making it the canonical copy for that digest. Local: hardlink (cheap, same
-	// inode). Remote: streamed copy of the actual bytes (dstPath has no content of its own
-	// yet).
-	PromoteCandidate(srcPath, dstPath string) error
+	// srcPath, expected to hold size bytes of digest, making it the canonical copy for that
+	// digest. Local: hardlink (cheap, same inode), which never empties a copy, so the other
+	// arguments go unused. Remote: the bytes are streamed to stagingPath and published onto
+	// dstPath only once they match size and digest, and never over a dstPath that already
+	// holds size bytes: another instance's upgrade pass may have published it and replaced
+	// srcPath with a placeholder since srcPath was chosen. A source that no longer matches
+	// is then no error.
+	PromoteCandidate(digest godigest.Digest, size int64, srcPath, stagingPath, dstPath string) error
 
 	// RemoveMigratedRepoBlob runs once per pre-existing repo copy during the one-time
 	// upgrade to the global blobstore, after PromoteCandidate has made the canonical copy and
@@ -287,7 +291,7 @@ func (l *localHardlinkBlobLifecycle) rewriteInPlace(srcPath, dstPath string) err
 	return writer.Close()
 }
 
-func (l *localHardlinkBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
+func (l *localHardlinkBlobLifecycle) PromoteCandidate(_ godigest.Digest, _ int64, srcPath, _, dstPath string) error {
 	return linkDistinct(l.storeDriver, srcPath, dstPath)
 }
 
@@ -433,32 +437,104 @@ func (r *remoteSharedBlobLifecycle) RepairSharedContent(uploadPath, originPath s
 	return r.storeDriver.Move(uploadPath, originPath)
 }
 
-func (r *remoteSharedBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
-	// a copy, not a Move: the repo copy at srcPath is still served until it is replaced
-	blobReader, err := r.storeDriver.Reader(srcPath, 0)
+func (r *remoteSharedBlobLifecycle) PromoteCandidate(digest godigest.Digest, size int64,
+	srcPath, stagingPath, dstPath string,
+) error {
+	/* Upgrade passes of instances starting together on one store each choose their candidates
+	before any of them replaces a repo copy with a placeholder, so a pass can come here with a
+	srcPath emptied since. Copying it straight onto dstPath would replace the payload another
+	pass published with nothing, and every copy left would then be empty. So a payload already
+	published is kept, and a copy is published only once it matches. */
+	if published, err := r.holdsPromotedPayload(dstPath, size); err != nil || published {
+		return err
+	}
+
+	copied, copiedDigest, err := r.copyToStaging(digest, srcPath, stagingPath)
 	if err != nil {
 		return err
 	}
 
-	blobWriter, err := r.storeDriver.Writer(dstPath, false)
+	// A digest with no content to find has nothing to verify, and nothing to lose. An invalid
+	// one, which a stray file in a repo's blobs could be named, cannot be hashed.
+	if !lacksContent(digest, size) &&
+		(copied != size || (digest.Validate() == nil && copiedDigest != digest)) {
+		if err := r.storeDriver.Delete(stagingPath); err != nil && !errclass.IsStorageObjectMissing(err) {
+			r.log.Error().Err(err).Str("path", stagingPath).Msg("failed to delete staged blob")
+		}
+
+		// the source was emptied by another pass, which published the payload first
+		if published, err := r.holdsPromotedPayload(dstPath, size); err != nil || published {
+			return err
+		}
+
+		r.log.Error().Str("digest", digest.String()).Str("src", srcPath).Int64("size", copied).
+			Int64("expected", size).Msg("blob to promote does not match its digest")
+
+		return zerr.ErrBadBlob
+	}
+
+	// another pass may publish dstPath meanwhile; both copies are verified, so either can stand
+	return r.storeDriver.Move(stagingPath, dstPath)
+}
+
+// holdsPromotedPayload reports whether dstPath already holds the size bytes being promoted.
+func (r *remoteSharedBlobLifecycle) holdsPromotedPayload(dstPath string, size int64) (bool, error) {
+	binfo, err := r.storeDriver.Stat(dstPath)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return false, nil
+		}
+
+		if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return binfo.Size() == size, nil
+}
+
+// copyToStaging copies srcPath to stagingPath, returning the number of bytes copied and, for a
+// valid digest, their digest under its algorithm.
+func (r *remoteSharedBlobLifecycle) copyToStaging(digest godigest.Digest, srcPath, stagingPath string,
+) (int64, godigest.Digest, error) {
+	// a copy, not a Move: the repo copy at srcPath is still served until it is replaced
+	blobReader, err := r.storeDriver.Reader(srcPath, 0)
+	if err != nil {
+		return 0, "", err
+	}
+
+	blobWriter, err := r.storeDriver.Writer(stagingPath, false)
 	if err != nil {
 		if closeErr := blobReader.Close(); closeErr != nil {
 			r.log.Error().Err(closeErr).Msg("failed to close blob reader")
 		}
 
-		return err
+		return 0, "", err
 	}
 
-	if _, err := io.Copy(blobWriter, blobReader); err != nil {
+	var (
+		dst      io.Writer = blobWriter
+		digester godigest.Digester
+	)
+
+	if digest.Validate() == nil {
+		digester = digest.Algorithm().Digester()
+		dst = io.MultiWriter(blobWriter, digester.Hash())
+	}
+
+	copied, err := io.Copy(dst, blobReader)
+	if err != nil {
 		r.abortWrite(blobWriter, blobReader)
 
-		return err
+		return 0, "", err
 	}
 
 	if err := blobWriter.Commit(context.Background()); err != nil {
 		r.abortWrite(blobWriter, blobReader)
 
-		return err
+		return 0, "", err
 	}
 
 	if err := blobReader.Close(); err != nil {
@@ -466,13 +542,22 @@ func (r *remoteSharedBlobLifecycle) PromoteCandidate(srcPath, dstPath string) er
 			r.log.Error().Err(closeErr).Msg("failed to close blob writer")
 		}
 
-		return err
+		return 0, "", err
 	}
 
-	return blobWriter.Close()
+	if err := blobWriter.Close(); err != nil {
+		return 0, "", err
+	}
+
+	var copiedDigest godigest.Digest
+	if digester != nil {
+		copiedDigest = digester.Digest()
+	}
+
+	return copied, copiedDigest, nil
 }
 
-// abortWrite cleans up after PromoteCandidate's copy or commit failed. Every step is best
+// abortWrite cleans up after copyToStaging's copy or commit failed. Every step is best
 // effort, but a failure is logged, since it can leave a partial object behind.
 func (r *remoteSharedBlobLifecycle) abortWrite(blobWriter driver.FileWriter, blobReader io.ReadCloser) {
 	if err := blobWriter.Cancel(context.Background()); err != nil {
