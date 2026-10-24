@@ -829,7 +829,7 @@ func (onDemand *BaseOnDemand) maybeRetryInBackground(ctx context.Context, kind, 
 			}
 
 			onDemand.log.Info().Str("repo", repo).Str("reference", reference).Int("attempt", attempt).
-				Str("err", err.Error()).Dur("retryIn", delay).Msg("sync routine: retrying copy image")
+				Err(err).Dur("retryIn", delay).Msg("sync routine: retrying copy image")
 
 			time.Sleep(delay)
 		}
