@@ -622,6 +622,8 @@ func (r *remoteSharedBlobLifecycle) PutBlobRef(digest godigest.Digest, blobPath 
 		return r.refs.RecordGlobal(digest)
 	}
 
+	// Known limitation, scale-out only: an instance deleting this same path can still remove the
+	// reference added here, since a reference names only a path. See DeleteBlobRef.
 	deadline := time.Now().Add(r.claimWait)
 
 	for {
