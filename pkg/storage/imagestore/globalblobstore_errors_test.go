@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -44,6 +45,14 @@ func (d *faultyDriver) Stat(path string) (driver.FileInfo, error) {
 	}
 
 	return d.Driver.Stat(path)
+}
+
+func (d *faultyDriver) Reader(path string, offset int64) (io.ReadCloser, error) {
+	if d.failed("Reader", path) {
+		return nil, errInjectedFault
+	}
+
+	return d.Driver.Reader(path, offset)
 }
 
 func (d *faultyDriver) EnsureDir(path string) error {
