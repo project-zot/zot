@@ -21,6 +21,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
@@ -795,7 +796,12 @@ func TestCheckBlobTransientSkipsCacheFallback(t *testing.T) {
 		putContentCalls := 0
 
 		storeMock := &mocks.StorageDriverMock{
-			StatFn: func(_ context.Context, _ string) (driver.FileInfo, error) {
+			StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				// an upgraded store, so that it opens without upgrading
+				if path.Base(statPath) == storageConstants.BlobstoreMigratedMarker {
+					return &mocks.FileInfoMock{}, nil
+				}
+
 				return nil, errclass.MarkTransient(errors.New("stat blip")) //nolint:err113 // test
 			},
 			PutContentFn: func(_ context.Context, _ string, _ []byte) error {

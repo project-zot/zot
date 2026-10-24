@@ -5,13 +5,27 @@ import (
 )
 
 const (
+	// BlobRefsBucket holds the blob reference index (see types.BlobRefIndex).
+	BlobRefsBucket = "blob_refs"
+	// DefaultReclaimClaimLease is how long a reclaim claim stays live: a claim older than that
+	// belongs to a sweep that stopped, and the next AddReference or ClaimReclaim breaks it.
+	DefaultReclaimClaimLease = 5 * time.Minute
+)
+
+// Lock-wait metric labels for the two lock domains, the global blobstore and each repository.
+const (
+	RepoRLock       = "RepoRLock"
+	RepoRWLock      = "RepoRWLock"
+	BlobstoreRLock  = "BlobstoreRLock"
+	BlobstoreRWLock = "BlobstoreRWLock"
+)
+
+const (
 	// BlobUploadDir defines the upload directory for blob uploads.
 	BlobUploadDir           = ".uploads"
 	SchemaVersion           = 2
 	DefaultFilePerms        = 0o600
 	DefaultDirPerms         = 0o700
-	RLOCK                   = "RLock"
-	RWLOCK                  = "RWLock"
 	BlobsCache              = "blobs"
 	DuplicatesBucket        = "duplicates"
 	OriginalBucket          = "original"
@@ -38,4 +52,11 @@ const (
 	// DedupeRestoreMarkerInvalid is the content written to DedupeRestoreCompleteMarker to
 	// invalidate a previous completion, forcing the restore scan to run again.
 	DedupeRestoreMarkerInvalid = "0"
+	// GlobalBlobsRepo is the internal directory holding the master copy of deduped blobs.
+	// The leading underscore ensures it can never collide with a valid OCI repository name.
+	GlobalBlobsRepo = "_blobstore"
+	// BlobstoreMigratedMarker is written at the image store root once the one-time upgrade
+	// from per-repo blob layout to the global blobstore completes, so later startups skip
+	// the upgrade scan even if the blobstore is empty (e.g. a fresh install).
+	BlobstoreMigratedMarker = "_global_blobstore_migrated"
 )

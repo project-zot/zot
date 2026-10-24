@@ -2900,8 +2900,9 @@ func TestReuploadMissingManifestRecordsMetrics(t *testing.T) {
 		_, _, err = imgStore.PutImageManifest(context.Background(), repo, "1.0", mediaType, manifestBody, nil)
 		So(err, ShouldBeNil)
 		So(imgStore.VerifyBlobDigestValue(repo, manifestDigest), ShouldBeNil)
-		// Re-upload emits two lock-latency metrics and one upload metric.
-		So(metrics.sendMetricCalls, ShouldEqual, sendMetricCalls+3)
+		// Re-upload emits three lock-latency metrics (with dedupe the manifest push takes the
+		// blobstore's read lock and the repo's lock, each observed) and one upload metric.
+		So(metrics.sendMetricCalls, ShouldEqual, sendMetricCalls+4)
 		So(metrics.forceSendMetricCalls, ShouldEqual, forceSendMetricCalls+1)
 	})
 }
@@ -3008,22 +3009,25 @@ func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
 				}
 				So(imgStore.RunDedupeForDigest(context.Background(), manifestDigest, true, manifestPaths), ShouldBeNil)
 
+				// the walk makes the global blobstore copy the origin, and every repo copy a placeholder
+				originPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, manifestDigest)
+
 				cachedOrigin, err := cacheDriver.GetBlob(manifestDigest)
 				So(err, ShouldBeNil)
-				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(manifestPaths[0]))
+				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(originPath))
 
 				switch {
 				case testCase.deleteCache:
-					for _, manifestPath := range manifestPaths {
+					for _, manifestPath := range append([]string{originPath}, manifestPaths...) {
 						So(cacheDriver.DeleteBlob(manifestDigest, manifestPath), ShouldBeNil)
 					}
 				case testCase.deleteOrigin:
-					So(storeDriver.Delete(manifestPaths[0]), ShouldBeNil)
+					So(storeDriver.Delete(originPath), ShouldBeNil)
 				default:
 					corruptedBody := bytes.Replace(manifestBody, []byte("good"), []byte("baad"), 1)
 					So(corruptedBody, ShouldNotResemble, manifestBody)
 					So(len(corruptedBody), ShouldEqual, len(manifestBody))
-					_, err = storeDriver.WriteFile(manifestPaths[0], corruptedBody)
+					_, err = storeDriver.WriteFile(originPath, corruptedBody)
 					So(err, ShouldBeNil)
 				}
 
@@ -3040,11 +3044,11 @@ func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
 				}
 
 				So(err, ShouldBeNil)
-				storedOrigin, err := storeDriver.ReadFile(manifestPaths[0])
+				storedOrigin, err := storeDriver.ReadFile(originPath)
 				So(err, ShouldBeNil)
 				So(storedOrigin, ShouldResemble, manifestBody)
 
-				for _, manifestPath := range manifestPaths[1:] {
+				for _, manifestPath := range manifestPaths {
 					blobInfo, statErr := storeDriver.Stat(manifestPath)
 					So(statErr, ShouldBeNil)
 					So(blobInfo.Size(), ShouldEqual, 0)
@@ -3052,7 +3056,7 @@ func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
 
 				cachedOrigin, err = cacheDriver.GetBlob(manifestDigest)
 				So(err, ShouldBeNil)
-				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(manifestPaths[0]))
+				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(originPath))
 
 				for _, repo := range []string{repoA, repoB, repoC} {
 					storedBody, _, _, readErr := imgStore.GetImageManifest(repo, "1.0")
@@ -3225,6 +3229,19 @@ func TestRoutePrefix(t *testing.T) {
 	})
 }
 
+// reclaimGlobalBlobs runs the reclaim sweep at once, as the scheduler would after gcDelay, so that
+// remote payloads GC left unowned are gone when a test looks.
+func reclaimGlobalBlobs(ctx context.Context, imgStore storageTypes.ImageStore) error {
+	reclaimer, ok := imgStore.(interface {
+		ReclaimGlobalBlobs(ctx context.Context, delay time.Duration) error
+	})
+	if !ok {
+		return nil
+	}
+
+	return reclaimer.ReclaimGlobalBlobs(ctx, 0)
+}
+
 func TestGarbageCollectImageManifest(t *testing.T) {
 	for _, testcase := range testCases {
 		t.Run(testcase.testCaseName, func(t *testing.T) {
@@ -3359,6 +3376,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					// put artifact referencing above image
 					artifactBlob := []byte("artifact")
@@ -3406,6 +3424,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdigest)
 					So(err, ShouldBeNil)
@@ -3420,6 +3439,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdigest)
 					So(err, ShouldBeNil)
@@ -3640,6 +3660,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, odigest)
 					So(err, ShouldNotBeNil)
@@ -3666,6 +3687,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdigest)
 						So(err, ShouldNotBeNil)
@@ -3701,6 +3723,7 @@ func TestGarbageCollectImageManifest(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdigest)
 						So(err, ShouldBeNil)
@@ -4107,6 +4130,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					hasBlob, _, err := imgStore.CheckBlob(context.Background(), repoName, bdgst)
 					So(err, ShouldBeNil)
@@ -4118,6 +4142,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						hasBlob, _, err = imgStore.CheckBlob(context.Background(), repoName, bdgst)
 						So(err, ShouldBeNil)
@@ -4325,6 +4350,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					Convey("delete inner referenced manifest", func() {
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						// check orphan artifact is gc'ed
 						_, _, _, err = imgStore.GetImageManifest(repoName, orphanArtifactManifestDigest.String())
@@ -4344,6 +4370,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
 						So(err, ShouldNotBeNil)
@@ -4355,6 +4382,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 					Convey("delete index manifest, references should not be persisted", func() {
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						// check orphan artifact is gc'ed
 						_, _, _, err = imgStore.GetImageManifest(repoName, orphanArtifactManifestDigest.String())
@@ -4374,6 +4402,7 @@ func TestGarbageCollectImageIndex(t *testing.T) {
 
 						err = gc.CleanRepo(ctx, repoName)
 						So(err, ShouldBeNil)
+						So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 						_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
 						So(err, ShouldNotBeNil)
@@ -4835,6 +4864,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				Convey("delete inner referenced manifest", func() {
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					// check orphan artifact is gc'ed
 					_, _, _, err = imgStore.GetImageManifest(repoName, orphanArtifactManifestDigest.String())
@@ -4854,6 +4884,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactOfArtifactManifestDigest.String())
 					So(err, ShouldNotBeNil)
@@ -4865,6 +4896,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 				Convey("delete index manifest, references should not be persisted", func() {
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					// check orphan artifact is gc'ed
 					_, _, _, err = imgStore.GetImageManifest(repoName, orphanArtifactManifestDigest.String())
@@ -4884,6 +4916,7 @@ func TestGarbageCollectChainedImageIndexes(t *testing.T) {
 
 					err = gc.CleanRepo(ctx, repoName)
 					So(err, ShouldBeNil)
+					So(reclaimGlobalBlobs(ctx, imgStore), ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest(repoName, artifactDigest.String())
 					So(err, ShouldNotBeNil)
@@ -5469,9 +5502,9 @@ func TestCheckIsImageSignature(t *testing.T) {
 	})
 }
 
-// TestCloudRemoteCacheDedupePreservesLateOrigin reproduces the issue-4463 setup:
-// remote object store + redis cache + dedupe, late-sorting repo holds the origin,
-// early-sorting repo is a stub; a startup-style dedupe walk must not empty the origin.
+// TestCloudRemoteCacheDedupePreservesLateOrigin: on a remote object store with a redis cache and
+// dedupe, a startup-style dedupe walk over the repos' placeholders, in any order, must never empty
+// the content they share, which is the global blobstore payload.
 func TestCloudRemoteCacheDedupePreservesLateOrigin(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -5526,30 +5559,31 @@ func TestCloudRemoteCacheDedupePreservesLateOrigin(t *testing.T) {
 				content := []byte("shared-layer-content-for-dedupe-origin-preserve")
 				digest := godigest.FromBytes(content)
 
-				// Late-sorting repo first so redis records it as the origin.
+				// the late-sorting repo pushes first, so the early-sorting one is walked first
 				_, _, err := imgStore.FullBlobUpload(ctx, "b/img", bytes.NewReader(content), digest)
 				So(err, ShouldBeNil)
 
-				// Early-sorting repo second: stored as a 0-byte remote Link stub.
 				_, _, err = imgStore.FullBlobUpload(ctx, "a/img", bytes.NewReader(content), digest)
 				So(err, ShouldBeNil)
 
-				originPath := imgStore.BlobPath("b/img", digest)
-				stubPath := imgStore.BlobPath("a/img", digest)
+				originPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+				repoPaths := []string{imgStore.BlobPath("a/img", digest), imgStore.BlobPath("b/img", digest)}
 
 				originInfo, err := store.Stat(originPath)
 				So(err, ShouldBeNil)
 				So(originInfo.Size(), ShouldBeGreaterThan, 0)
 
-				stubInfo, err := store.Stat(stubPath)
-				So(err, ShouldBeNil)
-				So(stubInfo.Size(), ShouldEqual, 0)
+				for _, repoPath := range repoPaths {
+					stubInfo, err := store.Stat(repoPath)
+					So(err, ShouldBeNil)
+					So(stubInfo.Size(), ShouldEqual, 0)
+				}
 
 				// Restart-style: new ImageStore, same remote objects + same redis cache.
 				_, imgStore2, _, err := createObjectsStore(opts)
 				So(err, ShouldBeNil)
 
-				err = imgStore2.RunDedupeForDigest(ctx, digest, true, []string{stubPath, originPath})
+				err = imgStore2.RunDedupeForDigest(ctx, digest, true, repoPaths)
 				So(err, ShouldBeNil)
 
 				originInfo, err = store.Stat(originPath)

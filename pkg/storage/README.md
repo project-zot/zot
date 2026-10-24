@@ -5,6 +5,63 @@
 
 The cache database can be configured independently of storage (BoltDB locally; Redis / DynamoDB when `cloudCache` is enabled). Examples: `examples/config-boltdb.json`, `examples/config-redis.json`, `examples/config-dynamodb.json`.
 
+## Global blobstore
+
+With dedupe enabled, the content of each digest lives once, at `_blobstore/blobs/<algorithm>/<digest>` under the store root, and the cache records that copy, the payload, as the digest's origin. `_blobstore` is not a repository: catalog listings, repository walks and cross-repository mounts never see it. A store with dedupe disabled keeps a full copy in each repository; a local store whose filesystem cannot hardlink has dedupe turned off at startup.
+
+Each repository keeps its own copy at `blobs/<algorithm>/<digest>`, so listings, GC and scrub work on repositories as before. What that copy is depends on the backend:
+
+| | Local storage | Remote storage (S3, GCS, Azure) |
+|---|---|---|
+| Repository copy | a hardlink of the payload: real content | a zero-byte placeholder, resolved through the cache |
+| Ownership | the hardlink | a reference in the cache's reference index |
+| Payload deleted | with the last repository copy | by a reclaim sweep, under a claim (see below) |
+
+1. **Upload**: content is streamed to the repository's `.uploads/` and verified. Remotely, the repository is first recorded as an owner of the payload (see below). The first push of a digest moves the upload into `_blobstore` and records it as the origin, then links the repository copy to it like any later push. A failure part way leaves the repository without the blob, and the client's retry either finds the origin recorded or uploads again. A push whose content differs from wrong shared content (see `RepairSharedContent`) rewrites the payload, which repairs every repository copy at once.
+2. **Read**: a local repository copy is read directly. A remote placeholder is read through the cache origin, the payload.
+3. **Delete**: deleting a repository's blob (or manifest) removes its copy and its cache record. Locally the payload goes too once no repository uses it: its hardlink count is 1, or, on platforms that report no link count, the cache records no other copy. Remotely the repository's reference is removed, and once nothing owns the digest the payload is left to the reclaim sweep. A failure to reclaim is only logged; it never fails the repository delete.
+
+### Reclaiming remote payloads
+
+Several zot instances may share a bucket and a cache, so a remote payload is never deleted when its last owner goes: another instance may be linking the same digest at that moment. The cache arbitrates instead. Its reference index keeps one record per digest: whether the payload is in `_blobstore`, the repositories that own it, and at most one claim. Every operation on a record is atomic: a BoltDB transaction, a Redis Lua script, or a DynamoDB conditional write.
+
+- A push or mount adds its repository's reference before relying on the payload. That fails while a sweep holds a claim on the digest; the push waits for the claim to clear, up to 30 seconds, then fails with a transient error for the client to retry.
+- A delete removes its reference. Once the digest has no owners, it leaves a reclaim marker at `_blobstore/_reclaim/<algorithm>/<digest>`, which only tells the sweep where to look.
+- The sweep runs every `gcInterval`, whether or not GC is enabled. For each marker older than `gcDelay` it claims the digest, which fails while anything owns it, deletes the payload and the payload's cache entry while the claim still holds pushes off, and then drops the record, releasing the claim, and the marker. A digest owned again loses its marker; a payload the cache has no record of, as after a lost cache, is kept until the cache knows it again. The sweep starts only once the instance has seen every repository copy recorded: by an upgrade pass when the store was created, or else by the dedupe walk that runs after startup. A start that skips the upgrade, its marker being present, may have a new or emptied cache that knows none of the older placeholders, and a push and delete since could leave such a payload looking unowned.
+
+Exactly one of a push and a sweep racing on a digest succeeds, so a push never relies on a payload being deleted. Until the sweep runs, a deleted payload can still be pushed or mounted again without uploading it.
+
+A claim older than its lease (5 minutes) belongs to a sweep that stopped, and the next push or sweep breaks it. A sweep starts deleting within 15 seconds of its claim, well inside the lease, and abandons the claim otherwise. On Redis claim times come from the Redis server's clock; on DynamoDB they come from each instance's, so instances sharing a store must agree on the time to within the lease, less those 15 seconds. A delete the object store has already accepted cannot be recalled, which is the one window left.
+
+#### Known limitations
+
+Both concern instances sharing a cache, and are left for a follow-up:
+
+- The sweep's wait for the reference index to be rebuilt is per instance. A shared cache that is flushed or replaced while instances keep running is not noticed by an instance whose dedupe walk finished before then. Keeping the readiness in the cache itself, as an epoch each walk marks rebuilt unless it changed meanwhile, would stop every instance's sweep at once.
+- Link and delete of the same repository and digest are serialized only within an instance. If one instance deletes the placeholder and, before it removes the reference, another pushes the same blob to the same repository, the reference that push relied on is the one removed, and a later sweep can reclaim the payload under it. Generation-tagged references removed only when unchanged, or a per-path lease in the cache, would close it.
+
+### Upgrading an existing store
+
+A store written by an earlier release keeps each digest's content in a repository: locally every copy, remotely the origin a cache records (later copies being placeholders) and any copies from a time dedupe was off. When such a store is opened with dedupe enabled and has no `_global_blobstore_migrated` marker at its root, it is upgraded while the store is created, before anything is served:
+
+1. Every repository is listed, and for each digest a copy with content becomes the payload in `_blobstore`: locally by a hardlink, remotely by a copy staged in the repository's uploads and published only once it matches the digest's size and digest, and never over a payload already published. The payload is made the cache origin, replacing a repository origin the earlier release recorded, and, remotely, recorded in the reference index.
+2. Every repository copy is recorded in the cache and, remotely, as an owner, and only then gives up its content: a remote copy with content is replaced by a placeholder.
+3. The marker is written once a pass has covered every repository and promoted at least one digest (a store with no repositories is marked at once); later starts then skip the scan.
+
+Every step repeats harmlessly, so a pass that stops part way simply runs again on the next start; remotely, a failure never leaves a placeholder nothing owns. Instances starting together on one remote store may each run the pass: one that finds its chosen copy emptied by another's keeps the payload that one published. A storage or cache failure during the pass, including a repository that cannot be listed, stops zot from starting: a repository left out could hold the only copy with content of a digest the others hold placeholders of. Local copies on separate inodes, written while dedupe was off, are linked to the payload by the dedupe walk that runs after startup. That walk also promotes, as the pass would, a digest the global blobstore holds no copy of, such as one pushed while dedupe was off with the marker kept because nothing needed restoring.
+
+There is no command to run or reverse the upgrade.
+
+### Turning dedupe off
+
+Opening a store with dedupe disabled runs the restore walk, which gives every repository a full copy again: each placeholder is filled from the payload. Remotely, each restored repository then drops its reference, and the payload, once no repository owns it, is left to the reclaim sweep. Before it restores its first copy the walk removes the `_global_blobstore_migrated` marker, so turning dedupe back on upgrades the store again rather than making a repository copy the origin.
+
+A store an earlier release wrote and that is opened with dedupe disabled is not upgraded. Until its restore walk is done, a repository's copy can still be the content other copies read, so deleting it hands the content to another copy first, and deletes of blobs the cache does not know wait for the walk.
+
+### Downgrade policy
+
+Running an earlier release against an upgraded store is not supported. That release does not know `_blobstore`, the cache origins that point into it, or the reference index. To go back, run the earlier release on a separate store and sync content into it from the upgraded instance.
+
 ## Storage error classification
 
 Goal: callers can distinguish true absence from unreliable or permanent storage failures via `errors.Is` / `errors.As`, without collapsing every failure to bare `zerr.ErrBlobNotFound` and without treating Missing as GC age-eligible.

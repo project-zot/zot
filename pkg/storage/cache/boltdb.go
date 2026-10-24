@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"go.etcd.io/bbolt"
@@ -19,7 +20,8 @@ type BoltDBDriver struct {
 	rootDir     string
 	db          *bbolt.DB
 	log         zlog.Logger
-	useRelPaths bool // whether or not to use relative paths, should be true for filesystem and false for s3
+	useRelPaths bool          // whether or not to use relative paths, should be true for filesystem and false for s3
+	claimLease  time.Duration // how long a reclaim claim stays live (see types.BlobRefIndex)
 }
 
 type BoltDBDriverParameters struct {
@@ -66,11 +68,13 @@ func NewBoltDBCache(parameters any, log zlog.Logger) (*BoltDBDriver, error) {
 	}
 
 	if err := cacheDB.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(constants.BlobsCache)); err != nil {
-			// this is a serious failure
-			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a root bucket")
+		for _, bucket := range []string{constants.BlobsCache, constants.BlobRefsBucket} {
+			if _, err := tx.CreateBucketIfNotExists([]byte(bucket)); err != nil {
+				// this is a serious failure
+				log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a root bucket")
 
-			return err
+				return err
+			}
 		}
 
 		return nil
@@ -86,6 +90,7 @@ func NewBoltDBCache(parameters any, log zlog.Logger) (*BoltDBDriver, error) {
 		db:          cacheDB,
 		useRelPaths: properParameters.UseRelPaths,
 		log:         log,
+		claimLease:  constants.DefaultReclaimClaimLease,
 	}, nil
 }
 
