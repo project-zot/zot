@@ -1109,6 +1109,8 @@ func TestRetentionCheckWithRetentionDisabled(t *testing.T) {
 		So(logStr, ShouldContainSubstring, "executing gc of orphaned blobs")
 		So(logStr, ShouldContainSubstring, "garbage collected blobs")
 		So(logStr, ShouldContainSubstring, "gc successfully completed")
+		// the dedupe walk the server runs at startup, which GC and the reclaim sweep depend on
+		So(logStr, ShouldContainSubstring, "no digests left, finished")
 		So(logStr, ShouldContainSubstring, "retention check completed successfully")
 
 		// Validate retention decisions - untagged manifests should be cleaned up by default

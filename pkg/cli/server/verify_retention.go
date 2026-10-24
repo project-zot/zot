@@ -156,6 +156,10 @@ func newVerifyFeatureRetentionCmd(conf *config.Config) *cobra.Command {
 
 			logger.Info().Msg("garbage collection and retention tasks will be submitted to the scheduler")
 
+			// Start the dedupe walk the server runs at startup, before GC: GC and the reclaim sweep
+			// depend on the blob reference index it rebuilds (see api.RunDedupeTasks)
+			api.RunDedupeTasks(storeController, taskScheduler)
+
 			// Run GC and retention tasks
 			api.RunGCTasks(conf, storeController, metaDB, taskScheduler, logger, nil, metricsServer)
 
