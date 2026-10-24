@@ -3541,6 +3541,39 @@ func (is *ImageStore) globalBlobstoreOrigin(ctx context.Context, digest godigest
 	return is.promoteFirstContentCopy(ctx, digest, duplicateBlobs)
 }
 
+/*
+keepWalkPayload makes sure the global blobstore payload originalBlob is still there before
+dedupeBlobs links blobPath, a copy it has just recorded as an owner, to it. The reclaim sweep
+takes no store lock: between the walk choosing the payload and that record, a sweep can claim
+the unowned digest, delete the payload and finish, and linking would then replace a copy
+holding the content with a placeholder of nothing. Once the record is in, no new claim succeeds,
+and a claim already held has been waited out, so a payload there now stays. One gone is
+promoted again from blobPath. A copy without content has none to lose, and an origin outside
+the global blobstore is never swept.
+*/
+func (is *ImageStore) keepWalkPayload(digest godigest.Digest, originalBlob, blobPath string,
+	binfo driver.FileInfo,
+) error {
+	// the blobstore path is built from the digest, which must not be malformed
+	sweepable := originalBlob != "" && !lacksContent(digest, binfo.Size()) && digest.Validate() == nil &&
+		originalBlob == is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+	if !sweepable {
+		return nil
+	}
+
+	lost, err := is.originLostContent(digest, originalBlob)
+	if err != nil || !lost {
+		return err
+	}
+
+	is.log.Warn().Str("digest", digest.String()).Str("path", blobPath).Str("component", "dedupe").
+		Msg("global blobstore payload reclaimed during the walk, promoting the repo copy again")
+
+	candidate := blobCandidate{repoName: is.repoOfBlobPath(blobPath), blobPath: blobPath, size: binfo.Size()}
+
+	return is.promoteBlobCandidate(candidate, digest, originalBlob)
+}
+
 // promoteFirstContentCopy makes the first of duplicateBlobs with content that matches digest the
 // global blobstore payload of digest, and returns the payload's path, or "" when no copy does.
 // The caller holds the blobstore lock.
@@ -3687,6 +3720,10 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			// (LinkBlob skips the original itself)
 			// owned before the copy gives up its content, as for a placeholder above
 			if err := is.lifecycle.PutBlobRef(digest, blobPath); err != nil {
+				return err
+			}
+
+			if err := is.keepWalkPayload(digest, originalBlob, blobPath, binfo); err != nil {
 				return err
 			}
 
