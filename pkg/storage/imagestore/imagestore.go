@@ -1290,29 +1290,18 @@ func (is *ImageStore) GetBlobUpload(repo, uuid string) (int64, error) {
 		return -1, zerr.ErrInvalidRepositoryName
 	}
 
-	session := is.uploads.get(blobUploadPath)
-	size := int64(-1)
-
-	err := session.withOpen(func() error {
-		writer, err := is.storeDriver.Writer(blobUploadPath, true)
-		if err != nil {
-			if errclass.IsStorageObjectMissing(err) {
-				return zerr.ErrUploadNotFound
-			}
-
-			return err
+	writer, err := is.storeDriver.Writer(blobUploadPath, true)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return -1, zerr.ErrUploadNotFound
 		}
 
-		defer writer.Close()
-		size = writer.Size()
-
-		return nil
-	})
-	if errors.Is(err, zerr.ErrUploadNotFound) {
-		is.cleanupUploadSessionIfMissing(blobUploadPath, session)
+		return -1, err
 	}
 
-	return size, err
+	defer writer.Close()
+
+	return writer.Size(), nil
 }
 
 func (is *ImageStore) prepareBlobUploadDir(ctx context.Context, repo string) error {
@@ -1445,29 +1434,18 @@ func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from,
 // BlobUploadInfo returns the current blob size in bytes.
 func (is *ImageStore) BlobUploadInfo(repo, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
-	session := is.uploads.get(blobUploadPath)
-	size := int64(-1)
-
-	err := session.withOpen(func() error {
-		writer, err := is.storeDriver.Writer(blobUploadPath, true)
-		if err != nil {
-			if errclass.IsStorageObjectMissing(err) {
-				return zerr.ErrUploadNotFound
-			}
-
-			return err
+	writer, err := is.storeDriver.Writer(blobUploadPath, true)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return -1, zerr.ErrUploadNotFound
 		}
 
-		defer writer.Close()
-		size = writer.Size()
-
-		return nil
-	})
-	if errors.Is(err, zerr.ErrUploadNotFound) {
-		is.cleanupUploadSessionIfMissing(blobUploadPath, session)
+		return -1, err
 	}
 
-	return size, err
+	defer writer.Close()
+
+	return writer.Size(), nil
 }
 
 // FinishBlobUpload finalizes the blob upload and moves blob the repository.
