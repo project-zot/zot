@@ -37,6 +37,7 @@ type lifecycleStubDriver struct {
 	writerFn   func(path string, isAppend bool) (driver.FileWriter, error)
 	linkFn     func(src, dst string) error
 	deleteFn   func(path string) error
+	moveFn     func(src, dst string) error
 	putContent func(path string, content []byte)
 }
 
@@ -96,6 +97,10 @@ func (s *lifecycleStubDriver) WriteFile(path string, content []byte) (int, error
 func (s *lifecycleStubDriver) Walk(path string, f driver.WalkFn) error { return nil }
 func (s *lifecycleStubDriver) List(fullpath string) ([]string, error)  { return nil, nil }
 func (s *lifecycleStubDriver) Move(sourcePath string, destPath string) error {
+	if s.moveFn != nil {
+		return s.moveFn(sourcePath, destPath)
+	}
+
 	return nil
 }
 func (s *lifecycleStubDriver) SameFile(path1, path2 string) bool { return path1 == path2 }
@@ -222,7 +227,7 @@ func TestLocalBlobLifecycleDelegatesToLink(t *testing.T) {
 			storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 		})
 
-		So(lifecycle.PromoteCandidate("src/blob", "dst/blob"), ShouldBeNil)
+		So(lifecycle.PromoteCandidate(godigest.FromString("blob"), 4, "src/blob", "", "dst/blob"), ShouldBeNil)
 		So(lifecycle.LinkBlob("dst/blob", "dst/blob2"), ShouldBeNil)
 		So(linkCalls, ShouldEqual, 2)
 	})
@@ -357,7 +362,8 @@ func TestRemoteBlobLifecyclePromoteStreamsContent(t *testing.T) {
 			storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 		})
 
-		So(lifecycle.PromoteCandidate("src/blob", "dst/blob"), ShouldBeNil)
+		So(lifecycle.PromoteCandidate(godigest.FromBytes(content), int64(len(content)), "src/blob",
+			"staging/blob", "dst/blob"), ShouldBeNil)
 		So(readerCalls, ShouldEqual, 1)
 		So(writerCalls, ShouldEqual, 1)
 		So(commitCalls, ShouldEqual, 1)
@@ -367,9 +373,132 @@ func TestRemoteBlobLifecyclePromoteStreamsContent(t *testing.T) {
 	})
 }
 
+// Upgrade passes of two instances can choose the same repo copy, and the first to finish
+// replaces it with a placeholder: the second must then never publish it over the payload.
+func TestRemoteBlobLifecyclePromoteVerifiesBeforePublishing(t *testing.T) {
+	Convey("Remote PromoteCandidate publishes only a verified copy, never over a published payload", t, func() {
+		content := []byte("remote-lifecycle-verify")
+		digest := godigest.FromBytes(content)
+		size := int64(len(content))
+
+		var (
+			source       []byte
+			dstSize      int64 = -1
+			written      []string
+			moved        [][2]string
+			deleted      []string
+			statDstCalls int
+		)
+
+		driverStub := &lifecycleStubDriver{
+			nameFn: func() string { return constants.S3StorageDriverName },
+			statFn: func(path string) (driver.FileInfo, error) {
+				statDstCalls++
+
+				if dstSize < 0 {
+					return nil, driver.PathNotFoundError{Path: path}
+				}
+
+				return driver.FileInfoInternal{FileInfoFields: driver.FileInfoFields{Path: path, Size: dstSize}}, nil
+			},
+			readerFn: func(path string, offset int64) (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(source)), nil
+			},
+			writerFn: func(path string, isAppend bool) (driver.FileWriter, error) {
+				written = append(written, path)
+
+				return &lifecycleWriterStub{}, nil
+			},
+			moveFn: func(src, dst string) error {
+				moved = append(moved, [2]string{src, dst})
+
+				return nil
+			},
+			deleteFn: func(path string) error {
+				deleted = append(deleted, path)
+
+				return nil
+			},
+		}
+
+		lifecycle := newBlobLifecycle(blobLifecycleDeps{
+			storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
+		})
+
+		Convey("a matching copy is staged, then moved onto the payload", func() {
+			source = content
+
+			So(lifecycle.PromoteCandidate(digest, size, "src", "staging", "dst"), ShouldBeNil)
+			So(written, ShouldResemble, []string{"staging"})
+			So(moved, ShouldResemble, [][2]string{{"staging", "dst"}})
+			So(deleted, ShouldBeEmpty)
+		})
+
+		Convey("a payload already published is kept, without reading the source", func() {
+			dstSize = size
+
+			So(lifecycle.PromoteCandidate(digest, size, "src", "staging", "dst"), ShouldBeNil)
+			So(written, ShouldBeEmpty)
+			So(moved, ShouldBeEmpty)
+		})
+
+		Convey("a source emptied since it was chosen is dropped, and the published payload kept", func() {
+			source = []byte{}
+
+			// published by the other pass after this one first looked
+			driverStub.writerFn = func(path string, isAppend bool) (driver.FileWriter, error) {
+				written = append(written, path)
+				dstSize = size
+
+				return &lifecycleWriterStub{}, nil
+			}
+
+			So(lifecycle.PromoteCandidate(digest, size, "src", "staging", "dst"), ShouldBeNil)
+			So(moved, ShouldBeEmpty)
+			So(deleted, ShouldResemble, []string{"staging"})
+			So(statDstCalls, ShouldEqual, 2)
+		})
+
+		Convey("a copy that does not match, with no payload published, fails", func() {
+			Convey("for its size", func() {
+				source = []byte{}
+			})
+
+			Convey("for its digest", func() {
+				source = bytes.Repeat([]byte("x"), len(content))
+			})
+
+			So(errors.Is(lifecycle.PromoteCandidate(digest, size, "src", "staging", "dst"), zerr.ErrBadBlob),
+				ShouldBeTrue)
+			So(moved, ShouldBeEmpty)
+			So(deleted, ShouldResemble, []string{"staging"})
+		})
+
+		Convey("a payload whose size cannot be checked fails before anything is copied", func() {
+			driverStub.statFn = func(path string) (driver.FileInfo, error) {
+				return nil, errInjectedPromote
+			}
+
+			So(errors.Is(lifecycle.PromoteCandidate(digest, size, "src", "staging", "dst"), errInjectedPromote),
+				ShouldBeTrue)
+			So(written, ShouldBeEmpty)
+		})
+
+		Convey("a digest without content is published as found", func() {
+			source = []byte{}
+
+			So(lifecycle.PromoteCandidate(digest, 0, "src", "staging", "dst"), ShouldBeNil)
+			So(moved, ShouldResemble, [][2]string{{"staging", "dst"}})
+		})
+	})
+}
+
 var (
 	errInjectedPromote = errors.New("injected promote failure")
 	errInjectedCleanup = errors.New("injected cleanup failure")
+
+	// the error paths fail before anything is verified, so any digest will do
+	promoteErrDigest = godigest.FromString("content")
 )
 
 // errCloseReader wraps a reader with an injectable Close error - io.NopCloser (used
@@ -414,7 +543,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 			})
 
-			err := lifecycle.PromoteCandidate("src", "dst")
+			err := lifecycle.PromoteCandidate(promoteErrDigest, 7, "src", "staging", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
 			So(writerCalls, ShouldEqual, 0)
 		})
@@ -435,7 +564,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 			})
 
-			err := lifecycle.PromoteCandidate("src", "dst")
+			err := lifecycle.PromoteCandidate(promoteErrDigest, 7, "src", "staging", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
 			So(closeCalls, ShouldEqual, 1)
 		})
@@ -468,7 +597,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 			})
 
-			err := lifecycle.PromoteCandidate("src", "dst")
+			err := lifecycle.PromoteCandidate(promoteErrDigest, 7, "src", "staging", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
 			So(cancelCalls, ShouldEqual, 1)
 			So(closeCalls, ShouldEqual, 1)
@@ -502,7 +631,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 			})
 
-			err := lifecycle.PromoteCandidate("src", "dst")
+			err := lifecycle.PromoteCandidate(promoteErrDigest, 7, "src", "staging", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
 			So(cancelCalls, ShouldEqual, 1)
 			So(closeCalls, ShouldEqual, 1)
@@ -530,7 +659,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 			})
 
-			err := lifecycle.PromoteCandidate("src", "dst")
+			err := lifecycle.PromoteCandidate(promoteErrDigest, 7, "src", "staging", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
 			So(closeCalls, ShouldEqual, 1)
 		})
@@ -554,7 +683,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 					storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 				})
 
-				err := lifecycle.PromoteCandidate("src", "dst")
+				err := lifecycle.PromoteCandidate(promoteErrDigest, 7, "src", "staging", "dst")
 				So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
 			})
 
@@ -574,7 +703,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 					storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 				})
 
-				err := lifecycle.PromoteCandidate("src", "dst")
+				err := lifecycle.PromoteCandidate(promoteErrDigest, 7, "src", "staging", "dst")
 				So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
 			})
 
@@ -592,7 +721,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 					storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 				})
 
-				err := lifecycle.PromoteCandidate("src", "dst")
+				err := lifecycle.PromoteCandidate(promoteErrDigest, 7, "src", "staging", "dst")
 				So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
 			})
 		})
@@ -613,7 +742,7 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 				storeDriver: driverStub, rootDir: "/root", metrics: monitoring.NewNopMetricServer(), log: zlog.NewTestLogger(),
 			})
 
-			err := lifecycle.PromoteCandidate("src", "dst")
+			err := lifecycle.PromoteCandidate(promoteErrDigest, 7, "src", "staging", "dst")
 			So(errors.Is(err, errInjectedPromote), ShouldBeTrue)
 		})
 	})
