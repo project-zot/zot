@@ -503,3 +503,74 @@ func TestDedupeWalkPassesOverACorruptCopy(t *testing.T) {
 		}
 	})
 }
+
+func TestDedupeWalkKeepsAPayloadSweptBeforeItIsOwned(t *testing.T) {
+	Convey("A payload swept while the remote walk links a full copy to it is promoted again", t, func() {
+		content := []byte("dedupe-walk-swept")
+		digest := godigest.FromBytes(content)
+		dir := t.TempDir()
+		ctx := context.Background()
+		cacheDriver := newBoltCacheAbs(dir)
+
+		var sweepDuringWalk func()
+
+		storeDriver := &faultyDriver{
+			Driver: &remoteNamedDriver{Driver: local.New(true)},
+			fail: func(op, blobPath string) bool {
+				if op == "Stat" && sweepDuringWalk != nil && path.Base(path.Dir(path.Dir(path.Dir(blobPath)))) == "repo-b" {
+					run := sweepDuringWalk
+					sweepDuringWalk = nil
+
+					run()
+				}
+
+				return false
+			},
+		}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, storeDriver, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		// a payload no repo owns any more, marked for the sweep
+		_, _, err := imgStore.FullBlobUpload(ctx, "repo-a", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+		So(imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+		_, err = os.Stat(globalBlobPath)
+		So(err, ShouldBeNil)
+
+		// a full copy the walk links to the payload, as a manifest written in its repo is
+		repoPath := imgStore.BlobPath("repo-b", digest)
+		So(os.MkdirAll(path.Dir(repoPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(repoPath, content, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+		// the walk has chosen the payload and looks at the copy before recording it as an owner
+		swept := false
+		sweepDuringWalk = func() {
+			So(sweep(imgStore, 0), ShouldBeNil)
+
+			_, err := os.Stat(globalBlobPath)
+			swept = os.IsNotExist(err)
+		}
+
+		So(imgStore.RunDedupeForDigest(ctx, digest, true, []string{repoPath}), ShouldBeNil)
+		So(swept, ShouldBeTrue)
+
+		data, err := os.ReadFile(globalBlobPath)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		data, err = imgStore.GetBlobContent("repo-b", digest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		// owned, so the next sweep keeps it
+		So(sweep(imgStore, 0), ShouldBeNil)
+
+		data, err = imgStore.GetBlobContent("repo-b", digest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+}
