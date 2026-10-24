@@ -3494,6 +3494,94 @@ func (is *ImageStore) getOriginalBlob(digest godigest.Digest, duplicateBlobs []s
 	return originalBlob, nil
 }
 
+/*
+globalBlobstoreOrigin returns the global blobstore copy of digest as the origin dedupeBlobs links
+every repo copy to, recording it as the cache origin if the cache names another, or "" for the
+walk to choose one among the repo copies.
+
+duplicateBlobs lists repo copies only, so without this the first one with content would be made
+the origin, as in earlier releases: on local storage, where every copy is a hardlink with
+content, that happened on each walk. When the blobstore has no copy with content, one is
+promoted as the upgrade would: a digest pushed while dedupe was off is left so when the upgrade
+marker is kept, which happens when the restore walk had nothing to restore, so the upgrade does
+not run again. The empty digest, whose copies are all zero-size, keeps the old selection. digest
+must be valid.
+*/
+func (is *ImageStore) globalBlobstoreOrigin(ctx context.Context, digest godigest.Digest,
+	duplicateBlobs []string,
+) (string, error) {
+	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+	binfo, err := is.storeDriver.Stat(globalBlobPath)
+	if err != nil && !errclass.IsStorageObjectMissing(err) {
+		return "", err
+	}
+
+	if err == nil && binfo.Size() > 0 {
+		if origin, err := is.cache.GetBlob(digest); err != nil || origin != globalBlobPath {
+			if err := is.cache.SetOrigin(digest, globalBlobPath); err != nil {
+				return "", err
+			}
+		}
+
+		return globalBlobPath, nil
+	}
+
+	if isEmptyContentDigest(digest) {
+		return "", nil
+	}
+
+	return is.promoteFirstContentCopy(ctx, digest, duplicateBlobs)
+}
+
+// promoteFirstContentCopy makes the first of duplicateBlobs with content that matches digest the
+// global blobstore payload of digest, and returns the payload's path, or "" when no copy does.
+// The caller holds the blobstore lock.
+func (is *ImageStore) promoteFirstContentCopy(ctx context.Context, digest godigest.Digest,
+	duplicateBlobs []string,
+) (string, error) {
+	for _, blobPath := range duplicateBlobs {
+		if zcommon.IsContextDone(ctx) {
+			return "", ctx.Err()
+		}
+
+		binfo, err := is.storeDriver.Stat(blobPath)
+		if err != nil {
+			// deleted since it was listed, as in the loop of dedupeBlobs
+			if errclass.IsStorageObjectMissing(err) {
+				continue
+			}
+
+			return "", err
+		}
+
+		if lacksContent(digest, binfo.Size()) {
+			continue
+		}
+
+		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+		candidate := blobCandidate{repoName: is.repoOfBlobPath(blobPath), blobPath: blobPath, size: binfo.Size()}
+
+		if err := is.promoteBlobCandidate(candidate, digest, globalBlobPath); err != nil {
+			/* A copy whose bytes do not match the digest is passed over for the next. Failing
+			instead would fail the digest, and with it the walk's completion, for one corrupt
+			copy. Should none match, the walk chooses among the repo copies as before. */
+			if errors.Is(err, zerr.ErrBadBlob) {
+				is.log.Warn().Str("digest", digest.String()).Str("path", blobPath).Str("component", "dedupe").
+					Msg("repo copy does not match its digest, not promoting it")
+
+				continue
+			}
+
+			return "", err
+		}
+
+		return globalBlobPath, nil
+	}
+
+	return "", nil
+}
+
 func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
 	if is.isCacheNil() {
 		is.log.Error().Err(zerr.ErrDedupeRebuild).Msg("failed to dedupe blobs, no cache driver found")
@@ -3505,25 +3593,12 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 	var originalBlob string
 
-	// The global blobstore copy, when it has content, is the origin every repo copy is linked to.
-	// duplicateBlobs lists repo copies only, so without this the first one with content would be
-	// made the origin instead, as in earlier releases: on local storage, where every copy is a
-	// hardlink with content, that happened on each walk. The empty digest, whose copies are all
-	// zero-size, keeps the old selection.
+	// the blobstore path is built from the digest, which must not be malformed
 	if digest.Validate() == nil {
-		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+		var err error
 
-		if binfo, err := is.storeDriver.Stat(globalBlobPath); err == nil {
-			if binfo.Size() > 0 {
-				originalBlob = globalBlobPath
-
-				if origin, err := is.cache.GetBlob(digest); err != nil || origin != globalBlobPath {
-					if err := is.cache.SetOrigin(digest, globalBlobPath); err != nil {
-						return err
-					}
-				}
-			}
-		} else if !errclass.IsStorageObjectMissing(err) {
+		originalBlob, err = is.globalBlobstoreOrigin(ctx, digest, duplicateBlobs)
+		if err != nil {
 			return err
 		}
 	}

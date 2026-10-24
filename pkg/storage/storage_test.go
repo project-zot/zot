@@ -3009,22 +3009,25 @@ func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
 				}
 				So(imgStore.RunDedupeForDigest(context.Background(), manifestDigest, true, manifestPaths), ShouldBeNil)
 
+				// the walk makes the global blobstore copy the origin, and every repo copy a placeholder
+				originPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, manifestDigest)
+
 				cachedOrigin, err := cacheDriver.GetBlob(manifestDigest)
 				So(err, ShouldBeNil)
-				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(manifestPaths[0]))
+				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(originPath))
 
 				switch {
 				case testCase.deleteCache:
-					for _, manifestPath := range manifestPaths {
+					for _, manifestPath := range append([]string{originPath}, manifestPaths...) {
 						So(cacheDriver.DeleteBlob(manifestDigest, manifestPath), ShouldBeNil)
 					}
 				case testCase.deleteOrigin:
-					So(storeDriver.Delete(manifestPaths[0]), ShouldBeNil)
+					So(storeDriver.Delete(originPath), ShouldBeNil)
 				default:
 					corruptedBody := bytes.Replace(manifestBody, []byte("good"), []byte("baad"), 1)
 					So(corruptedBody, ShouldNotResemble, manifestBody)
 					So(len(corruptedBody), ShouldEqual, len(manifestBody))
-					_, err = storeDriver.WriteFile(manifestPaths[0], corruptedBody)
+					_, err = storeDriver.WriteFile(originPath, corruptedBody)
 					So(err, ShouldBeNil)
 				}
 
@@ -3041,11 +3044,11 @@ func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
 				}
 
 				So(err, ShouldBeNil)
-				storedOrigin, err := storeDriver.ReadFile(manifestPaths[0])
+				storedOrigin, err := storeDriver.ReadFile(originPath)
 				So(err, ShouldBeNil)
 				So(storedOrigin, ShouldResemble, manifestBody)
 
-				for _, manifestPath := range manifestPaths[1:] {
+				for _, manifestPath := range manifestPaths {
 					blobInfo, statErr := storeDriver.Stat(manifestPath)
 					So(statErr, ShouldBeNil)
 					So(blobInfo.Size(), ShouldEqual, 0)
@@ -3053,7 +3056,7 @@ func TestReuploadManifestRepairsRemoteDedupeOrigin(t *testing.T) {
 
 				cachedOrigin, err = cacheDriver.GetBlob(manifestDigest)
 				So(err, ShouldBeNil)
-				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(manifestPaths[0]))
+				So(path.Clean(path.Join(rootDir, cachedOrigin)), ShouldEqual, path.Clean(originPath))
 
 				for _, repo := range []string{repoA, repoB, repoC} {
 					storedBody, _, _, readErr := imgStore.GetImageManifest(repo, "1.0")
