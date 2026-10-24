@@ -148,25 +148,30 @@ func (d *RedisDriver) RemoveReference(digest godigest.Digest, path string) (bool
 func (d *RedisDriver) GetReferences(digest godigest.Digest) ([]string, error) {
 	keys := d.blobRefKeys(digest)
 
-	paths, err := d.db.SMembers(context.TODO(), keys[1]).Result()
-	if err != nil {
+	var (
+		paths  *redis.StringSliceCmd
+		exists *redis.IntCmd
+	)
+
+	// One MULTI/EXEC, so owners and record come from one snapshot, as on BoltDB and DynamoDB:
+	// read apart, an AddReference and RecordGlobal landing between them would report a record
+	// with no owners that never existed.
+	if _, err := d.db.TxPipelined(context.TODO(), func(pipe redis.Pipeliner) error {
+		paths = pipe.SMembers(context.TODO(), keys[1])
+		exists = pipe.Exists(context.TODO(), keys[0], keys[2])
+
+		return nil
+	}); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to get blob references")
+
 		return nil, err
 	}
 
-	if len(paths) > 0 {
-		return paths, nil
-	}
-
-	exists, err := d.db.Exists(context.TODO(), keys[0], keys[2]).Result()
-	if err != nil {
-		return nil, err
-	}
-
-	if exists == 0 {
+	if len(paths.Val()) == 0 && exists.Val() == 0 {
 		return nil, zerr.ErrCacheMiss
 	}
 
-	return []string{}, nil
+	return paths.Val(), nil
 }
 
 func (d *RedisDriver) RecordGlobal(digest godigest.Digest) error {
