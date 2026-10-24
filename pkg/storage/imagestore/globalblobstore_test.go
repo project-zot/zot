@@ -372,3 +372,134 @@ func TestDedupeWalkKeepsGlobalBlobstoreOrigin(t *testing.T) {
 		So(origin, ShouldEqual, globalBlobPath)
 	})
 }
+
+func TestDedupeWalkPromotesBlobsPushedWithDedupeOff(t *testing.T) {
+	content := []byte("dedupe-walk-promote")
+	digest := godigest.FromBytes(content)
+
+	for _, testCase := range []struct {
+		name      string
+		newDriver func() storageTypes.Driver
+		remote    bool
+	}{
+		{"local", func() storageTypes.Driver { return local.New(true) }, false},
+		{"remote", func() storageTypes.Driver { return &remoteNamedDriver{Driver: local.New(true)} }, true},
+	} {
+		Convey("The "+testCase.name+" dedupe walk promotes a digest the global blobstore has no copy of", t, func() {
+			dir := t.TempDir()
+			ctx := context.Background()
+			cacheDriver := newBoltCacheAbs(dir)
+
+			openStore := func(dedupe bool) storageTypes.ImageStore {
+				return imagestore.NewImageStore(dir, dir, dedupe, true, zlog.NewTestLogger(),
+					monitoring.NewNopMetricServer(), nil, testCase.newDriver(), cacheDriver, nil, nil)
+			}
+
+			// a store started fresh is marked upgraded, and with nothing to restore while dedupe
+			// is off the marker stays, so turning dedupe on again does not run the upgrade
+			So(openStore(true), ShouldNotBeNil)
+
+			_, err := os.Stat(path.Join(dir, storageConstants.BlobstoreMigratedMarker))
+			So(err, ShouldBeNil)
+
+			plainStore := openStore(false)
+			repoPaths := []string{}
+
+			for _, repo := range []string{"repo-a", "repo-b"} {
+				_, _, err := plainStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+				So(err, ShouldBeNil)
+
+				repoPaths = append(repoPaths, plainStore.BlobPath(repo, digest))
+			}
+
+			imgStore := openStore(true)
+			globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+			_, err = os.Stat(globalBlobPath)
+			So(os.IsNotExist(err), ShouldBeTrue)
+
+			So(imgStore.RunDedupeForDigest(ctx, digest, true, repoPaths), ShouldBeNil)
+
+			data, err := os.ReadFile(globalBlobPath)
+			So(err, ShouldBeNil)
+			So(data, ShouldResemble, content)
+
+			origin, err := cacheDriver.GetBlob(digest)
+			So(err, ShouldBeNil)
+			So(origin, ShouldEqual, globalBlobPath)
+
+			globalInfo, err := os.Stat(globalBlobPath)
+			So(err, ShouldBeNil)
+
+			for _, repoPath := range repoPaths {
+				repoInfo, err := os.Stat(repoPath)
+				So(err, ShouldBeNil)
+
+				if testCase.remote {
+					// a placeholder of the payload, which its repo owns
+					So(repoInfo.Size(), ShouldEqual, 0)
+				} else {
+					So(os.SameFile(globalInfo, repoInfo), ShouldBeTrue)
+				}
+			}
+
+			if testCase.remote {
+				refs, err := cacheDriver.GetReferences(digest)
+				So(err, ShouldBeNil)
+				So(refs, ShouldHaveLength, len(repoPaths))
+
+				for _, repoPath := range repoPaths {
+					So(refs, ShouldContain, repoPath)
+				}
+			}
+
+			for _, repo := range []string{"repo-a", "repo-b"} {
+				data, err := imgStore.GetBlobContent(repo, digest)
+				So(err, ShouldBeNil)
+				So(data, ShouldResemble, content)
+			}
+		})
+	}
+}
+
+func TestDedupeWalkPassesOverACorruptCopy(t *testing.T) {
+	Convey("The remote dedupe walk promotes the first copy that matches its digest", t, func() {
+		content := []byte("dedupe-walk-corrupt")
+		digest := godigest.FromBytes(content)
+		dir := t.TempDir()
+		ctx := context.Background()
+		cacheDriver := newBoltCacheAbs(dir)
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, &remoteNamedDriver{Driver: local.New(true)}, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		// repo-a's copy has the size of the content but not its bytes
+		corrupt := bytes.Repeat([]byte("x"), len(content))
+		repoPaths := []string{imgStore.BlobPath("repo-a", digest), imgStore.BlobPath("repo-b", digest)}
+
+		for i, blob := range [][]byte{corrupt, content} {
+			So(os.MkdirAll(path.Dir(repoPaths[i]), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(repoPaths[i], blob, storageConstants.DefaultFilePerms), ShouldBeNil)
+		}
+
+		So(imgStore.RunDedupeForDigest(ctx, digest, true, repoPaths), ShouldBeNil)
+
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		data, err := os.ReadFile(globalBlobPath)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		origin, err := cacheDriver.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(origin, ShouldEqual, globalBlobPath)
+
+		// the corrupt copy is now a placeholder of the verified payload
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			data, err := imgStore.GetBlobContent(repo, digest)
+			So(err, ShouldBeNil)
+			So(data, ShouldResemble, content)
+		}
+	})
+}

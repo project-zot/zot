@@ -2937,8 +2937,10 @@ func TestDedupeBlobsPreservesOrigin(t *testing.T) {
 			driverMock.StatFn = func(ctx context.Context, objectPath string) (driver.FileInfo, error) {
 				if objectPath == originPath {
 					originStatCount++
-					// First Stat is checkCacheBlob: missing origin is cleared from cache.
-					if originStatCount == 1 {
+					// The first Stat is the walk's look for a copy to promote, which this mock's
+					// empty reader then fails to verify; the second is checkCacheBlob's: missing
+					// origin is cleared from cache.
+					if originStatCount == 2 {
 						return nil, driver.PathNotFoundError{Path: objectPath}
 					}
 				}
