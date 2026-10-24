@@ -574,3 +574,52 @@ func TestDedupeWalkKeepsAPayloadSweptBeforeItIsOwned(t *testing.T) {
 		So(data, ShouldResemble, content)
 	})
 }
+
+func TestDedupeWalkRecordsAPayloadAfterCacheLoss(t *testing.T) {
+	Convey("A payload the remote walk rebuilds after cache loss is reclaimed once no repo owns it", t, func() {
+		content := []byte("dedupe-walk-cache-loss")
+		digest := godigest.FromBytes(content)
+		dir := t.TempDir()
+		ctx := context.Background()
+
+		openStore := func(cacheDriver storageTypes.Cache) storageTypes.ImageStore {
+			return imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+				monitoring.NewNopMetricServer(), nil, &remoteNamedDriver{Driver: local.New(true)}, cacheDriver, nil, nil)
+		}
+
+		firstStore := openStore(newBoltCacheAbs(t.TempDir()))
+		So(firstStore, ShouldNotBeNil)
+
+		repoPaths := []string{}
+
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			_, _, err := firstStore.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+
+			repoPaths = append(repoPaths, firstStore.BlobPath(repo, digest))
+		}
+
+		// the cache is lost, and the walk rebuilds it from the store
+		cacheDriver := newBoltCacheAbs(t.TempDir())
+		imgStore := openStore(cacheDriver)
+		So(imgStore, ShouldNotBeNil)
+		So(imgStore.RunDedupeForDigest(ctx, digest, true, repoPaths), ShouldBeNil)
+		imagestore.FinishDedupeWalk(imgStore)
+
+		globalBlobPath := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		origin, err := cacheDriver.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(origin, ShouldEqual, globalBlobPath)
+
+		// with no push in between, deleting every copy leaves the payload to the sweep
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			So(imgStore.DeleteBlob(repo, digest), ShouldBeNil)
+		}
+
+		So(sweep(imgStore, 0), ShouldBeNil)
+
+		_, err = os.Stat(globalBlobPath)
+		So(os.IsNotExist(err), ShouldBeTrue)
+	})
+}

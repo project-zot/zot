@@ -3531,6 +3531,14 @@ func (is *ImageStore) globalBlobstoreOrigin(ctx context.Context, digest godigest
 			}
 		}
 
+		/* Recorded as present, as every promotion does. A lost cache leaves the payload unknown
+		to the reference index, and the walk then records only its owners: once the last of them
+		went, the record would be forgotten with no reclaim marker left, and the payload kept for
+		good. Idempotent, so a walk over a cache that knows it repeats it harmlessly. */
+		if err := is.lifecycle.PutBlobRef(digest, globalBlobPath); err != nil {
+			return "", err
+		}
+
 		return globalBlobPath, nil
 	}
 
