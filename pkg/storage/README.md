@@ -31,7 +31,7 @@ Several zot instances may share a bucket and a cache, so a remote payload is nev
 
 Exactly one of a push and a sweep racing on a digest succeeds, so a push never relies on a payload being deleted. Until the sweep runs, a deleted payload can still be pushed or mounted again without uploading it.
 
-A claim older than its lease (5 minutes) belongs to a sweep that stopped, and the next push or sweep breaks it. A sweep starts deleting within 15 seconds of its claim, well inside the lease, and abandons the claim otherwise. On Redis claim times come from the Redis server's clock; on DynamoDB they come from each instance's, so instances sharing a store must agree on the time to within the lease, less those 15 seconds. A delete the object store has already accepted cannot be recalled, which is the one window left.
+A claim older than its lease (5 minutes) belongs to a sweep that stopped, and the next push or sweep breaks it. A sweep starts deleting within 15 seconds of its claim, well inside the lease, and abandons the claim otherwise. A delete that fails or times out may still be applied by the object store, so its claim is kept until the lease ends: pushes of that digest are refused meanwhile, and the first after it stores the payload again if the delete landed. On Redis claim times come from the Redis server's clock; on DynamoDB they come from each instance's, so instances sharing a store must agree on the time to within the lease, less those 15 seconds. A delete the object store has already accepted cannot be recalled, which is the one window left.
 
 #### Known limitations
 

@@ -214,7 +214,7 @@ func TestReclaimGlobalBlobs(t *testing.T) {
 		So(exists(markerPath), ShouldBeTrue)
 	})
 
-	Convey("A sweep whose payload delete fails gives up its claim, for the next one to retry", t, func() {
+	Convey("A sweep whose payload delete fails keeps its claim to the end of its lease", t, func() {
 		dir := t.TempDir()
 		storeDriver := &faultyDriver{Driver: local.New(true)}
 		boltCache := newBoltCacheAbs(dir)
@@ -230,13 +230,27 @@ func TestReclaimGlobalBlobs(t *testing.T) {
 			return op == "Delete" && inGlobalBlobstore(p) && !strings.Contains(p, "/_reclaim/")
 		}
 
+		const lease = 200 * time.Millisecond
+
+		setReclaimClaimLease(boltCache, lease)
+
 		So(errors.Is(sweep(imgStore, 0), errInjectedFault), ShouldBeTrue)
 
-		// the claim is gone, so a push owns the payload at once
+		// the store may yet apply the delete, so a push is kept off the payload for now
 		imagestore.SetLinkerClaimWait(imgStore, 0)
 
 		_, _, err = imgStore.FullBlobUpload(ctx, "repo-b", bytes.NewReader(content), digest)
+		So(errors.Is(err, zerr.ErrDigestClaimed), ShouldBeTrue)
+
+		// and owns it once the lease has run out
+		time.Sleep(lease)
+
+		_, _, err = imgStore.FullBlobUpload(ctx, "repo-b", bytes.NewReader(content), digest)
 		So(err, ShouldBeNil)
+
+		data, err := imgStore.GetBlobContent("repo-b", digest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
 	})
 
 	Convey("A sweep whose claim comes back past the delete deadline leaves the payload", t, func() {
@@ -391,4 +405,73 @@ func (c *hookedClaimCache) FinishReclaim(claim storageTypes.ReclaimClaim) error 
 	}
 
 	return err
+}
+
+// lateDeleteDriver is a remote driver whose deletes of global blobstore payloads land on the
+// store, yet report a timeout, as one the client stopped waiting for while the store applied it.
+type lateDeleteDriver struct {
+	storageTypes.Driver
+}
+
+func (d *lateDeleteDriver) Delete(blobPath string) error {
+	if !strings.Contains(blobPath, "/"+storageConstants.GlobalBlobsRepo+"/blobs/") {
+		return d.Driver.Delete(blobPath)
+	}
+
+	if err := d.Driver.Delete(blobPath); err != nil {
+		return err
+	}
+
+	return context.DeadlineExceeded
+}
+
+func TestReclaimKeepsTheClaimOfAnUncertainDelete(t *testing.T) {
+	Convey("A sweep whose delete may still land keeps linkers out until the claim's lease ends", t, func() {
+		content := []byte("reclaim-late-delete")
+		digest := godigest.FromBytes(content)
+		dir := t.TempDir()
+		ctx := context.Background()
+		cacheDriver := newBoltCacheAbs(dir)
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, &lateDeleteDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}},
+			cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		_, _, err := imgStore.FullBlobUpload(ctx, "repo-a", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+		So(imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+		const lease = 200 * time.Millisecond
+
+		setReclaimClaimLease(cacheDriver, lease)
+		imagestore.SetLinkerClaimWait(imgStore, 0)
+
+		So(errors.Is(sweep(imgStore, 0), context.DeadlineExceeded), ShouldBeTrue)
+
+		// the payload is gone, though the sweep could not tell; a linker must not rely on it
+		_, err = os.Stat(imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest))
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		repoPath := imgStore.BlobPath("repo-b", digest)
+		So(errors.Is(cacheDriver.AddReference(digest, repoPath), zerr.ErrDigestClaimed), ShouldBeTrue)
+
+		// past the lease, a push breaks the claim, finds the payload gone and stores it anew
+		time.Sleep(lease)
+
+		_, _, err = imgStore.FullBlobUpload(ctx, "repo-b", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		data, err := imgStore.GetBlobContent("repo-b", digest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+}
+
+// setReclaimClaimLease shortens how long a reclaim claim in cacheDriver stays live.
+func setReclaimClaimLease(cacheDriver storageTypes.Cache, lease time.Duration) {
+	leased, ok := cacheDriver.(interface{ SetReclaimClaimLease(lease time.Duration) })
+	So(ok, ShouldBeTrue)
+
+	leased.SetReclaimClaimLease(lease)
 }
