@@ -158,25 +158,33 @@ func (is *ImageStore) upgradeDigests(digests []godigest.Digest, candidates map[g
 					Msg("upgrading digest with only empty copies found")
 			}
 
+			/* The repos own the payload before it is checked or published: a peer that finished its
+			upgrade already may be sweeping, and one owner keeps its sweep from claiming the digest.
+			Checked first, the payload could be deleted between the check and the owners, and the
+			copies would then give up their content to a payload that is gone. A sweep already
+			deleting is waited out, and promotion then finds the payload gone and publishes it
+			anew. Ownership also comes before a copy gives up its content, so that a failure in
+			between leaves a copy with content, never a placeholder nothing owns. */
+			for _, ref := range refsByDigest[digest] {
+				if err := lifecycle.PutBlobRef(ref.digest, ref.blobPath); err != nil {
+					is.log.Error().Err(err).Str("digest", ref.digest.String()).Str("repo", ref.repoName).
+						Msg("failed to record repo blob ownership during upgrade")
+
+					return err
+				}
+			}
+
 			globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 
 			if err := is.promoteBlobCandidate(cacheDriver, lifecycle, candidate, digest, globalBlobPath); err != nil {
 				return err
 			}
 
+			// recorded once the payload is the origin, so that no reader takes a placeholder for it
 			for _, ref := range refsByDigest[digest] {
 				if err := cacheDriver.PutBlob(ref.digest, ref.blobPath); err != nil {
 					is.log.Error().Err(err).Str("digest", ref.digest.String()).Str("repo", ref.repoName).
 						Msg("failed to record repo blob during upgrade")
-
-					return err
-				}
-
-				// The repo owns the payload before its copy gives up the content, so that a
-				// failure in between leaves a copy with content, never a placeholder nothing owns.
-				if err := lifecycle.PutBlobRef(ref.digest, ref.blobPath); err != nil {
-					is.log.Error().Err(err).Str("digest", ref.digest.String()).Str("repo", ref.repoName).
-						Msg("failed to record repo blob ownership during upgrade")
 
 					return err
 				}
