@@ -102,7 +102,7 @@ func (d *BoltDBDriver) AddReference(digest godigest.Digest, path string) error {
 		return zerr.ErrEmptyValue
 	}
 
-	return d.db.Update(func(tx *bbolt.Tx) error {
+	return d.update(func(tx *bbolt.Tx) error {
 		root, err := d.blobRefsRoot(tx)
 		if err != nil {
 			return err
@@ -139,7 +139,7 @@ func (d *BoltDBDriver) AddReference(digest godigest.Digest, path string) error {
 func (d *BoltDBDriver) RemoveReference(digest godigest.Digest, path string) (bool, error) {
 	unowned := true
 
-	err := d.db.Update(func(tx *bbolt.Tx) error {
+	err := d.update(func(tx *bbolt.Tx) error {
 		root, err := d.blobRefsRoot(tx)
 		if err != nil {
 			return err
@@ -167,7 +167,7 @@ func (d *BoltDBDriver) RemoveReference(digest godigest.Digest, path string) (boo
 func (d *BoltDBDriver) GetReferences(digest godigest.Digest) ([]string, error) {
 	var paths []string
 
-	err := d.db.View(func(tx *bbolt.Tx) error {
+	err := d.view(func(tx *bbolt.Tx) error {
 		root, err := d.blobRefsRoot(tx)
 		if err != nil {
 			return err
@@ -196,7 +196,7 @@ func (d *BoltDBDriver) GetReferences(digest godigest.Digest) ([]string, error) {
 }
 
 func (d *BoltDBDriver) RecordGlobal(digest godigest.Digest) error {
-	return d.db.Update(func(tx *bbolt.Tx) error {
+	return d.update(func(tx *bbolt.Tx) error {
 		root, err := d.blobRefsRoot(tx)
 		if err != nil {
 			return err
@@ -214,7 +214,7 @@ func (d *BoltDBDriver) RecordGlobal(digest godigest.Digest) error {
 func (d *BoltDBDriver) ClaimReclaim(digest godigest.Digest) (storageTypes.ReclaimClaim, error) {
 	claim := storageTypes.ReclaimClaim{Digest: digest, ID: newClaimID(), At: time.Now()}
 
-	err := d.db.Update(func(tx *bbolt.Tx) error {
+	err := d.update(func(tx *bbolt.Tx) error {
 		root, err := d.blobRefsRoot(tx)
 		if err != nil {
 			return err
@@ -268,7 +268,7 @@ func (d *BoltDBDriver) heldClaim(root *bbolt.Bucket, claim storageTypes.ReclaimC
 }
 
 func (d *BoltDBDriver) FinishReclaim(claim storageTypes.ReclaimClaim) error {
-	return d.db.Update(func(tx *bbolt.Tx) error {
+	return d.update(func(tx *bbolt.Tx) error {
 		root, err := d.blobRefsRoot(tx)
 		if err != nil {
 			return err
@@ -288,7 +288,7 @@ func (d *BoltDBDriver) FinishReclaim(claim storageTypes.ReclaimClaim) error {
 }
 
 func (d *BoltDBDriver) AbandonReclaim(claim storageTypes.ReclaimClaim) error {
-	return d.db.Update(func(tx *bbolt.Tx) error {
+	return d.update(func(tx *bbolt.Tx) error {
 		root, err := d.blobRefsRoot(tx)
 		if err != nil {
 			return err

@@ -3579,7 +3579,7 @@ func (is *ImageStore) keepWalkPayload(digest godigest.Digest, originalBlob, blob
 
 	candidate := blobCandidate{repoName: is.repoOfBlobPath(blobPath), blobPath: blobPath, size: binfo.Size()}
 
-	return is.promoteBlobCandidate(candidate, digest, originalBlob)
+	return is.promoteBlobCandidate(is.cache, is.lifecycle, candidate, digest, originalBlob)
 }
 
 // promoteFirstContentCopy makes the first of duplicateBlobs with content that matches digest the
@@ -3610,7 +3610,7 @@ func (is *ImageStore) promoteFirstContentCopy(ctx context.Context, digest godige
 		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 		candidate := blobCandidate{repoName: is.repoOfBlobPath(blobPath), blobPath: blobPath, size: binfo.Size()}
 
-		if err := is.promoteBlobCandidate(candidate, digest, globalBlobPath); err != nil {
+		if err := is.promoteBlobCandidate(is.cache, is.lifecycle, candidate, digest, globalBlobPath); err != nil {
 			/* A copy whose bytes do not match the digest is passed over for the next. Failing
 			instead would fail the digest, and with it the walk's completion, for one corrupt
 			copy. Should none match, the walk chooses among the repo copies as before. */

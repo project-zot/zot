@@ -7,13 +7,16 @@ import (
 	"path"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
@@ -233,7 +236,16 @@ func TestUpgradeRemoteStoreToGlobalBlobstore(t *testing.T) {
 
 	Convey("Two instances upgrading one remote store together keep every payload", t, func() {
 		dir := t.TempDir()
-		cacheDriver := newBoltCacheAbs(dir)
+
+		// instances share a Redis or DynamoDB cache; a BoltDB file belongs to one process, and
+		// one instance's batch would hold its write lock while the other's pass ran
+		client := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr()})
+		t.Cleanup(func() { _ = client.Close() })
+
+		cacheDriver, err := cache.NewRedisCache(cache.RedisDriverParameters{Client: client, KeyPrefix: "zot"},
+			zlog.NewTestLogger())
+		So(err, ShouldBeNil)
+
 		legacyRemoteStore(dir, cacheDriver)
 
 		/* Instance B chooses its candidates, then, as it opens the first one to copy, instance A

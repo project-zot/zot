@@ -161,6 +161,11 @@ type blobLifecycle interface { //nolint:interfacebloat
 	// reference is removed, and once nothing owns digest, a reclaim marker tells the sweep to
 	// look at the payload.
 	DeleteBlobRef(digest godigest.Digest, repoPath string) error
+
+	// withRefs returns a lifecycle like this one whose reference index is refs, a batch of the
+	// cache it was made with (see ImageStore.withCacheBatch). Local: itself, it keeps no index.
+	// A wrapper embedding a lifecycle gets the embedded one's, so the batch bypasses the wrapper.
+	withRefs(refs storageTypes.Cache) blobLifecycle
 }
 
 const (
@@ -331,6 +336,10 @@ func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath strin
 
 func (l *localHardlinkBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
 	return repo != storageConstants.GlobalBlobsRepo
+}
+
+func (l *localHardlinkBlobLifecycle) withRefs(_ storageTypes.Cache) blobLifecycle {
+	return l
 }
 
 func (l *localHardlinkBlobLifecycle) PutBlobRef(_ godigest.Digest, _ string) error {
@@ -608,6 +617,13 @@ func (r *remoteSharedBlobLifecycle) ShouldDeleteGlobalBlob(_ string, _ godigest.
 
 func (r *remoteSharedBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
 	return repo != storageConstants.GlobalBlobsRepo
+}
+
+func (r *remoteSharedBlobLifecycle) withRefs(refs storageTypes.Cache) blobLifecycle {
+	batched := *r
+	batched.refs = refs
+
+	return &batched
 }
 
 func (r *remoteSharedBlobLifecycle) PutBlobRef(digest godigest.Digest, blobPath string) error {
