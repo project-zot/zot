@@ -234,7 +234,14 @@ func (r *remoteSharedBlobLifecycle) reclaimGlobalBlob(digest godigest.Digest, de
 	as the origin; removing the record then would take that origin away and promote the push's
 	placeholder in its place, leaving the pushed blob unreadable. Past the deadline a linker may
 	have broken the claim already, so the record is left: one naming a missing origin is healed
-	by the write paths, as is one left by a failed removal. */
+	by the write paths, as is one left by a failed removal.
+
+	Residual window: the deadline is checked before DeleteBlob, not with it. A removal delayed
+	past the lease (about 4m45s after this check) can land after a linker broke the claim and
+	recorded a new origin at the same path, and take it away. Closing it needs the claim checked
+	in the same atomic cache operation as the removal; on Redis the dedupe cache's keys do not
+	share the digest's hash tag with the reference index's, so one script cannot cover both on
+	Redis Cluster. See "Known limitations" in pkg/storage/README.md. */
 	if time.Now().Before(deadline) {
 		if err := r.refs.DeleteBlob(digest, globalBlobPath); err != nil {
 			r.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to remove reclaimed global blob from cache")
