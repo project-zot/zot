@@ -1,6 +1,7 @@
 package imagestore
 
 import (
+	"context"
 	"errors"
 	"path"
 	"strings"
@@ -16,6 +17,49 @@ import (
 
 type missingUploadDriver struct {
 	storageTypes.Driver
+}
+
+type successfulDeleteDriver struct {
+	storageTypes.Driver
+	deleted bool
+}
+
+type successfulDeleteWriter struct {
+	driver *successfulDeleteDriver
+}
+
+func (d *successfulDeleteDriver) Writer(string, bool) (driver.FileWriter, error) {
+	return &successfulDeleteWriter{driver: d}, nil
+}
+
+func (d *successfulDeleteDriver) Stat(string) (driver.FileInfo, error) {
+	if d.deleted {
+		return nil, errclass.MarkMissing(errors.New("missing upload")) //nolint:err113 // test driver
+	}
+
+	return nil, nil //nolint:nilnil // test driver
+}
+
+func (w *successfulDeleteWriter) Write(data []byte) (int, error) {
+	return len(data), nil
+}
+
+func (w *successfulDeleteWriter) Close() error {
+	return nil
+}
+
+func (w *successfulDeleteWriter) Size() int64 {
+	return 0
+}
+
+func (w *successfulDeleteWriter) Cancel(context.Context) error {
+	w.driver.deleted = true
+
+	return nil
+}
+
+func (w *successfulDeleteWriter) Commit(context.Context) error {
+	return nil
 }
 
 func (d *missingUploadDriver) Stat(string) (driver.FileInfo, error) {
@@ -38,19 +82,46 @@ func TestCleanupUploadSessionIfMissingRemovesEntry(t *testing.T) {
 	}
 }
 
-func TestOversizedUploadIDDoesNotRegisterSession(t *testing.T) {
+func TestInvalidUploadIDDoesNotRegisterSession(t *testing.T) {
 	root := t.TempDir()
 	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}}
-	uuid := strings.Repeat("x", maxUploadSessionIDLength+1)
+	uuids := []string{
+		strings.Repeat("x", maxUploadSessionIDLength+1),
+		"missing\x00one",
+	}
 
-	if err := store.DeleteBlobUpload("repo", uuid); !errors.Is(err, zerr.ErrUploadNotFound) {
-		t.Fatalf("DeleteBlobUpload error = %v, want ErrUploadNotFound", err)
+	for _, uuid := range uuids {
+		if err := store.DeleteBlobUpload("repo", uuid); !errors.Is(err, zerr.ErrUploadNotFound) {
+			t.Fatalf("DeleteBlobUpload(%q) error = %v, want ErrUploadNotFound", uuid, err)
+		}
+
+		store.uploads.lock.Lock()
+		_, exists := store.uploads.sessions[store.BlobUploadPath("repo", uuid)]
+		store.uploads.lock.Unlock()
+		if exists {
+			t.Fatalf("invalid upload ID %q was retained in the registry", uuid)
+		}
+	}
+}
+
+func TestSuccessfulIdleDeleteRemovesSession(t *testing.T) {
+	driver := &successfulDeleteDriver{}
+	store := &ImageStore{rootDir: t.TempDir(), storeDriver: driver}
+	src := store.BlobUploadPath("repo", "upload")
+	store.uploads.get(src)
+
+	deleted, err := store.DeleteBlobUploadIfIdle("repo", "upload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !deleted || !driver.deleted {
+		t.Fatalf("idle delete result = (%t, %t), want (true, true)", deleted, driver.deleted)
 	}
 
 	store.uploads.lock.Lock()
-	_, exists := store.uploads.sessions[store.BlobUploadPath("repo", uuid)]
+	_, exists := store.uploads.sessions[src]
 	store.uploads.lock.Unlock()
 	if exists {
-		t.Fatal("oversized upload ID was retained in the registry")
+		t.Fatal("successfully deleted upload session was retained in the registry")
 	}
 }

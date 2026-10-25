@@ -1977,6 +1977,7 @@ func (is *ImageStore) deleteBlobUpload(repo, uuid string, wait bool) (bool, erro
 		if err != nil {
 			return false, err
 		}
+		is.cleanupUploadSessionIfMissing(blobUploadPath, session)
 
 		return true, nil
 	}

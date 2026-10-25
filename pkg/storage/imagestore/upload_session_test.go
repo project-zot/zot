@@ -349,6 +349,7 @@ func TestDeleteBlobUploadIfIdleDoesNotWaitForActiveWriter(t *testing.T) {
 	defer body.unblock()
 
 	writerErr := make(chan error, 1)
+
 	go func() {
 		_, err := store.PutBlobChunkStreamed(ctx, repo, uuid, body)
 		writerErr <- err

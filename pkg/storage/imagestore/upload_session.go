@@ -1,6 +1,7 @@
 package imagestore
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -31,11 +32,11 @@ func newUploadSession() *uploadSession {
 	return session
 }
 
-// withOpen runs fn as one upload operation. A writer that started before a
+// withOpen runs callback as one upload operation. A writer that started before a
 // finalizer seals the session may finish; writers that arrive after sealing do
 // not consume their request bodies and receive the normal upload-not-found
 // response.
-func (session *uploadSession) withOpen(fn func() error) error {
+func (session *uploadSession) withOpen(callback func() error) error {
 	if uploadSessionState(session.state.Load()) != uploadSessionOpen {
 		return zerr.ErrUploadNotFound
 	}
@@ -47,13 +48,13 @@ func (session *uploadSession) withOpen(fn func() error) error {
 		return zerr.ErrUploadNotFound
 	}
 
-	return fn()
+	return callback()
 }
 
 // finalize seals the session before waiting for an already active writer and
-// while fn performs commit, digest verification, and move. Failed finalization
+// while callback performs commit, digest verification, and move. Failed finalization
 // reopens the session so existing retry behavior is preserved.
-func (session *uploadSession) finalize(fn func() error) error {
+func (session *uploadSession) finalize(callback func() error) error {
 	if !session.state.CompareAndSwap(uint32(uploadSessionOpen), uint32(uploadSessionSealing)) {
 		return zerr.ErrUploadNotFound
 	}
@@ -61,7 +62,7 @@ func (session *uploadSession) finalize(fn func() error) error {
 	session.operationMu.Lock()
 	defer session.operationMu.Unlock()
 
-	err := fn()
+	err := callback()
 	if err == nil {
 		session.state.Store(uint32(uploadSessionSealed))
 	} else {
@@ -73,19 +74,17 @@ func (session *uploadSession) finalize(fn func() error) error {
 
 // tryFinalize seals and finalizes an idle session without waiting for an active
 // upload operation. It returns false when the session is busy or not open.
-func (session *uploadSession) tryFinalize(fn func() error) (bool, error) {
-	if !session.state.CompareAndSwap(uint32(uploadSessionOpen), uint32(uploadSessionSealing)) {
-		return false, nil
-	}
-
+func (session *uploadSession) tryFinalize(callback func() error) (bool, error) {
 	if !session.operationMu.TryLock() {
-		session.state.Store(uint32(uploadSessionOpen))
-
 		return false, nil
 	}
 	defer session.operationMu.Unlock()
 
-	err := fn()
+	if !session.state.CompareAndSwap(uint32(uploadSessionOpen), uint32(uploadSessionSealing)) {
+		return false, nil
+	}
+
+	err := callback()
 	if err == nil {
 		session.state.Store(uint32(uploadSessionSealed))
 	} else {
@@ -105,7 +104,7 @@ func (session *uploadSession) isSealed() bool {
 
 // cleanupSealed serializes cleanup of a source left behind after a successful
 // move. It never reopens the upload session for normal writers.
-func (session *uploadSession) cleanupSealed(fn func() error) error {
+func (session *uploadSession) cleanupSealed(callback func() error) error {
 	if !session.isSealed() {
 		return zerr.ErrUploadNotFound
 	}
@@ -117,12 +116,12 @@ func (session *uploadSession) cleanupSealed(fn func() error) error {
 		return zerr.ErrUploadNotFound
 	}
 
-	return fn()
+	return callback()
 }
 
 // tryCleanupSealed removes a sealed upload without waiting for another cleanup
 // operation. It returns false when the session is not sealed or is busy.
-func (session *uploadSession) tryCleanupSealed(fn func() error) (bool, error) {
+func (session *uploadSession) tryCleanupSealed(callback func() error) (bool, error) {
 	if !session.isSealed() || !session.operationMu.TryLock() {
 		return false, nil
 	}
@@ -132,11 +131,11 @@ func (session *uploadSession) tryCleanupSealed(fn func() error) (bool, error) {
 		return false, nil
 	}
 
-	return true, fn()
+	return true, callback()
 }
 
 func validateUploadSessionID(uuid string) error {
-	if uuid == "" || len(uuid) > maxUploadSessionIDLength {
+	if uuid == "" || len(uuid) > maxUploadSessionIDLength || strings.IndexByte(uuid, 0) >= 0 {
 		return zerr.ErrUploadNotFound
 	}
 
