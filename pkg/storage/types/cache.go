@@ -39,6 +39,17 @@ type Cache interface {
 	BlobRefIndex
 }
 
+// CacheBatchWriter is implemented by a cache that commits each write durably on its own, at the
+// cost of a sync to disk (BoltDB), so that a bulk pass, such as the upgrade to the global
+// blobstore, can commit many writes at once instead.
+type CacheBatchWriter interface {
+	// WriteBatch runs write with a Cache whose writes are committed together once write returns
+	// nil, and discarded if it returns an error. Until then write must reach the cache only
+	// through the Cache it is given: a write through another would wait for the batch, which
+	// never ends.
+	WriteBatch(write func(batch Cache) error) error
+}
+
 // BlobRefIndex records which repositories own a digest whose payload is kept once, in the
 // global blobstore, and coordinates deleting that payload across zot instances sharing the
 // cache. Each digest has one record: whether the payload is recorded in the global blobstore,

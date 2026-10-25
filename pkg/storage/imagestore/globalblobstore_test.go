@@ -623,3 +623,88 @@ func TestDedupeWalkRecordsAPayloadAfterCacheLoss(t *testing.T) {
 		So(os.IsNotExist(err), ShouldBeTrue)
 	})
 }
+
+// countingBatchCache counts the writes the store makes through a batch of its cache, and those
+// it makes outside one.
+type countingBatchCache struct {
+	storageTypes.Cache
+
+	batches, batched, direct *int
+}
+
+func (c countingBatchCache) PutBlob(digest godigest.Digest, blobPath string) error {
+	*c.direct++
+
+	return c.Cache.PutBlob(digest, blobPath)
+}
+
+func (c countingBatchCache) SetOrigin(digest godigest.Digest, blobPath string) error {
+	*c.direct++
+
+	return c.Cache.SetOrigin(digest, blobPath)
+}
+
+func (c countingBatchCache) WriteBatch(write func(batch storageTypes.Cache) error) error {
+	*c.batches++
+
+	batcher, _ := c.Cache.(storageTypes.CacheBatchWriter)
+
+	return batcher.WriteBatch(func(batch storageTypes.Cache) error {
+		return write(countingBatch{Cache: batch, batched: c.batched})
+	})
+}
+
+type countingBatch struct {
+	storageTypes.Cache
+
+	batched *int
+}
+
+func (c countingBatch) PutBlob(digest godigest.Digest, blobPath string) error {
+	*c.batched++
+
+	return c.Cache.PutBlob(digest, blobPath)
+}
+
+func (c countingBatch) SetOrigin(digest godigest.Digest, blobPath string) error {
+	*c.batched++
+
+	return c.Cache.SetOrigin(digest, blobPath)
+}
+
+func TestUpgradeWritesTheCacheInOneBatch(t *testing.T) {
+	Convey("The upgrade records a small store in one cache batch, not one commit per record", t, func() {
+		dir := t.TempDir()
+
+		oldStore := imagestore.NewImageStore(dir, dir, false, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+
+		img := image.CreateRandomImage()
+		for _, repo := range []string{"repo-a", "repo-b"} {
+			So(image.WriteImageToFileSystem(img, repo, "tag", storage.StoreController{DefaultStore: oldStore}),
+				ShouldBeNil)
+		}
+
+		var batches, batched, direct int
+
+		cacheDriver := countingBatchCache{
+			Cache: newBoltCacheAbs(dir), batches: &batches, batched: &batched,
+			direct: &direct,
+		}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		So(batches, ShouldEqual, 1)
+		So(direct, ShouldEqual, 0)
+		// for each of the layers, config and manifest: its origin, and a record per repo copy
+		So(batched, ShouldEqual, 3*(len(img.Layers)+2))
+
+		for _, digest := range []godigest.Digest{img.ConfigDescriptor.Digest, img.ManifestDescriptor.Digest} {
+			origin, err := cacheDriver.GetBlob(digest)
+			So(err, ShouldBeNil)
+			So(origin, ShouldEqual, imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest))
+		}
+	})
+}
