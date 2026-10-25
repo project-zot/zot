@@ -15858,6 +15858,114 @@ func TestSupportedDigestAlgorithms(t *testing.T) {
 			So(ok, ShouldBeTrue)
 		}
 	})
+
+	Convey("Blob upload digest-algorithm query parameter", t, func() {
+		repo := "digest-algorithm-hint"
+		blob := []byte("digest-algorithm-end4c-blob")
+		sha512Digest := godigest.SHA512.FromBytes(blob)
+
+		Convey("post+put with digest-algorithm=sha512 succeeds", func() {
+			resp, err := resty.R().
+				SetQueryParam("digest-algorithm", godigest.SHA512.String()).
+				Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			loc := test.Location(baseURL, resp)
+			resp, err = resty.R().
+				SetHeader("Content-Type", constants.BinaryMediaType).
+				SetHeader("Content-Length", strconv.Itoa(len(blob))).
+				SetQueryParam("digest", sha512Digest.String()).
+				SetBody(blob).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		})
+
+		Convey("chunked upload with digest-algorithm=sha512 succeeds", func() {
+			chunkBlob := []byte("chunked-digest-algorithm-blob-0123456789")
+			chunkDigest := godigest.SHA512.FromBytes(chunkBlob)
+
+			resp, err := resty.R().
+				SetQueryParam("digest-algorithm", godigest.SHA512.String()).
+				SetHeader("Content-Length", "0").
+				Post(baseURL + "/v2/" + repo + "-chunk/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			loc := test.Location(baseURL, resp)
+			end := len(chunkBlob) - 1
+			resp, err = resty.R().
+				SetHeader("Content-Type", constants.BinaryMediaType).
+				SetHeader("Content-Length", strconv.Itoa(len(chunkBlob))).
+				SetHeader("Content-Range", fmt.Sprintf("0-%d", end)).
+				SetBody(chunkBlob).
+				Patch(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			loc = test.Location(baseURL, resp)
+			resp, err = resty.R().
+				SetHeader("Content-Type", constants.BinaryMediaType).
+				SetHeader("Content-Length", "0").
+				SetQueryParam("digest", chunkDigest.String()).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		})
+
+		Convey("stream upload with digest-algorithm=sha512 succeeds", func() {
+			streamBlob := []byte("stream-digest-algorithm-blob-data")
+			streamDigest := godigest.SHA512.FromBytes(streamBlob)
+
+			resp, err := resty.R().
+				SetQueryParam("digest-algorithm", godigest.SHA512.String()).
+				SetHeader("Content-Length", "0").
+				Post(baseURL + "/v2/" + repo + "-stream/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			loc := test.Location(baseURL, resp)
+			resp, err = resty.R().
+				SetHeader("Content-Type", constants.BinaryMediaType).
+				SetBody(streamBlob).
+				Patch(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			loc = test.Location(baseURL, resp)
+			resp, err = resty.R().
+				SetHeader("Content-Type", constants.BinaryMediaType).
+				SetHeader("Content-Length", "0").
+				SetQueryParam("digest", streamDigest.String()).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		})
+
+		Convey("unsupported digest-algorithm returns 400", func() {
+			resp, err := resty.R().
+				SetQueryParam("digest-algorithm", "sha999").
+				Post(baseURL + "/v2/" + repo + "-bad/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("monolithic POST with mismatched digest-algorithm returns 400", func() {
+			monoBlob := []byte("mono-mismatch")
+			sha256Digest := godigest.Canonical.FromBytes(monoBlob)
+
+			resp, err := resty.R().
+				SetHeader("Content-Type", constants.BinaryMediaType).
+				SetHeader("Content-Length", strconv.Itoa(len(monoBlob))).
+				SetQueryParam("digest", sha256Digest.String()).
+				SetQueryParam("digest-algorithm", godigest.SHA512.String()).
+				SetBody(monoBlob).
+				Post(baseURL + "/v2/" + repo + "-mono/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+	})
 }
 
 func verifyReturnedManifestDigest(t *testing.T, client *resty.Client, baseURL, repoName,

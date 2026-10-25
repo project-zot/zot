@@ -298,7 +298,7 @@ const docTemplate = `{
         },
         "/v2/{name}/blobs/uploads": {
             "post": {
-                "description": "Create a new image blob/layer upload. With no query parameters, starts an upload session\nand returns 202.\nA ` + "`" + `digest` + "`" + ` query parameter requests a monolithic upload and returns 201 on success.\nA ` + "`" + `mount` + "`" + ` query parameter requests a cross-repository blob mount and returns 201 or 202.",
+                "description": "Create a new image blob/layer upload. With no query parameters, starts an upload session\nand returns 202.\nA ` + "`" + `digest` + "`" + ` query parameter requests a monolithic upload and returns 201 on success.\nA ` + "`" + `mount` + "`" + ` query parameter requests a cross-repository blob mount and returns 201 or 202.\nA ` + "`" + `digest-algorithm` + "`" + ` query parameter hints the algorithm for a multi-request upload.",
                 "consumes": [
                     "application/json"
                 ],
@@ -318,6 +318,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "blob digest for monolithic upload",
                         "name": "digest",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "digest algorithm hint for multi-request uploads",
+                        "name": "digest-algorithm",
                         "in": "query"
                     },
                     {

@@ -95,8 +95,12 @@ func UploadImageWithOpts(img Image, baseURL, repo, ref string, opts ...UploadOpt
 	}
 
 	for _, blob := range img.Layers {
-		resp, err := cfg.withAuth(resty.R()).
-			Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+		req := cfg.withAuth(resty.R())
+		if digestAlgorithm != godigest.Canonical {
+			req.SetQueryParam("digest-algorithm", digestAlgorithm.String())
+		}
+
+		resp, err := req.Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
 		if err != nil {
 			return err
 		}
@@ -144,8 +148,13 @@ func UploadImageWithOpts(img Image, baseURL, repo, ref string, opts ...UploadOpt
 		cdigest = ispec.DescriptorEmptyJSON.Digest
 	}
 
-	resp, err := cfg.withAuth(resty.R()).
-		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+	configReq := cfg.withAuth(resty.R())
+	// Empty-JSON configs always use the canonical digest; only hint when it matches.
+	if cdigest.Algorithm() != godigest.Canonical {
+		configReq.SetQueryParam("digest-algorithm", cdigest.Algorithm().String())
+	}
+
+	resp, err := configReq.Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
 	if err = inject.Error(err); err != nil {
 		return err
 	}
