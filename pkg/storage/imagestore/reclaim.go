@@ -215,8 +215,15 @@ func (r *remoteSharedBlobLifecycle) reclaimGlobalBlob(digest godigest.Digest, de
 		digest.Algorithm().String(), digest.Encoded())
 
 	if err := r.deleteClaimedPayload(globalBlobPath, deadline); err != nil {
-		if aerr := r.refs.AbandonReclaim(claim); aerr != nil {
-			r.log.Error().Err(aerr).Str("digest", digest.String()).Msg("failed to abandon global blob reclaim")
+		/* Only a delete never sent can be called off at once. One that failed or timed out may
+		still be applied by the store after this sweep stopped waiting, so its claim is kept for
+		the rest of its lease, keeping linkers off a payload that may vanish under them; a sweep
+		after that breaks it and deletes again. A linker that breaks it then finds the payload
+		gone, if it is, and stores it anew. */
+		if errors.Is(err, zerr.ErrReclaimClaimLost) {
+			if aerr := r.refs.AbandonReclaim(claim); aerr != nil {
+				r.log.Error().Err(aerr).Str("digest", digest.String()).Msg("failed to abandon global blob reclaim")
+			}
 		}
 
 		return err
