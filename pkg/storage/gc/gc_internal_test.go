@@ -48,6 +48,15 @@ func (s concurrentReadSafeStore) ConcurrentReadSafe() bool {
 	return true
 }
 
+type idleDeleteMockStore struct {
+	mocks.MockedImageStore
+	deleteIfIdleFn func(repo, uuid string) (bool, error)
+}
+
+func (s *idleDeleteMockStore) DeleteBlobUploadIfIdle(repo, uuid string) (bool, error) {
+	return s.deleteIfIdleFn(repo, uuid)
+}
+
 var (
 	errGC    = errors.New("gc error")
 	repoName = "test" //nolint: gochecknoglobals
@@ -2082,6 +2091,37 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			deleted, err := gc.deleteBlobUploads(repoName, time.Hour)
 			So(err, ShouldNotBeNil)
 			So(deleted, ShouldEqual, 0)
+		})
+
+		Convey("deleteBlobUploads uses non-blocking upload cleanup", func() {
+			called := false
+			imgStore := &idleDeleteMockStore{
+				MockedImageStore: mocks.MockedImageStore{
+					ListBlobUploadsFn: func(repo string) ([]string, error) {
+						return []string{"upload-1"}, nil
+					},
+					StatBlobUploadFn: func(repo, uuid string) (bool, int64, time.Time, error) {
+						return true, 1024, time.Now().Add(-2 * time.Hour), nil
+					},
+					DeleteBlobUploadFn: func(repo, uuid string) error {
+						So(false, ShouldBeTrue)
+
+						return nil
+					},
+				},
+				deleteIfIdleFn: func(repo, uuid string) (bool, error) {
+					called = true
+
+					return false, nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.deleteBlobUploads(repoName, time.Hour)
+			So(err, ShouldBeNil)
+			So(deleted, ShouldEqual, 0)
+			So(called, ShouldBeTrue)
 		})
 
 		Convey("Error on GetReferencedBlobs in deleteUnreferencedBlobs", func() {

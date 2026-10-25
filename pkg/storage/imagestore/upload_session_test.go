@@ -36,6 +36,10 @@ type leavingMoveDriver struct {
 	storageTypes.Driver
 }
 
+type idleUploadDeleter interface {
+	DeleteBlobUploadIfIdle(repo, uuid string) (bool, error)
+}
+
 func (d *leavingMoveDriver) Move(sourcePath, destPath string) error {
 	content, err := d.Driver.ReadFile(sourcePath)
 	if err != nil {
@@ -307,10 +311,90 @@ func TestFinalizeKeepsSealedSessionWhenSourceRemains(t *testing.T) {
 		t.Fatalf("late writer error = %v, want ErrUploadNotFound", err)
 	}
 
-	if err := store.DeleteBlobUpload(repo, uuid); err != nil {
+	deleter, ok := store.(idleUploadDeleter)
+	if !ok {
+		t.Fatal("image store does not expose idle upload deletion")
+	}
+	deleted, err := deleter.DeleteBlobUploadIfIdle(repo, uuid)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatal("sealed upload was not deleted")
 	}
 	if _, err := os.Stat(store.BlobUploadPath(repo, uuid)); !os.IsNotExist(err) {
 		t.Fatalf("source upload still exists after cleanup, stat error = %v", err)
+	}
+}
+
+func TestDeleteBlobUploadIfIdleDoesNotWaitForActiveWriter(t *testing.T) {
+	store, _, _ := newUploadHashGateStore(t)
+	deleter, ok := store.(idleUploadDeleter)
+	if !ok {
+		t.Fatal("image store does not expose idle upload deletion")
+	}
+
+	ctx := context.Background()
+	repo := "gc-busy-upload"
+	uuid, err := store.NewBlobUpload(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := &blockedUploadBody{
+		data:    []byte("active-content"),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	defer body.unblock()
+
+	writerErr := make(chan error, 1)
+	go func() {
+		_, err := store.PutBlobChunkStreamed(ctx, repo, uuid, body)
+		writerErr <- err
+	}()
+
+	select {
+	case <-body.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("active writer did not start")
+	}
+
+	deleteResult := make(chan struct {
+		deleted bool
+		err     error
+	}, 1)
+	go func() {
+		var deleted bool
+		err := store.WithRepoCleanupLock(repo, func() error {
+			var err error
+			deleted, err = deleter.DeleteBlobUploadIfIdle(repo, uuid)
+
+			return err
+		})
+		deleteResult <- struct {
+			deleted bool
+			err     error
+		}{deleted: deleted, err: err}
+	}()
+
+	select {
+	case result := <-deleteResult:
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if result.deleted {
+			t.Fatal("busy upload was reported as deleted")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("idle upload deletion waited for the active writer")
+	}
+
+	body.unblock()
+	if err := <-writerErr; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteBlobUpload(repo, uuid); err != nil {
+		t.Fatal(err)
 	}
 }

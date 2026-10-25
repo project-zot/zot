@@ -7,6 +7,8 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 )
 
+const maxUploadSessionIDLength = 255
+
 type uploadSessionState uint32
 
 const (
@@ -18,8 +20,8 @@ const (
 // uploadSession serializes operations on one partial upload while allowing a
 // finalizer to reject new writers before waiting for an already active writer.
 type uploadSession struct {
-	state     atomic.Uint32
-	operation sync.Mutex
+	state       atomic.Uint32
+	operationMu sync.Mutex
 }
 
 func newUploadSession() *uploadSession {
@@ -33,33 +35,33 @@ func newUploadSession() *uploadSession {
 // finalizer seals the session may finish; writers that arrive after sealing do
 // not consume their request bodies and receive the normal upload-not-found
 // response.
-func (session *uploadSession) withOpen(operation func() error) error {
+func (session *uploadSession) withOpen(fn func() error) error {
 	if uploadSessionState(session.state.Load()) != uploadSessionOpen {
 		return zerr.ErrUploadNotFound
 	}
 
-	session.operation.Lock()
-	defer session.operation.Unlock()
+	session.operationMu.Lock()
+	defer session.operationMu.Unlock()
 
 	if uploadSessionState(session.state.Load()) != uploadSessionOpen {
 		return zerr.ErrUploadNotFound
 	}
 
-	return operation()
+	return fn()
 }
 
 // finalize seals the session before waiting for an already active writer and
 // while fn performs commit, digest verification, and move. Failed finalization
 // reopens the session so existing retry behavior is preserved.
-func (session *uploadSession) finalize(operation func() error) error {
+func (session *uploadSession) finalize(fn func() error) error {
 	if !session.state.CompareAndSwap(uint32(uploadSessionOpen), uint32(uploadSessionSealing)) {
 		return zerr.ErrUploadNotFound
 	}
 
-	session.operation.Lock()
-	defer session.operation.Unlock()
+	session.operationMu.Lock()
+	defer session.operationMu.Unlock()
 
-	err := operation()
+	err := fn()
 	if err == nil {
 		session.state.Store(uint32(uploadSessionSealed))
 	} else {
@@ -67,6 +69,30 @@ func (session *uploadSession) finalize(operation func() error) error {
 	}
 
 	return err
+}
+
+// tryFinalize seals and finalizes an idle session without waiting for an active
+// upload operation. It returns false when the session is busy or not open.
+func (session *uploadSession) tryFinalize(fn func() error) (bool, error) {
+	if !session.state.CompareAndSwap(uint32(uploadSessionOpen), uint32(uploadSessionSealing)) {
+		return false, nil
+	}
+
+	if !session.operationMu.TryLock() {
+		session.state.Store(uint32(uploadSessionOpen))
+
+		return false, nil
+	}
+	defer session.operationMu.Unlock()
+
+	err := fn()
+	if err == nil {
+		session.state.Store(uint32(uploadSessionSealed))
+	} else {
+		session.state.Store(uint32(uploadSessionOpen))
+	}
+
+	return true, err
 }
 
 func (session *uploadSession) isSealing() bool {
@@ -79,19 +105,42 @@ func (session *uploadSession) isSealed() bool {
 
 // cleanupSealed serializes cleanup of a source left behind after a successful
 // move. It never reopens the upload session for normal writers.
-func (session *uploadSession) cleanupSealed(operation func() error) error {
+func (session *uploadSession) cleanupSealed(fn func() error) error {
 	if !session.isSealed() {
 		return zerr.ErrUploadNotFound
 	}
 
-	session.operation.Lock()
-	defer session.operation.Unlock()
+	session.operationMu.Lock()
+	defer session.operationMu.Unlock()
 
 	if !session.isSealed() {
 		return zerr.ErrUploadNotFound
 	}
 
-	return operation()
+	return fn()
+}
+
+// tryCleanupSealed removes a sealed upload without waiting for another cleanup
+// operation. It returns false when the session is not sealed or is busy.
+func (session *uploadSession) tryCleanupSealed(fn func() error) (bool, error) {
+	if !session.isSealed() || !session.operationMu.TryLock() {
+		return false, nil
+	}
+	defer session.operationMu.Unlock()
+
+	if !session.isSealed() {
+		return false, nil
+	}
+
+	return true, fn()
+}
+
+func validateUploadSessionID(uuid string) error {
+	if uuid == "" || len(uuid) > maxUploadSessionIDLength {
+		return zerr.ErrUploadNotFound
+	}
+
+	return nil
 }
 
 type uploadSessionRegistry struct {

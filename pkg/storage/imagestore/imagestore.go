@@ -1283,6 +1283,10 @@ func (is *ImageStore) NewBlobUpload(ctx context.Context, repo string) (string, e
 
 // GetBlobUpload returns the current size of a blob upload.
 func (is *ImageStore) GetBlobUpload(repo, uuid string) (int64, error) {
+	if err := validateUploadSessionID(uuid); err != nil {
+		return -1, err
+	}
+
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	if !utf8.ValidString(blobUploadPath) {
 		is.log.Error().Msg("invalid UTF-8 input")
@@ -1369,6 +1373,10 @@ func (is *ImageStore) cleanupUploadSessionIfMissing(src string, session *uploadS
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
 func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid string, body io.Reader) (int64, error) {
+	if err := validateUploadSessionID(uuid); err != nil {
+		return -1, err
+	}
+
 	src := is.BlobUploadPath(repo, uuid)
 	session := is.uploads.get(src)
 	total := int64(-1)
@@ -1398,6 +1406,10 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from, to int64,
 	body io.Reader,
 ) (int64, error) {
+	if err := validateUploadSessionID(uuid); err != nil {
+		return -1, err
+	}
+
 	src := is.BlobUploadPath(repo, uuid)
 	session := is.uploads.get(src)
 	total := int64(-1)
@@ -1433,6 +1445,10 @@ func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from,
 
 // BlobUploadInfo returns the current blob size in bytes.
 func (is *ImageStore) BlobUploadInfo(repo, uuid string) (int64, error) {
+	if err := validateUploadSessionID(uuid); err != nil {
+		return -1, err
+	}
+
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	writer, err := is.storeDriver.Writer(blobUploadPath, true)
 	if err != nil {
@@ -1451,6 +1467,9 @@ func (is *ImageStore) BlobUploadInfo(repo, uuid string) (int64, error) {
 // FinishBlobUpload finalizes the blob upload and moves blob the repository.
 func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDigest godigest.Digest) error {
 	if err := dstDigest.Validate(); err != nil {
+		return err
+	}
+	if err := validateUploadSessionID(uuid); err != nil {
 		return err
 	}
 
@@ -1896,10 +1915,31 @@ func (is *ImageStore) verifiedSnapshot(src string, digest godigest.Digest, size 
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
 func (is *ImageStore) DeleteBlobUpload(repo, uuid string) error {
+	_, err := is.deleteBlobUpload(repo, uuid, true)
+
+	return err
+}
+
+// DeleteBlobUploadIfIdle removes a stale upload without waiting for an active
+// writer. It is intended for garbage collection, which already holds the
+// store-wide cleanup lock and must not wait on an upload request body.
+func (is *ImageStore) DeleteBlobUploadIfIdle(repo, uuid string) (bool, error) {
+	return is.deleteBlobUpload(repo, uuid, false)
+}
+
+func (is *ImageStore) deleteBlobUpload(repo, uuid string, wait bool) (bool, error) {
+	if err := validateUploadSessionID(uuid); err != nil {
+		if !wait && errors.Is(err, zerr.ErrUploadNotFound) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	session := is.uploads.get(blobUploadPath)
 
-	cancel := func() error {
+	removeUpload := func() error {
 		writer, err := is.storeDriver.Writer(blobUploadPath, true)
 		if err != nil {
 			if errclass.IsStorageObjectMissing(err) {
@@ -1921,15 +1961,35 @@ func (is *ImageStore) DeleteBlobUpload(repo, uuid string) error {
 		return nil
 	}
 
-	err := session.finalize(cancel)
+	if !wait {
+		completed, err := session.tryFinalize(removeUpload)
+		if !completed && session.isSealed() {
+			completed, err = session.tryCleanupSealed(removeUpload)
+		}
+		if !completed {
+			return false, nil
+		}
+		if errors.Is(err, zerr.ErrUploadNotFound) {
+			is.cleanupUploadSessionIfMissing(blobUploadPath, session)
+
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	}
+
+	err := session.finalize(removeUpload)
 	if errors.Is(err, zerr.ErrUploadNotFound) && session.isSealed() {
-		err = session.cleanupSealed(cancel)
+		err = session.cleanupSealed(removeUpload)
 	}
 	if err == nil || errors.Is(err, zerr.ErrUploadNotFound) {
 		is.cleanupUploadSessionIfMissing(blobUploadPath, session)
 	}
 
-	return err
+	return err == nil, err
 }
 
 // BlobPath returns the repository path of a blob.
