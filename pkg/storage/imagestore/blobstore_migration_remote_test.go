@@ -1,10 +1,12 @@
 package imagestore_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -38,6 +40,25 @@ func (c *failingAddReferenceCache) AddReference(digest godigest.Digest, blobPath
 	}
 
 	return c.Cache.AddReference(digest, blobPath)
+}
+
+// sweepOnGlobalOriginCache runs sweep, once, as a global blobstore payload is first recorded as an
+// origin through it: where the upgrade has checked the payload, before it records the payload.
+type sweepOnGlobalOriginCache struct {
+	storageTypes.Cache
+
+	sweep func()
+}
+
+func (c *sweepOnGlobalOriginCache) SetOrigin(digest godigest.Digest, originPath string) error {
+	if c.sweep != nil && strings.Contains(originPath, "/"+storageConstants.GlobalBlobsRepo+"/") {
+		run := c.sweep
+		c.sweep = nil
+
+		run()
+	}
+
+	return c.Cache.SetOrigin(digest, originPath)
 }
 
 func TestUpgradeRemoteStoreToGlobalBlobstore(t *testing.T) {
@@ -302,5 +323,46 @@ func TestUpgradeRemoteStoreToGlobalBlobstore(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(uploads, ShouldBeEmpty)
 		}
+	})
+
+	Convey("An upgrade racing a peer's sweep keeps the content of the copy it promotes", t, func() {
+		dir := t.TempDir()
+		ctx := context.Background()
+		cacheDriver := newBoltCacheAbs(dir)
+
+		// a peer done upgrading: the payload is published, and its last owner deleted, so its
+		// sweep may reclaim it
+		peer := openStore(dir, cacheDriver)
+		So(peer, ShouldNotBeNil)
+
+		_, _, err := peer.FullBlobUpload(ctx, "repo-a", bytes.NewReader(shared), sharedDigest)
+		So(err, ShouldBeNil)
+		So(peer.DeleteBlob("repo-a", sharedDigest), ShouldBeNil)
+
+		// a full copy of the digest, as an earlier release still running writes, for a pass on
+		// this instance to upgrade
+		So(peer.InitRepo(ctx, "repo-x"), ShouldBeNil)
+		writeBlob(repoBlob(dir, "repo-x", sharedDigest), shared)
+		So(os.Remove(path.Join(dir, storageConstants.BlobstoreMigratedMarker)), ShouldBeNil)
+
+		// the peer sweeps once the pass has found the payload in place
+		swept := false
+		hooked := &sweepOnGlobalOriginCache{Cache: cacheDriver, sweep: func() {
+			So(sweep(peer, 0), ShouldBeNil)
+
+			swept = true
+		}}
+
+		imgStore := openStore(dir, hooked)
+		So(swept, ShouldBeTrue)
+		So(imgStore, ShouldNotBeNil)
+
+		data, err := os.ReadFile(globalBlob(dir, sharedDigest))
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, shared)
+
+		data, err = imgStore.GetBlobContent("repo-x", sharedDigest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, shared)
 	})
 }
