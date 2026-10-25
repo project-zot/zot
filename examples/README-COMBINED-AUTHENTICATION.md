@@ -8,7 +8,8 @@ Zot selects the authentication path from the credential style used by the client
 
 | Configuration | Supported | Behavior |
 | --- | --- | --- |
-| `htpasswd` and `ldap` | Yes | Clients send username/password credentials. Zot accepts the request when one configured passphrase backend validates the credentials. |
+| `htpasswd` and `ldap` | Yes | Clients send username/password credentials. Zot tries htpasswd first and tries LDAP when that password does not match. |
+| `htpasswd` or `ldap` with `bearer` | Yes, when the client sends Basic to the registry | Registry routes accept `Authorization: Basic` and validate htpasswd, LDAP, or an API key even when bearer is enabled. `/zot/auth/token` does not validate those passwords. It exchanges an API key, or a JWT whose issuer and audience match `bearer.oidc`. A credential Zot does not recognize is rejected, unless `upstreamTokenEndpoint` is set, in which case Zot forwards the token request. |
 | `openid` and `apikey` | Yes | Users sign in through browser SSO, then create API keys for Docker, Podman, containerd, kubelet, scripts, and other non-browser clients. |
 | `openid`, `apikey`, and `bearer` challenge settings | Yes | OCI clients can exchange API keys for wrapped Bearer credentials, while browser users continue using SSO sessions. |
 | `bearer.oidc` and `openid` | Yes | Workloads use OIDC tokens as Bearer credentials; humans use browser SSO sessions. |
@@ -107,7 +108,9 @@ In mixed deployments, Zot should be the advertised token endpoint:
 Zot successfully exchanges these token requests locally:
 
 - API keys that start with Zot's API-key prefix.
-- OIDC workload tokens trusted by `bearer.oidc`.
+- A JWT whose issuer and audience match `bearer.oidc`. Zot verifies it and returns that same token. The Basic username is not the registry identity. Claim mapping supplies the identity when that JWT is presented later. Zot splits the Basic credential on the first colon, so the username must not contain a colon.
+
+htpasswd and LDAP passwords are not checked here. A registry route accepts them as `Authorization: Basic`. On this endpoint, a password Zot does not recognize as an API key or a matching OIDC JWT is rejected, or forwarded when `upstreamTokenEndpoint` is set. An opaque access token is one of those unrecognized credentials.
 
 Zot also recognizes these credentials as locally owned and refuses to forward them:
 
