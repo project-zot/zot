@@ -1810,6 +1810,8 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 		// prevent overwrite original blob; when dst already is the origin's content (the same file
 		// remotely, a hardlink of it locally), there is nothing to link, and the size check below
 		// still repairs wrong content
+		keepFullCopy := false
+
 		if !is.storeDriver.SameFile(dst, dstRecord) {
 			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
@@ -1819,16 +1821,23 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 			}
 
 			if err := is.cache.PutDuplicate(dstDigest, dst); err != nil {
+				switch {
 				// the record was removed since it was read: start over, so that the upload becomes
 				// the origin instead of the copy just linked
-				if errors.Is(err, zerr.ErrCacheMiss) {
+				case errors.Is(err, zerr.ErrCacheMiss):
 					continue
+				// the record cannot track another copy: keep the content in this copy instead
+				case errors.Is(err, zerr.ErrCacheFull):
+					is.log.Warn().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+						Msg("dedupe record is full, keeping a full copy of the blob")
+
+					keepFullCopy = true
+				default:
+					is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+						Msg("failed to insert blob record")
+
+					return err
 				}
-
-				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-					Msg("failed to insert blob record")
-
-				return err
 			}
 		}
 
@@ -1865,6 +1874,18 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 			}
 
 			// the repair consumed the snapshot only: the upload is removed below, as after a link
+		}
+
+		if keepFullCopy {
+			// the upload is the verified content: it replaces the link made above
+			if err := is.storeDriver.Move(src, dst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+					Msg("failed to rename blob")
+
+				return err
+			}
+
+			return nil
 		}
 
 		// remove temp blobupload
@@ -2133,6 +2154,10 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 		// put deduped blob in cache
 		if err := is.cache.PutDuplicate(digest, blobPath); err != nil {
+			if errors.Is(err, zerr.ErrCacheFull) {
+				return is.keepFullCopyOfBlob(ctx, repo, blobPath, dstRecord, digest, blobSize, &lockLatency)
+			}
+
 			is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
 
 			return false, -1, mapStorageErr(err)
@@ -2207,7 +2232,30 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	// put deduped blob in cache
 	if err := is.cache.PutDuplicate(digest, blobPath); err != nil {
+		if errors.Is(err, zerr.ErrCacheFull) {
+			return is.keepFullCopyOfBlob(ctx, repo, blobPath, dstRecord, digest, blobSize, &lockLatency)
+		}
+
 		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
+
+		return false, -1, mapStorageErr(err)
+	}
+
+	return true, blobSize, nil
+}
+
+// keepFullCopyOfBlob is CheckBlob's answer to a dedupe record that cannot track another copy.
+func (is *ImageStore) keepFullCopyOfBlob(ctx context.Context, repo, blobPath, origin string,
+	digest godigest.Digest, blobSize int64, lockLatency *time.Time,
+) (bool, int64, error) {
+	is.log.Warn().Str("blobPath", blobPath).Str("digest", digest.String()).Str("component", "dedupe").
+		Msg("dedupe record is full, keeping a full copy of the blob")
+
+	writeLocked := is.dedupe && !is.isCacheNil()
+
+	if err := is.keepFullCopy(ctx, repo, blobPath, origin, digest, writeLocked, lockLatency); err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").
+			Msg("failed to keep a full copy of the blob")
 
 		return false, -1, mapStorageErr(err)
 	}

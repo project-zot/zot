@@ -3,6 +3,7 @@ package cache
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -750,5 +751,43 @@ func TestDynamoDBPutDuplicateAndReplaceBlob(t *testing.T) {
 		So(driver.ReplaceBlob(digest, "", "/repo/copy"), ShouldEqual, zerr.ErrEmptyValue)
 		So(driver.ReplaceBlob(digest, "/repo/origin", ""), ShouldEqual, zerr.ErrEmptyValue)
 		So(transport.targets, ShouldBeEmpty)
+	})
+}
+
+// A digest shared by enough repositories fills its item. The driver reports that as ErrCacheFull,
+// so that the image store can keep a full copy instead of failing the request.
+func TestDynamoDBItemSizeLimit(t *testing.T) {
+	digest := godigest.FromString("item-size-limit")
+
+	itemTooLarge := scriptedDynamoResponse{http.StatusBadRequest,
+		`{"__type":"com.amazon.coral.validate#ValidationException",` +
+			`"message":"Item size to update has exceeded the maximum allowed size"}`}
+
+	otherValidationError := scriptedDynamoResponse{http.StatusBadRequest,
+		`{"__type":"com.amazon.coral.validate#ValidationException","message":"The provided key element is invalid"}`}
+
+	Convey("PutDuplicate reports a full record", t, func() {
+		driver, _ := newScriptedDynamoDriver(itemTooLarge)
+
+		err := driver.PutDuplicate(digest, "/repo/copy")
+		So(errors.Is(err, zerr.ErrCacheFull), ShouldBeTrue)
+	})
+
+	Convey("PutBlob reports a full record", t, func() {
+		driver, _ := newScriptedDynamoDriver(
+			scriptedDynamoResponse{http.StatusOK, `{"Item":{"OriginalBlobPath":{"S":"/repo/origin"},` +
+				`"DuplicateBlobPath":{"SS":["/repo/origin"]}}}`},
+			itemTooLarge)
+
+		err := driver.PutBlob(digest, "/repo/copy")
+		So(errors.Is(err, zerr.ErrCacheFull), ShouldBeTrue)
+	})
+
+	Convey("Other validation errors are not reported as a full record", t, func() {
+		driver, _ := newScriptedDynamoDriver(otherValidationError)
+
+		err := driver.PutDuplicate(digest, "/repo/copy")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrCacheFull), ShouldBeFalse)
 	})
 }

@@ -71,6 +71,7 @@ var (
 	ErrCacheNoBucket                    = errors.New("unable to find cache bucket")
 	ErrCacheMiss                        = errors.New("cache miss")
 	ErrCacheConflict                    = errors.New("cache entry changed concurrently")
+	ErrCacheFull                        = errors.New("cache entry exceeds item size limit")
 	ErrManifestCacheLookup              = errors.New("manifest cache lookup failed")
 	ErrRequireCred                      = errors.New("bind ldap credentials required")
 	ErrInvalidCred                      = errors.New("invalid ldap credentials")
