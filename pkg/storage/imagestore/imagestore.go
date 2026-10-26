@@ -1964,7 +1964,13 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 				return err
 			}
 
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+			if err := is.cache.PutDuplicate(dstDigest, dst); err != nil {
+				// the record was removed since it was read: start over, so that the upload becomes
+				// the origin instead of the copy just linked
+				if errors.Is(err, zerr.ErrCacheMiss) {
+					continue
+				}
+
 				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
 					Msg("failed to insert blob record")
 
@@ -2326,7 +2332,7 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 
 		// put deduped blob in cache
 		putStart := time.Now()
-		err = is.cache.PutBlob(digest, blobPath)
+		err = is.cache.PutDuplicate(digest, blobPath)
 		timing.observe(storageConstants.StoragePartCacheUpdate, putStart)
 
 		if err != nil {
@@ -2429,7 +2435,7 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 
 	// put deduped blob in cache
 	putStart := time.Now()
-	err = is.cache.PutBlob(digest, blobPath)
+	err = is.cache.PutDuplicate(digest, blobPath)
 	timing.observe(storageConstants.StoragePartCacheUpdate, putStart)
 
 	if err != nil {
@@ -3212,7 +3218,8 @@ func (is *ImageStore) originLostContent(digest godigest.Digest, originPath strin
 // be deleted, to another copy the cache records, and makes that copy the origin. A copy storage confirms is
 // missing is dropped from the cache and the next one tried, so that one lost copy cannot block
 // the delete for good. It reports whether the hand-off removed fromPath; with no other copy, it
-// did not.
+// did not. The origin is changed only if it is still the one just read; if another writer changed
+// it in between, ErrCacheConflict is returned and the caller starts over.
 func (is *ImageStore) handOffOrigin(digest godigest.Digest, fromPath string, fromInfo driver.FileInfo,
 ) (bool, error) {
 	records, err := is.cache.GetAllBlobs(digest)
@@ -3243,10 +3250,30 @@ func (is *ImageStore) handOffOrigin(digest godigest.Digest, fromPath string, fro
 		}
 
 		// toPath now holds the content, so a failure from here on cannot lose it
-		return removedFrom, is.cache.SetOrigin(digest, toPath)
+		return removedFrom, is.moveOrigin(digest, toPath)
 	}
 
 	return false, nil
+}
+
+// moveOrigin makes toPath the cache origin of digest, replacing the origin read from the cache
+// now. Only a write that finds the origin unchanged goes through.
+func (is *ImageStore) moveOrigin(digest godigest.Digest, toPath string) error {
+	record, err := is.cache.GetBlob(digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return zerr.ErrCacheConflict
+		}
+
+		return err
+	}
+
+	origin := is.cacheRecordPath(record)
+	if path.Clean(origin) == path.Clean(toPath) {
+		return nil
+	}
+
+	return is.cache.ReplaceBlob(digest, origin, toPath)
 }
 
 // deleteMustWaitForWalk reports whether deleting the content copy described by binfo has to
