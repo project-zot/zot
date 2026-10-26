@@ -89,9 +89,8 @@ func newPushDestinationFromClient(client *regclient.RegClient, parsed *url.URL, 
 	return &PushDestination{rc: client, url: rawURL, host: parsed.Host, log: log}
 }
 
-// InitPushMode builds one client per destination. The service's own client already holds the
-// first destination's host config (see EnableSyncExtension), so it is reused rather than built
-// twice; every further destination gets a client of its own.
+// InitPushMode builds one client per destination. None of them shares the service's client:
+// that one belongs to the pull source, and a combined entry can have both.
 func (service *BaseService) InitPushMode() error {
 	push := service.config.Push
 	if !push.IsEnabled() {
@@ -102,23 +101,7 @@ func (service *BaseService) InitPushMode() error {
 		return zerr.ErrSyncNoURLsLeft
 	}
 
-	for idx, rawURL := range push.URLs {
-		parsed, err := url.Parse(rawURL)
-		if err != nil {
-			return fmt.Errorf("%w: %s: %w", zerr.ErrSyncInvalidURL, rawURL, err)
-		}
-
-		if parsed.Host == "" {
-			return fmt.Errorf("%w: %s", zerr.ErrSyncInvalidURL, rawURL)
-		}
-
-		if idx == 0 {
-			service.pushTargets = append(service.pushTargets,
-				newPushDestinationFromClient(service.rc, parsed, rawURL, service.log))
-
-			continue
-		}
-
+	for _, rawURL := range push.URLs {
 		destination, err := NewPushDestination(rawURL, push, service.config, service.credentials, service.log)
 		if err != nil {
 			return err
@@ -284,10 +267,19 @@ func (task *pushRepoTask) String() string {
 
 // PushRepo mirrors every selected tag of repo to every configured destination.
 func (service *BaseService) PushRepo(ctx context.Context, repo string) error {
-	if !service.contentManager.MatchesLocalRepo(repo) {
+	matches := service.contentManager.LocalContentMatches(repo)
+	if len(matches) == 0 {
 		service.log.Debug().Str("repo", repo).Msg("repo is not selected by the sync content rules, not pushing it")
 
 		return nil
+	}
+
+	if len(matches) > 1 {
+		// Only the first entry governs tags, platforms and stripPrefix. Say so: the narrower
+		// rule silently loses, which is not what a config author expects.
+		service.log.Debug().Str("repo", repo).Int("matchedRules", len(matches)).
+			Str("appliedPrefix", matches[0].Prefix).
+			Msg("more than one content rule matches this repo, the first one applies")
 	}
 
 	imageStore := service.storeController.GetImageStore(repo)

@@ -45,13 +45,19 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 		for _, registryConfig := range syncConfig.Registries {
 			if registryConfig.IsPushEnabled() {
-				if err := enablePushEntry(registryConfig, syncConfig, config, storeController, metaDB, sch, log); err != nil {
+				err := enablePushEntry(registryConfig, syncConfig, config, httpAddress, httpPort,
+					storeController, metaDB, sch, log)
+				if err != nil {
 					log.Error().Err(err).Msg("failed to enable sync push mode")
 
 					return nil, err
 				}
 
-				continue
+				// A push entry may also have upstreams: same content list, two directions.
+				// Without them there is nothing to pull, so the pull wiring below is skipped.
+				if len(registryConfig.URLs) == 0 {
+					continue
+				}
 			}
 
 			if len(registryConfig.URLs) > 1 {
@@ -138,23 +144,36 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 // enablePushEntry starts the outbound loop for one push registry entry: one generator per
 // image store, each walking that store's repository catalog.
 func enablePushEntry(registryConfig syncconf.RegistryConfig, syncConfig *syncconf.Config, config *config.Config,
-	storeController storage.StoreController, metaDB mTypes.MetaDB, sch *scheduler.Scheduler, log log.Logger,
+	httpAddress, httpPort string, storeController storage.StoreController, metaDB mTypes.MetaDB,
+	sch *scheduler.Scheduler, log log.Logger,
 ) error {
-	push := registryConfig.Push
+	// A destination that resolves to this instance would copy to itself and never converge,
+	// which is why the pull path already filters self URLs. Same check, same helper.
+	pushConfig := *registryConfig.Push
+
+	selfCheck := syncconf.RegistryConfig{URLs: pushConfig.URLs}
+	if err := removeSelfURLs(httpAddress, httpPort, &selfCheck, log); err != nil {
+		return err
+	}
+
+	pushConfig.URLs = selfCheck.URLs
+	if len(pushConfig.URLs) == 0 {
+		return zerr.ErrSyncNoURLsLeft
+	}
 
 	pullConfig := registryConfig
-	// push.URLs names destinations, not sources: the first one backs the service's own client,
-	// and InitPushMode adds one client per further destination.
-	pullConfig.URLs = push.URLs[:1]
-	pullConfig.TLSVerify = push.TLSVerify
-	pullConfig.CertDir = push.CertDir
-	// A push entry has no upstream. Leaving the pull-only switches in place would make the
-	// service answer on-demand requests for a registry it never pulls from.
-	pullConfig.OnDemand = false
-	pullConfig.OnDemandInBackground = nil
-	pullConfig.Stream = nil
-	pullConfig.ManifestCheckInterval = 0
-	pullConfig.OnlySigned = nil
+	pullConfig.Push = &pushConfig
+
+	if len(pullConfig.URLs) == 0 {
+		// Push-only entry: the service needs one URL to build a client at all, and the pull
+		// loop must not believe it has a source.
+		pullConfig.URLs = pushConfig.URLs[:1]
+		pullConfig.OnDemand = false
+		pullConfig.OnDemandInBackground = nil
+		pullConfig.Stream = nil
+		pullConfig.ManifestCheckInterval = 0
+		pullConfig.OnlySigned = nil
+	}
 
 	service, err := sync.New(pullConfig, syncConfig.CredentialsFile, config.CopyClusterConfig(),
 		syncConfig.DownloadDir, storeController, nil, metaDB, log)

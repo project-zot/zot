@@ -174,11 +174,31 @@ func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content
 	return nil
 }
 
+// GetContentByLocalRepo returns the content entry that governs a local repository, or nil when
+// none matches. Entries are evaluated in config order and the first match wins: a repo can be
+// matched by a broad rule and a narrow one, and only the broad one's tag and platform rules
+// would apply. The pull direction has the same rule (see getContentByUpstreamRepo), so both
+// directions read a content list the same way.
 func (cm ContentManager) GetContentByLocalRepo(repo string) *syncconf.Content {
-	contentID := -1
+	matches := cm.LocalContentMatches(repo)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	return matches[0]
+}
+
+// LocalContentMatches returns every content entry whose rules match a local repo, in config
+// order. Only the first governs, which GetContentByLocalRepo enforces; the full list exists so
+// the push loop can report an ambiguous config instead of silently applying one of two rules.
+func (cm ContentManager) LocalContentMatches(repo string) []*syncconf.Content {
 	repo = strings.Trim(repo, "/")
 
-	for cID, content := range cm.contents {
+	var matches []*syncconf.Content
+
+	for cID := range cm.contents {
+		content := &cm.contents[cID]
+
 		// make sure prefix ends in "/" to extract the meta characters
 		prefix := strings.Trim(content.Prefix, "/") + "/"
 		destination := strings.Trim(content.Destination, "/")
@@ -200,17 +220,11 @@ func (cm ContentManager) GetContentByLocalRepo(repo string) *syncconf.Content {
 		}
 
 		if matched {
-			contentID = cID
-
-			break
+			matches = append(matches, content)
 		}
 	}
 
-	if contentID == -1 {
-		return nil
-	}
-
-	return &cm.contents[contentID]
+	return matches
 }
 
 func getRepoSource(localRepo string, content syncconf.Content) string {

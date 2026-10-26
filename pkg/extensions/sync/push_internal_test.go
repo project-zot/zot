@@ -338,3 +338,149 @@ func TestPushConfigIsEnabled(t *testing.T) {
 		So(emptyConfig.IsPushEnabled(), ShouldBeFalse)
 	})
 }
+
+// seedImage stores one small image (config + one layer) under repo:tag and returns its digest.
+func seedImage(t *testing.T, store storageTypes.ImageStore, repo, tag string) godigest.Digest {
+	t.Helper()
+
+	configContent := []byte(`{"architecture":"amd64","os":"linux"}`)
+	layerContent := []byte("the-layer-" + tag)
+	configDigest := uploadBlob(t, store, repo, configContent)
+	layerDigest := uploadBlob(t, store, repo, layerContent)
+
+	man := ispec.Manifest{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ispec.MediaTypeImageManifest,
+		Config: ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageConfig, Digest: configDigest, Size: int64(len(configContent)),
+		},
+		Layers: []ispec.Descriptor{
+			{MediaType: ispec.MediaTypeImageLayerGzip, Digest: layerDigest, Size: int64(len(layerContent))},
+		},
+	}
+
+	body, err := json.Marshal(man)
+	So(err, ShouldBeNil)
+
+	digest, _, err := store.PutImageManifest(context.Background(), repo, tag, ispec.MediaTypeImageManifest, body, nil)
+	So(err, ShouldBeNil)
+
+	return digest
+}
+
+// recordingDestination remembers which source digests it already holds, so the delta check and
+// the second run of a push can be observed without a registry.
+type recordingDestination struct {
+	inner   *PushDestination
+	present map[godigest.Digest]bool
+	copies  []godigest.Digest
+}
+
+func newRecordingDestination() *recordingDestination {
+	return &recordingDestination{
+		inner:   &PushDestination{host: "destination.test:5000"},
+		present: map[godigest.Digest]bool{},
+	}
+}
+
+func (fake *recordingDestination) URL() string {
+	return "http://destination.test:5000"
+}
+
+func (fake *recordingDestination) GetImageReference(repo, reference string) (ref.Ref, error) {
+	return fake.inner.GetImageReference(repo, reference)
+}
+
+func (fake *recordingDestination) CanSkipImage(_ context.Context, _ string, _ string,
+	digest godigest.Digest,
+) (bool, error) {
+	return fake.present[digest], nil
+}
+
+func (fake *recordingDestination) CopyImage(_ context.Context, sourceRef, _ ref.Ref) error {
+	digest, ok := parseReference(sourceRef.Digest)
+	if ok {
+		fake.present[digest] = true
+	}
+
+	fake.copies = append(fake.copies, godigest.Digest(sourceRef.Digest))
+
+	return nil
+}
+
+func (fake *recordingDestination) Close(context.Context, ref.Ref) {}
+
+func newPushServiceForTest(store storageTypes.ImageStore, targets ...pushDestination) *BaseService {
+	storeController := storage.StoreController{DefaultStore: store}
+
+	return &BaseService{
+		log:            log.NewTestLogger(),
+		contentManager: NewContentManager(nil, log.NewTestLogger()),
+		destination:    NewDestinationRegistry(storeController, storeController, nil, log.NewTestLogger()),
+		pushTargets:    targets,
+	}
+}
+
+func TestPushDeltaSkip(t *testing.T) {
+	Convey("A destination that already holds the digest costs no copy", t, func() {
+		ctx := context.Background()
+		repo := "library/alpine"
+
+		store := newTestImageStore(t, t.TempDir())
+		imageDigest := seedImage(t, store, repo, "3.20")
+
+		fake := newRecordingDestination()
+		fake.present[imageDigest] = true
+
+		service := newPushServiceForTest(store, fake)
+
+		So(service.pushTag(ctx, store, repo, "3.20"), ShouldBeNil)
+		So(fake.copies, ShouldBeEmpty)
+	})
+}
+
+func TestPushIsIdempotent(t *testing.T) {
+	Convey("A second run of the same tag copies nothing and reports no error", t, func() {
+		ctx := context.Background()
+		repo := "library/alpine"
+
+		store := newTestImageStore(t, t.TempDir())
+		imageDigest := seedImage(t, store, repo, "3.20")
+
+		fake := newRecordingDestination()
+		service := newPushServiceForTest(store, fake)
+
+		So(service.pushTag(ctx, store, repo, "3.20"), ShouldBeNil)
+		So(fake.copies, ShouldHaveLength, 1)
+		So(fake.copies[0], ShouldEqual, imageDigest)
+
+		Convey("The next cycle is a no-op", func() {
+			So(service.pushTag(ctx, store, repo, "3.20"), ShouldBeNil)
+			So(fake.copies, ShouldHaveLength, 1)
+		})
+	})
+}
+
+func TestContentFirstMatchWins(t *testing.T) {
+	Convey("Overlapping content rules resolve to the first entry in config order", t, func() {
+		manager := NewContentManager([]syncconf.Content{
+			{Prefix: "library/**", Tags: &syncconf.Tags{Regex: strPtr(`^3\.`)}},
+			{Prefix: "library/alpine", Tags: &syncconf.Tags{Regex: strPtr(`^9\.`)}},
+		}, log.NewTestLogger())
+
+		matches := manager.LocalContentMatches("library/alpine")
+		So(matches, ShouldHaveLength, 2)
+
+		governing := manager.GetContentByLocalRepo("library/alpine")
+		So(governing, ShouldNotBeNil)
+		So(governing.Prefix, ShouldEqual, "library/**")
+
+		tags, err := manager.FilterLocalTags("library/alpine", []string{"3.20", "9.99"})
+		So(err, ShouldBeNil)
+		So(tags, ShouldResemble, []string{"3.20"})
+	})
+}
+
+func strPtr(value string) *string {
+	return &value
+}
