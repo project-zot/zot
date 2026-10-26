@@ -282,4 +282,27 @@ func TestMaybeParseStorageGate(t *testing.T) {
 		So(meta.MaybeParseStorage(mock, store, true, "v1", logger), ShouldBeNil)
 		So(parses, ShouldEqual, 2)
 	})
+
+	Convey("an incomplete parse whose stamp cannot be cleared fails startup", t, func() {
+		errClear := errors.New("metaDB unwritable") //nolint: err113
+
+		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) { return []string{}, nil },
+		}}
+
+		mock := mocks.MetaDBMock{
+			GetAllRepoNamesFn: func() ([]string, error) { return []string{repo}, nil },
+			SetFastRestartStampFn: func(stamp string) error {
+				if stamp != "" {
+					t.Fatal("must not stamp an incomplete parse")
+				}
+
+				return errClear
+			},
+		}
+
+		// a stamp left in place could let the next fast restart skip the reparse
+		err := meta.MaybeParseStorage(mock, store, false, "v1", logger)
+		So(errors.Is(err, errClear), ShouldBeTrue)
+	})
 }
