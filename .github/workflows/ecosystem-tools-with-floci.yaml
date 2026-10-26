@@ -22,7 +22,6 @@ jobs:
       - uses: ./.github/actions/build-zot-binaries
         with:
           make-targets: binary binary-minimal cli bench blackbox-tools
-          with-skopeo-build-deps: "true"
           artifact-name: ecosystem-bins-${{ github.sha }}
           artifact-path: |
             bin/

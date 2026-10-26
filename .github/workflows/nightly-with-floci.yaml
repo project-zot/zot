@@ -28,7 +28,6 @@ jobs:
           # Shared zot/zb + blackbox client tools (incl. skopeo) so parallel jobs
           # reuse the artifact instead of each re-downloading check-blackbox tools.
           make-targets: binary binary-minimal bench blackbox-tools
-          with-skopeo-build-deps: "true"
           artifact-path: |
             bin/
             hack/tools/
