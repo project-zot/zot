@@ -61,7 +61,7 @@ func TestInFlightBlobCopierFullCopy(t *testing.T) {
 	readDone := make(chan error, 1)
 	go func() { readDone <- readAllChunks(cbr) }()
 
-	require.NoError(t, copier.Copy())
+	require.NoError(t, copier.Copy(context.Background()))
 	require.ErrorIs(t, <-readDone, io.EOF)
 
 	assert.Equal(t, content, dest.Bytes(), "the client must receive exactly the streamed content")
@@ -82,7 +82,7 @@ func TestInFlightBlobCopierOsOpenFailure(t *testing.T) {
 	badPath := filepath.Join(t.TempDir(), "does-not-exist")
 	copier := NewInFlightBlobCopier(cbr, badPath, &bytes.Buffer{}, announceChan, subscriptionID, log.NewTestLogger())
 
-	err := copier.Copy()
+	err := copier.Copy(context.Background())
 	require.Error(t, err)
 	assert.True(t, os.IsNotExist(err), "expected a not-exist error, got %v", err)
 	assert.False(t, isSubscribed(cbr, subscriptionID), "a failed os.Open must still release the subscription")
@@ -105,7 +105,7 @@ func TestInFlightBlobCopierAbortedUpstream(t *testing.T) {
 
 	go func() { _ = readAllChunks(cbr) }()
 
-	err := copier.Copy()
+	err := copier.Copy(context.Background())
 	require.ErrorIs(t, err, zerr.ErrSyncUpstreamDownloadFailed)
 }
 
@@ -126,7 +126,7 @@ func TestInFlightBlobCopierDestWriteFailure(t *testing.T) {
 
 	go func() { _ = readAllChunks(cbr) }()
 
-	err := copier.Copy()
+	err := copier.Copy(context.Background())
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -147,7 +147,7 @@ func TestInFlightBlobCopierCopyRange(t *testing.T) {
 
 	const start, end = 17, 41
 
-	require.NoError(t, copier.CopyRange(start, end))
+	require.NoError(t, copier.CopyRange(context.Background(), start, end))
 	require.ErrorIs(t, <-readDone, io.EOF)
 
 	assert.Equal(t, content[start:end+1], dest.Bytes(), "must receive exactly the requested byte range")
@@ -164,7 +164,7 @@ func TestInFlightBlobCopierCopyRangeOutOfBounds(t *testing.T) {
 
 	copier := NewInFlightBlobCopier(cbr, cbr.OnDiskPath(), &bytes.Buffer{}, announceChan, subscriptionID, log.NewTestLogger())
 
-	err := copier.CopyRange(0, int64(len(content)))
+	err := copier.CopyRange(context.Background(), 0, int64(len(content)))
 	require.ErrorIs(t, err, zerr.ErrBadRange)
 	assert.False(t, isSubscribed(cbr, subscriptionID), "an invalid range must still release the subscription")
 }
@@ -227,7 +227,7 @@ func TestInFlightBlobCopierCopyRangeDoesNotWaitForFullBlob(t *testing.T) {
 	copier := NewInFlightBlobCopier(cbr, cbr.OnDiskPath(), &dest, announceChan, subscriptionID, log.NewTestLogger())
 
 	copyDone := make(chan error, 1)
-	go func() { copyDone <- copier.CopyRange(0, 7) }()
+	go func() { copyDone <- copier.CopyRange(context.Background(), 0, 7) }()
 
 	select {
 	case err := <-copyDone:

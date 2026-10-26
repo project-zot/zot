@@ -108,7 +108,7 @@ func (c *fakeBlobCopier) Descriptor(ctx context.Context) (descriptor.Descriptor,
 	return c.desc, c.descErr
 }
 
-func (c *fakeBlobCopier) Copy() error {
+func (c *fakeBlobCopier) Copy(_ context.Context) error {
 	c.copied = true
 
 	if c.copyErr != nil {
@@ -120,7 +120,7 @@ func (c *fakeBlobCopier) Copy() error {
 	return err
 }
 
-func (c *fakeBlobCopier) CopyRange(start, end int64) error {
+func (c *fakeBlobCopier) CopyRange(_ context.Context, start, end int64) error {
 	c.copiedRange = true
 	c.rangeStart = start
 	c.rangeEnd = end
