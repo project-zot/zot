@@ -162,9 +162,31 @@ func (gc GarbageCollect) memo(repo string) *common.WalkMemo {
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	// removeUnreferencedBlobs deletes blobs one at a time, and with dedupe each delete may
 	// move or remove content other repositories link to; the store knows what that takes.
-	return gc.imgStore.WithRepoCleanupLock(repo, func() error {
+	started := time.Now()
+
+	var acquired time.Time
+
+	var hold time.Duration
+
+	err := gc.imgStore.WithRepoCleanupLock(repo, func() error {
+		acquired = time.Now()
+		defer func() { hold = time.Since(acquired) }()
+
 		return gc.cleanRepoLocked(ctx, repo)
 	})
+
+	wait := time.Since(started)
+	if !acquired.IsZero() {
+		wait = acquired.Sub(started)
+	}
+
+	gc.log.Debug().Str("module", "gc").Str("operation", "CleanRepo").
+		Str("storage", gc.imgStore.RootDir()).Str("repository", repo).
+		Bool("lock_acquired", !acquired.IsZero()).Err(err).
+		Dur("lock_wait", wait).Dur("lock_hold", hold).
+		Dur("duration", time.Since(started)).Msg("gc repository operation completed")
+
+	return err
 }
 
 func (gc GarbageCollect) cleanRepoLocked(ctx context.Context, repo string) error {

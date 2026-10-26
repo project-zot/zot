@@ -640,13 +640,24 @@ func incompleteListingErr(op, dir string, cause error) error {
 // GetNextRepository returns next repository under this store.
 // Transient/Permanent ValidateRepo failures abort (inventory fail-closed for GC / metrics).
 // HTTP catalog soft-skips per-path outages via GetNextRepositories.
-func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (string, error) {
+func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (repository string, resultErr error) {
+	started := time.Now()
+
 	var lockLatency time.Time
 
 	dir := is.rootDir
 
 	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
+
+	acquired := time.Now()
+	defer func() {
+		hold := time.Since(acquired)
+		is.RUnlock(&lockLatency)
+		is.log.Debug().Str("operation", "GetNextRepository").Str("storage", is.rootDir).
+			Str("repository", repository).Int("processed_repositories", len(processedRepos)).Err(resultErr).
+			Dur("lock_wait", acquired.Sub(started)).Dur("lock_hold", hold).
+			Dur("duration", time.Since(started)).Msg("repository scan completed")
+	}()
 
 	_, err := is.storeDriver.List(dir)
 	if err != nil {
@@ -2071,7 +2082,9 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
 // If the blob is not found but it's found in cache then it will be copied over.
-func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
+func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godigest.Digest) (
+	found bool, size int64, resultErr error,
+) {
 	var lockLatency time.Time
 
 	if err := digest.Validate(); err != nil {
@@ -2080,15 +2093,50 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	blobPath := is.BlobPath(repo, digest)
 
-	if is.dedupe && !is.isCacheNil() {
-		is.Lock(&lockLatency)
-		defer is.Unlock(&lockLatency)
-	} else {
-		is.RLock(&lockLatency)
-		defer is.RUnlock(&lockLatency)
+	timing := blobCheckTiming{}
+	started := time.Now()
+
+	defer func() {
+		is.log.Debug().Str("repository", repo).Str("digest", digest.String()).
+			Bool("found", found).Int64("size", size).Err(resultErr).
+			Dur("duration", time.Since(started)).Interface("steps", timing).
+			Msg("blob check completed")
+	}()
+
+	writeLocked := is.dedupe && !is.isCacheNil()
+	lockStep := "read_lock"
+
+	if writeLocked {
+		lockStep = "write_lock"
 	}
 
+	waitStarted := time.Now()
+
+	if writeLocked {
+		is.Lock(&lockLatency)
+	} else {
+		is.RLock(&lockLatency)
+	}
+
+	timing.observe(lockStep+"_wait", waitStarted)
+
+	heldSince := time.Now()
+
+	defer func() {
+		timing.observe(lockStep+"_hold", heldSince)
+
+		if writeLocked {
+			is.Unlock(&lockLatency)
+		} else {
+			is.RUnlock(&lockLatency)
+		}
+	}()
+
+	statStarted := time.Now()
 	binfo, err := is.storeDriver.Stat(blobPath)
+
+	timing.observe("stat", statStarted)
+
 	if err != nil {
 		// Only fall back to the cache when Stat classified Missing. Transient/
 		// Permanent must not trigger copyBlob/Link (a placeholder link can
@@ -2099,7 +2147,11 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 		statErr := err
 
+		cacheStarted := time.Now()
 		dstRecord, err := is.checkCacheBlob(digest)
+
+		timing.observe("cache_lookup", cacheStarted)
+
 		if err != nil {
 			if errclass.IsBlobUnavailable(err) {
 				is.log.Debug().Err(err).Str("digest", digest.String()).Msg("cache miss for blob")
@@ -2113,7 +2165,11 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 			return false, -1, mapStorageErr(err)
 		}
 
+		copyStarted := time.Now()
 		blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
+
+		timing.observe("copy_blob", copyStarted)
+
 		if err != nil {
 			return false, -1, mapStorageErr(err)
 		}
@@ -2126,7 +2182,12 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		}
 
 		// put deduped blob in cache
-		if err := is.cache.PutBlob(digest, blobPath); err != nil {
+		putStarted := time.Now()
+		err = is.cache.PutBlob(digest, blobPath)
+
+		timing.observe("cache_put", putStarted)
+
+		if err != nil {
 			is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
 
 			return false, -1, mapStorageErr(err)
@@ -2137,7 +2198,11 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	if binfo.Size() > 0 {
 		// try to find blob size in blob descriptors, if blob can not be found
+		descriptorStarted := time.Now()
 		desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
+
+		timing.observe("descriptor_lookup", descriptorStarted)
+
 		if err != nil || desc.Size == binfo.Size() {
 			// blob not found in descriptors, can not compare, just return
 			is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
@@ -2172,7 +2237,11 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	// Placeholder: the content copy is at the path the cache records.
+	cacheStarted := time.Now()
 	dstRecord, err := is.checkCacheBlob(digest)
+
+	timing.observe("cache_lookup", cacheStarted)
+
 	if err != nil {
 		// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
 		if errclass.IsBlobUnavailable(err) {
@@ -2184,7 +2253,11 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		return false, -1, mapStorageErr(err)
 	}
 
+	copyStarted := time.Now()
 	blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
+
+	timing.observe("copy_blob", copyStarted)
+
 	if err != nil {
 		return false, -1, mapStorageErr(err)
 	}
@@ -2200,7 +2273,12 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	// put deduped blob in cache
-	if err := is.cache.PutBlob(digest, blobPath); err != nil {
+	putStarted := time.Now()
+	err = is.cache.PutBlob(digest, blobPath)
+
+	timing.observe("cache_put", putStarted)
+
+	if err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
 
 		return false, -1, mapStorageErr(err)
