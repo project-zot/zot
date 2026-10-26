@@ -314,11 +314,11 @@ TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 echo "$TOKEN" | docker login -u zot --password-stdin zot.example.com
 ```
 
-This requires the registry challenge to advertise `realm: "https://zot.example.com/zot/auth/token"` and a `service` value matching the registry host clients use.
+This requires the registry challenge to advertise `realm: "https://zot.example.com/zot/auth/token"` and a `service` value matching the registry host clients use. The login username is not the registry identity. Zot splits the Basic credential on the first colon, so a username such as `token:test` makes the password `test:<jwt>`. The password Zot verifies must be a JWT whose issuer and audience match `bearer.oidc`. An opaque token is not verified. Zot rejects that request unless `upstreamTokenEndpoint` is set, in which case an unrecognized credential is forwarded.
 
 ### Kubernetes Image Pull Secrets
 
-For kubelet image pulls, store a projected ServiceAccount token as the password in a `kubernetes.io/dockerconfigjson` Secret. The username can be any non-empty value.
+For kubelet image pulls, store a projected ServiceAccount token as the password in a `kubernetes.io/dockerconfigjson` Secret. The username must not contain a colon. The password Zot verifies must be the OIDC JWT. An opaque access token is not verified. Without `upstreamTokenEndpoint`, that token request is rejected.
 
 ```yaml
 apiVersion: v1
