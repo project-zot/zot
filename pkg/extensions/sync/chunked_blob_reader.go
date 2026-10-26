@@ -36,6 +36,11 @@ type ChunkedBlobReader struct {
 	readerClosed bool
 	// claimed is set by the first Claim, so one sync downloads the blob and the rest wait.
 	claimed bool
+	// priorityClaimed is set by the first ClaimPriority: a client is waiting on this blob, so a second
+	// producer opens it out of band, racing the claimed sync's download.
+	priorityClaimed bool
+	// pendingOpens counts producers that claimed the blob and have neither started nor given up.
+	pendingOpens int
 	// done is closed with the temp file: on completion, failure, or Abort before a start.
 	done     chan struct{}
 	abortErr error
@@ -149,19 +154,55 @@ func (cbr *ChunkedBlobReader) Claim() bool {
 	}
 
 	cbr.claimed = true
+	cbr.pendingOpens++
 
 	return true
 }
 
-// FailStart fails a claimed download that couldn't start (e.g. upstream refused the GET): waiting
-// clients get err rather than wait for teardown, and later ones are turned away.
-func (cbr *ChunkedBlobReader) FailStart(err error) {
+// ClaimPriority reports whether the caller is the first to claim an out-of-band download of a blob
+// whose download has not started, for a client waiting on it. It races the download Claim granted:
+// whichever producer's InitReader comes first feeds the blob, and the other must drop its reader.
+// The caller must then call InitReader or FailStart. It is granted once, so a failed out-of-band
+// download is not retried for every client.
+func (cbr *ChunkedBlobReader) ClaimPriority() bool {
+	cbr.bytesMu.Lock()
+	defer cbr.bytesMu.Unlock()
+
+	if cbr.readerClosed || cbr.priorityClaimed {
+		return false
+	}
+
+	cbr.priorityClaimed = true
+	cbr.pendingOpens++
+
+	return true
+}
+
+// Started reports whether a producer was accepted, or the blob will never be fed.
+func (cbr *ChunkedBlobReader) Started() bool {
+	cbr.bytesMu.RLock()
+	defer cbr.bytesMu.RUnlock()
+
+	return cbr.readerClosed
+}
+
+// FailStart gives up a claimed download that couldn't start (e.g. upstream refused the GET). It
+// reports whether the blob is now failed: waiting clients then get err rather than wait for
+// teardown, and later ones are turned away. It returns false if another producer already started
+// or is still trying to open the blob.
+func (cbr *ChunkedBlobReader) FailStart(err error) bool {
 	cbr.bytesMu.Lock()
 
 	if cbr.readerClosed {
 		cbr.bytesMu.Unlock()
 
-		return
+		return false
+	}
+
+	if cbr.pendingOpens--; cbr.pendingOpens > 0 {
+		cbr.bytesMu.Unlock()
+
+		return false
 	}
 
 	cbr.readErr = err
@@ -172,6 +213,8 @@ func (cbr *ChunkedBlobReader) FailStart(err error) {
 	cbr.bytesMu.Unlock()
 
 	cbr.abortAllClients()
+
+	return true
 }
 
 // Wait waits for the download to finish, or ctx. It returns nil only if the blob is complete and
