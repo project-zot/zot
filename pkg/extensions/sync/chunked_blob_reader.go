@@ -25,6 +25,9 @@ import (
 type ChunkedBlobReader struct {
 	numBytesTotal      int64
 	numBytesReadToDisk int64
+	// numBytesWritten is how many bytes the temp file holds. It is ahead of numBytesReadToDisk,
+	// the last announced offset, while the final chunk's digest check is pending. Guarded by readMu.
+	numBytesWritten int64
 	// readMu serializes Read and is held across the blocking upstream read; bytesMu is not, so a
 	// stalled upstream can't block Descriptor, Err or Subscribe (and so streamLock).
 	readMu  sync.Mutex
@@ -329,14 +332,135 @@ func (cbr *ChunkedBlobReader) closeDiskFileLocked() {
 const fillChunkSize = 32 * 1024
 
 // Fill reads the whole blob from the producer set by InitReader, writing it to the temp file and
-// announcing each chunk. It returns nil once the blob is complete and verified.
+// announcing each chunk. It returns nil once the blob is complete and verified. If upstream fails
+// mid-blob, the blob fails.
 func (cbr *ChunkedBlobReader) Fill() error {
+	return cbr.FillResumable(context.Background(), nil)
+}
+
+// fillResume is how FillResumable continues a blob upstream cut short.
+type fillResume struct {
+	// fetch reopens the blob from its start.
+	fetch BlobFetcher
+	// maxAttempts bounds the reopens of one blob.
+	maxAttempts int
+	// delay is waited before each reopen.
+	delay time.Duration
+}
+
+// interruptedError is an upstream read that failed or ended short of the blob's size, without
+// failing the blob: its bytes so far are on disk, and a reopen can continue from there.
+type interruptedError struct {
+	err error
+}
+
+func (e *interruptedError) Error() string { return e.err.Error() }
+
+func (e *interruptedError) Unwrap() error { return e.err }
+
+// FillResumable is Fill, except that when upstream fails or ends short, resume reopens the blob,
+// skips the bytes already on disk, and continues, so clients keep streaming. The reopened reader
+// verifies the whole blob's digest, so a blob whose upstream bytes changed fails. After
+// resume.maxAttempts reopens, or if resume is nil, the blob fails.
+func (cbr *ChunkedBlobReader) FillResumable(ctx context.Context, resume *fillResume) error {
 	buf := make([]byte, fillChunkSize)
 
+	var reopened *blob.BReader
+
+	defer func() {
+		if reopened != nil {
+			_ = reopened.Close()
+		}
+	}()
+
+	err := cbr.fillOnce(buf)
+
+	for attempt := 0; ; attempt++ {
+		var interrupted *interruptedError
+		if !errors.As(err, &interrupted) {
+			return err
+		}
+
+		if readErr := cbr.Err(); readErr != nil {
+			return readErr
+		}
+
+		if resume == nil || attempt >= resume.maxAttempts || ctx.Err() != nil {
+			if !errors.Is(interrupted.err, zerr.ErrStreamIncomplete) {
+				cbr.logIntegrityOrUpstreamError(interrupted.err)
+			}
+
+			cbr.fail(interrupted.err)
+
+			return interrupted.err
+		}
+
+		cbr.logger.Warn().Err(interrupted.err).Str("onDiskPath", cbr.onDiskPath).Int("attempt", attempt+1).
+			Msg("upstream read of streamed blob interrupted, resuming it")
+
+		select {
+		case <-ctx.Done():
+			err = &interruptedError{err: ctx.Err()}
+
+			continue
+		case <-time.After(resume.delay):
+		}
+
+		next, reopenErr := cbr.reopen(ctx, resume.fetch)
+		if reopenErr != nil {
+			err = &interruptedError{err: reopenErr}
+
+			continue
+		}
+
+		if reopened != nil {
+			_ = reopened.Close()
+		}
+
+		reopened = next
+		err = cbr.fillOnce(buf)
+	}
+}
+
+// reopen replaces the producer with a fresh reader of the blob, positioned after the bytes already
+// on disk. The skipped bytes still pass through the reader's digest check.
+func (cbr *ChunkedBlobReader) reopen(ctx context.Context, fetch BlobFetcher) (*blob.BReader, error) {
+	cbr.readMu.Lock()
+	defer cbr.readMu.Unlock()
+
+	cbr.bytesMu.RLock()
+	desc := cbr.blobDesc
+	cbr.bytesMu.RUnlock()
+
+	next, err := fetch(ctx, desc)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := io.CopyN(io.Discard, next, cbr.numBytesWritten); err != nil {
+		_ = next.Close()
+
+		return nil, err
+	}
+
+	cbr.bytesMu.Lock()
+	cbr.inFlightReader = next
+	cbr.bytesMu.Unlock()
+
+	return next, nil
+}
+
+// fillOnce reads the current producer to its end. It returns an interruptedError if the producer
+// failed or ended short without failing the blob, and any other error once the blob failed.
+func (cbr *ChunkedBlobReader) fillOnce(buf []byte) error {
 	for {
-		_, err := cbr.Read(buf)
+		_, interrupted, err := cbr.readChunk(buf)
 		if err == nil {
 			continue
+		}
+
+		if interrupted {
+			return &interruptedError{err: err}
 		}
 
 		// regclient's digest mismatch also matches io.EOF, so check for a failure first.
@@ -358,9 +482,7 @@ func (cbr *ChunkedBlobReader) Fill() error {
 	// A clean EOF short of the descriptor's size: regclient checks the size, but don't leave
 	// clients waiting for bytes that will never come.
 	if !complete {
-		cbr.fail(zerr.ErrStreamIncomplete)
-
-		return zerr.ErrStreamIncomplete
+		return &interruptedError{err: zerr.ErrStreamIncomplete}
 	}
 
 	return nil
@@ -368,25 +490,44 @@ func (cbr *ChunkedBlobReader) Fill() error {
 
 // Read reads the next chunk from upstream, writes it to the temp file, and announces the new
 // offset. regclient's digest mismatch also matches io.EOF, so integrity errors are checked first.
+// An upstream failure fails the blob.
 func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
+	n, interrupted, err := cbr.readChunk(buff)
+	if interrupted {
+		cbr.logIntegrityOrUpstreamError(err)
+		cbr.fail(err)
+	}
+
+	return n, err
+}
+
+// readChunk is Read, except that an upstream failure is reported with interrupted set instead of
+// failing the blob. The failed read's bytes are dropped, so the temp file ends at numBytesWritten.
+func (cbr *ChunkedBlobReader) readChunk(buff []byte) (n int, interrupted bool, err error) {
 	cbr.readMu.Lock()
 	defer cbr.readMu.Unlock()
 
-	// After InitReader, only Read writes these fields, so under readMu the snapshot stays current.
+	// After InitReader, only readChunk and reopen write these fields, so under readMu the snapshot
+	// stays current.
 	cbr.bytesMu.RLock()
 	upstream, numBytesTotal := cbr.inFlightReader, cbr.numBytesTotal
-	numBytesRead, diskFileClosed := cbr.numBytesReadToDisk, cbr.diskFileClosed
+	diskFileClosed := cbr.diskFileClosed
 	cbr.bytesMu.RUnlock()
 
-	n, err := io.ReadFull(upstream, buff)
+	numBytesRead := cbr.numBytesWritten
+
+	n, err = io.ReadFull(upstream, buff)
 
 	switch classifyReadErr(err) {
-	case readErrIntegrityFailure, readErrUpstream:
-		// Integrity or upstream failure: don't write or announce these bytes; fail every client.
+	case readErrIntegrityFailure:
+		// Integrity failure: don't write or announce these bytes; fail every client.
 		cbr.logIntegrityOrUpstreamError(err)
 		cbr.fail(err)
 
-		return n, err
+		return n, false, err
+
+	case readErrUpstream:
+		return n, true, err
 
 	case readErrEOF:
 		// Partial read at the end: report a plain EOF.
@@ -400,10 +541,11 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 			// Fail clients now rather than leave them waiting for the drain timeout.
 			cbr.fail(werr)
 
-			return n, werr
+			return n, false, werr
 		}
 
 		numBytesRead += int64(n)
+		cbr.numBytesWritten = numBytesRead
 	}
 
 	complete := !diskFileClosed && numBytesRead >= numBytesTotal
@@ -413,11 +555,15 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 		var probe [1]byte
 
 		_, verifyErr := upstream.Read(probe[:])
-		if class := classifyReadErr(verifyErr); class == readErrIntegrityFailure || class == readErrUpstream {
+		switch classifyReadErr(verifyErr) {
+		case readErrIntegrityFailure:
 			cbr.logIntegrityOrUpstreamError(verifyErr)
 			cbr.fail(verifyErr)
 
-			return n, verifyErr
+			return n, false, verifyErr
+
+		case readErrUpstream:
+			return n, true, verifyErr
 		}
 	}
 
@@ -445,7 +591,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 
 	cbr.clientMu.Unlock()
 
-	return n, err
+	return n, false, err
 }
 
 // logIntegrityOrUpstreamError logs err as an integrity failure or an upstream read failure.

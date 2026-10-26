@@ -149,8 +149,14 @@ Notes:
   guessing its digest.
 - **Download stats.** The streamed manifest has no metadata until the sync commits, so
   `GetManifest` counts the download in `onSynced` rather than at response time.
-- **Failure.** If the producer fails partway, subscribed clients are cut off: the response is
-  already a 200, so the client sees a truncated body and retries. New GETs are refused a dead
+- **Resume.** If the upstream read of a blob fails or ends short of its size partway, the download
+  reopens the blob (after `streamResumeDelay`, up to `streamResumeAttempts` times), discards the
+  bytes already on disk from the new reader, and carries on appending, so subscribed clients keep
+  receiving the same response. The discarded bytes still pass through the new reader's digest
+  check, so a blob whose upstream content changed in between fails the digest check like any other.
+  The prefix is read from upstream again: it is skipped, not requested with a range.
+- **Failure.** If the producer fails partway and can't resume, subscribed clients are cut off: the
+  response is already a 200, so the client sees a truncated body and retries. New GETs are refused a dead
   stream and fall through to storage. The sync error is returned to the flight. No background
   retry is scheduled (a streaming registry can't set `maxRetries`/`retryDelay`); the next client
   pull starts a fresh on-demand attempt.

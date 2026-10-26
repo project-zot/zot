@@ -26,6 +26,14 @@ import (
 // one deadline for all blobs torn down together, since teardown holds the reference's flight.
 const streamDrainTimeout = 30 * time.Second
 
+const (
+	// streamResumeAttempts is how many times a download reopens a blob upstream cut short, before
+	// the blob fails.
+	streamResumeAttempts = 3
+	// streamResumeDelay is waited before each reopen.
+	streamResumeDelay = time.Second
+)
+
 type ChunkingStreamManager struct {
 	tempStore       StreamTempStore
 	storeController storage.StoreController
@@ -46,8 +54,12 @@ type ChunkingStreamManager struct {
 	maxConcurrentStreams int
 	// drainTimeout is streamDrainTimeout; a field so tests can shorten it.
 	drainTimeout time.Duration
-	logger       log.Logger
-	streamLock   sync.Mutex
+	// resumeAttempts and resumeDelay are streamResumeAttempts and streamResumeDelay; fields so
+	// tests can change them.
+	resumeAttempts int
+	resumeDelay    time.Duration
+	logger         log.Logger
+	streamLock     sync.Mutex
 }
 
 // streamKey namespaces a blob digest by the source registry streaming it (see activeStreams).
@@ -69,6 +81,8 @@ func NewChunkingStreamManager(storeController storage.StoreController, maxConcur
 		refCounts:            map[string]int{},
 		maxConcurrentStreams: normalizeMaxConcurrentStreams(maxConcurrentStreams),
 		drainTimeout:         streamDrainTimeout,
+		resumeAttempts:       streamResumeAttempts,
+		resumeDelay:          streamResumeDelay,
 		logger:               logger,
 	}
 }
@@ -338,7 +352,7 @@ func (sm *ChunkingStreamManager) downloadStream(ctx context.Context, streamed st
 
 	sm.logger.Debug().Str("blob", streamed.desc.Digest.String()).Msg("downloading streamed blob")
 
-	return streamed.stream.Fill()
+	return streamed.stream.FillResumable(ctx, sm.resumeWith(fetch))
 }
 
 // setPriorityFetch sets, or with nil clears, the priority download of repo:reference's staged
@@ -416,7 +430,12 @@ func (sm *ChunkingStreamManager) downloadPriorityStream(priority *priorityFetch,
 		return nil
 	}
 
-	return streamed.stream.Fill()
+	return streamed.stream.FillResumable(priority.ctx, sm.resumeWith(priority.fetch))
+}
+
+// resumeWith is how a download using fetch continues a blob upstream cut short.
+func (sm *ChunkingStreamManager) resumeWith(fetch BlobFetcher) *fillResume {
+	return &fillResume{fetch: fetch, maxAttempts: sm.resumeAttempts, delay: sm.resumeDelay}
 }
 
 // prepareActiveStreamForBlob creates desc's stream from source, or adds a reference to an existing
