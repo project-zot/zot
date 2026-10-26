@@ -90,7 +90,7 @@ type BaseService struct {
 	rc               *regclient.RegClient
 	hosts            []config.Host
 	tagsCache        *tagsCache
-	checkTracker     *manifestCheckTracker
+	checkTracker     manifestCheckStore
 	// imageFlight dedupes concurrent ensures of the same
 	// localRepo+remoteRepo+reference+opts (shared by on-demand SyncImage and periodic
 	// SyncRepo index/child ensures).
@@ -122,7 +122,12 @@ func New(
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
 
 	if config.ManifestCheckInterval > 0 {
-		service.checkTracker = newManifestCheckTracker(config.ManifestCheckInterval)
+		checkTracker, err := newManifestCheckStore(config.ManifestCheckInterval, config.ManifestCheckStore, log)
+		if err != nil {
+			return nil, err
+		}
+
+		service.checkTracker = checkTracker
 	}
 
 	var err error

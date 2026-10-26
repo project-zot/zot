@@ -3420,6 +3420,65 @@ func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 	})
 }
 
+func TestNewManifestCheckStore(t *testing.T) {
+	Convey("A nil store config keeps the in-process tracker", t, func() {
+		store, err := newManifestCheckStore(time.Hour, nil, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		_, ok := store.(*manifestCheckTracker)
+		So(ok, ShouldBeTrue)
+	})
+
+	Convey("An unsupported store name is rejected", t, func() {
+		_, err := newManifestCheckStore(time.Hour, &syncconf.ManifestCheckStoreConfig{
+			Name: "not-a-backend",
+		}, log.NewTestLogger())
+		So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+	})
+
+	Convey("dynamodb builds a shared tracker without contacting AWS", t, func() {
+		store, err := newManifestCheckStore(time.Hour, &syncconf.ManifestCheckStoreConfig{
+			Name:      "dynamodb",
+			TableName: "test-table",
+			Region:    "us-west-2",
+		}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		tracker, ok := store.(*dynamoManifestCheckTracker)
+		So(ok, ShouldBeTrue)
+		So(tracker.tableName, ShouldEqual, "test-table")
+		So(tracker.interval, ShouldEqual, time.Hour)
+	})
+
+	Convey("A service built with a store config uses that store", t, func() {
+		service, err := New(syncconf.RegistryConfig{
+			URLs:                  []string{"localhost:9999"},
+			OnDemand:              true,
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore: &syncconf.ManifestCheckStoreConfig{
+				Name:      "dynamodb",
+				TableName: "test-table",
+				Region:    "us-west-2",
+			},
+		}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{},
+			log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		_, ok := service.checkTracker.(*dynamoManifestCheckTracker)
+		So(ok, ShouldBeTrue)
+	})
+}
+
+func TestManifestCheckDigestKey(t *testing.T) {
+	Convey("Distinct repo:reference pairs get distinct keys that cannot match a digest", t, func() {
+		a := manifestCheckDigestKey("repoA", "latest")
+
+		So(a, ShouldNotEqual, manifestCheckDigestKey("repoA", "v2"))
+		So(a, ShouldNotEqual, manifestCheckDigestKey("repoB", "latest"))
+		So(strings.HasPrefix(a, manifestCheckKeyPrefix), ShouldBeTrue)
+		So(strings.HasPrefix(godigest.FromString("anything").String(), manifestCheckKeyPrefix), ShouldBeFalse)
+	})
+}
+
 func TestGetRepoListPagination(t *testing.T) {
 	Convey("getRepoList follows catalog pagination", t, func() {
 		type page struct {
