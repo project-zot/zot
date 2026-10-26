@@ -1778,6 +1778,28 @@ func validateRegistryManifestCheckInterval(regCfg syncconf.RegistryConfig) error
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "manifestCheckInterval requires onDemand to be enabled")
 	}
 
+	return validateRegistryManifestCheckStore(regCfg)
+}
+
+// validateRegistryManifestCheckStore rejects a manifestCheckStore that is incomplete or cannot take effect.
+func validateRegistryManifestCheckStore(regCfg syncconf.RegistryConfig) error {
+	storeCfg := regCfg.ManifestCheckStore
+	if storeCfg == nil {
+		return nil
+	}
+
+	if regCfg.ManifestCheckInterval <= 0 {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "manifestCheckStore requires manifestCheckInterval to be set")
+	}
+
+	if storeCfg.Name != "dynamodb" {
+		return fmt.Errorf("%w: unsupported manifestCheckStore name %q", zerr.ErrBadConfig, storeCfg.Name)
+	}
+
+	if storeCfg.TableName == "" || storeCfg.Region == "" {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "manifestCheckStore dynamodb requires tableName and region")
+	}
+
 	return nil
 }
 

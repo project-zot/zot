@@ -3,9 +3,38 @@
 package sync
 
 import (
+	"fmt"
 	"sync"
 	"time"
+
+	zerr "zotregistry.dev/zot/v2/errors"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
+
+const manifestCheckStoreDynamoDB = "dynamodb"
+
+// manifestCheckStore records when an upstream manifest check last succeeded for a repo:reference.
+type manifestCheckStore interface {
+	ShouldCheckUpstream(repo, reference string) bool
+	MarkChecked(repo, reference string)
+}
+
+// newManifestCheckStore returns the in-process tracker unless storeConfig selects a shared backend.
+func newManifestCheckStore(interval time.Duration, storeConfig *syncconf.ManifestCheckStoreConfig,
+	log log.Logger,
+) (manifestCheckStore, error) {
+	if storeConfig == nil {
+		return newManifestCheckTracker(interval), nil
+	}
+
+	switch storeConfig.Name {
+	case manifestCheckStoreDynamoDB:
+		return newDynamoManifestCheckTracker(interval, storeConfig, log)
+	default:
+		return nil, fmt.Errorf("%w: unsupported manifestCheckStore name %q", zerr.ErrBadConfig, storeConfig.Name)
+	}
+}
 
 // minEvictPeriod bounds how often the tracker sweeps expired entries, so that a short
 // manifestCheckInterval does not turn every MarkChecked call into a full map walk.

@@ -66,10 +66,14 @@ type RegistryConfig struct {
 	// with ManifestCheckInterval. Default is false when unset.
 	OnDemandInBackground  *bool
 	ManifestCheckInterval time.Duration
-	CertDir               string
-	MaxRetries            *int
-	RetryDelay            *time.Duration
-	MaxRetryDelay         *time.Duration // max HTTP retry backoff; when unset defaults to retryDelay (fixed delay)
+	// ManifestCheckStore keeps the state behind ManifestCheckInterval in a backend shared by all
+	// replicas instead of in process memory. Requires ManifestCheckInterval. When unset each
+	// replica tracks its own checks.
+	ManifestCheckStore *ManifestCheckStoreConfig
+	CertDir            string
+	MaxRetries         *int
+	RetryDelay         *time.Duration
+	MaxRetryDelay      *time.Duration // max HTTP retry backoff; when unset defaults to retryDelay (fixed delay)
 	// OnlySigned: tag sync requires remote signatures; on-demand digest pulls skip that check
 	// (see examples/README.md).
 	OnlySigned             *bool
@@ -129,6 +133,16 @@ type RegistryConfig struct {
 	MaxConcurrentStreams *int
 	// dockerCompat is set at runtime from http.compat (docker2s2), not from sync config JSON.
 	dockerCompat bool
+}
+
+// ManifestCheckStoreConfig selects the shared backend for manifest check state. Name "dynamodb"
+// is the only supported value; it stores one item per repo:reference in a table with a string
+// partition key named "Digest", the layout of the DynamoDB dedupe cache table, so that table can
+// be shared. Keys are prefixed so they never collide with digests.
+type ManifestCheckStoreConfig struct {
+	Name      string
+	TableName string
+	Region    string
 }
 
 // SetDockerCompat records whether http.compat includes docker2s2 for this registry's sync path.
