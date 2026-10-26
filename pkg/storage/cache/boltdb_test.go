@@ -285,3 +285,48 @@ func TestBoltDBHasBlobRelativePaths(t *testing.T) {
 		So(cacheDriver.HasBlob("digest", origin), ShouldBeFalse)
 	})
 }
+
+func TestBoltDBPutDuplicateAndReplaceBlob(t *testing.T) {
+	for _, useRelPaths := range []bool{false, true} {
+		Convey("PutDuplicate and ReplaceBlob keep the origin consistent", t, func() {
+			dir := t.TempDir()
+
+			cacheDriver, err := cache.NewBoltDBCache(cache.BoltDBDriverParameters{
+				RootDir: dir, Name: "cache_test", UseRelPaths: useRelPaths,
+			}, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			origin := path.Join(dir, "repo-a", "blobs", "sha256", "abc")
+			second := path.Join(dir, "repo-b", "blobs", "sha256", "abc")
+			third := path.Join(dir, "repo-c", "blobs", "sha256", "abc")
+
+			So(cacheDriver.PutDuplicate("digest", origin), ShouldEqual, errors.ErrCacheMiss)
+			So(cacheDriver.PutDuplicate("digest", ""), ShouldEqual, errors.ErrEmptyValue)
+
+			_, err = cacheDriver.GetBlob("digest")
+			So(err, ShouldEqual, errors.ErrCacheMiss)
+
+			So(cacheDriver.PutBlob("digest", origin), ShouldBeNil)
+			So(cacheDriver.PutDuplicate("digest", second), ShouldBeNil)
+			So(cacheDriver.HasBlob("digest", second), ShouldBeTrue)
+
+			So(cacheDriver.ReplaceBlob("digest", third, second), ShouldEqual, errors.ErrCacheConflict)
+			So(cacheDriver.ReplaceBlob("digest", origin, third), ShouldEqual, errors.ErrCacheConflict)
+			So(cacheDriver.ReplaceBlob("missing", origin, second), ShouldEqual, errors.ErrCacheConflict)
+			So(cacheDriver.ReplaceBlob("digest", "", second), ShouldEqual, errors.ErrEmptyValue)
+
+			So(cacheDriver.ReplaceBlob("digest", origin, second), ShouldBeNil)
+
+			stored, err := cacheDriver.GetBlob("digest")
+			So(err, ShouldBeNil)
+
+			if useRelPaths {
+				So(stored, ShouldEqual, path.Join("repo-b", "blobs", "sha256", "abc"))
+			} else {
+				So(stored, ShouldEqual, second)
+			}
+
+			So(cacheDriver.HasBlob("digest", origin), ShouldBeTrue)
+		})
+	}
+}

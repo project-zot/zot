@@ -174,6 +174,119 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
+func (d *BoltDBDriver) PutDuplicate(digest godigest.Digest, path string) error {
+	if path == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).
+			Msg("failed to put duplicate due to empty path being provided")
+
+		return zerr.ErrEmptyValue
+	}
+
+	if d.useRelPaths {
+		rel, err := filepath.Rel(d.rootDir, path)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", path).Msg("failed to get relative path")
+
+			return err
+		}
+
+		path = rel
+	}
+
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobsCache))
+		if root == nil {
+			err := zerr.ErrCacheRootBucket
+			d.log.Error().Err(err).Msg("failed to access root bucket")
+
+			return err
+		}
+
+		bucket := root.Bucket([]byte(digest.String()))
+		if bucket == nil || d.getOne(bucket.Bucket([]byte(constants.OriginalBucket))) == nil {
+			return zerr.ErrCacheMiss
+		}
+
+		deduped, err := bucket.CreateBucketIfNotExists([]byte(constants.DuplicatesBucket))
+		if err != nil {
+			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Msg("failed to create a bucket")
+
+			return err
+		}
+
+		if err := deduped.Put([]byte(path), nil); err != nil {
+			d.log.Error().Err(err).Str("bucket", constants.DuplicatesBucket).Str("value", path).Msg("failed to put record")
+
+			return err
+		}
+
+		return nil
+	})
+}
+
+func (d *BoltDBDriver) ReplaceBlob(digest godigest.Digest, oldPath, newPath string) error {
+	if oldPath == "" || newPath == "" {
+		return zerr.ErrEmptyValue
+	}
+
+	if d.useRelPaths {
+		rel, err := filepath.Rel(d.rootDir, oldPath)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", oldPath).Msg("failed to get relative path")
+
+			return err
+		}
+
+		oldPath = rel
+
+		rel, err = filepath.Rel(d.rootDir, newPath)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", newPath).Msg("failed to get relative path")
+
+			return err
+		}
+
+		newPath = rel
+	}
+
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobsCache))
+		if root == nil {
+			err := zerr.ErrCacheRootBucket
+			d.log.Error().Err(err).Msg("failed to access root bucket")
+
+			return err
+		}
+
+		bucket := root.Bucket([]byte(digest.String()))
+		if bucket == nil {
+			return zerr.ErrCacheConflict
+		}
+
+		origin := bucket.Bucket([]byte(constants.OriginalBucket))
+		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
+
+		if string(d.getOne(origin)) != oldPath || deduped == nil || deduped.Get([]byte(newPath)) == nil {
+			return zerr.ErrCacheConflict
+		}
+
+		if err := origin.Delete([]byte(oldPath)); err != nil {
+			d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Str("value", oldPath).
+				Msg("failed to delete record")
+
+			return err
+		}
+
+		if err := origin.Put([]byte(newPath), nil); err != nil {
+			d.log.Error().Err(err).Str("bucket", constants.OriginalBucket).Str("value", newPath).Msg("failed to put record")
+
+			return err
+		}
+
+		return nil
+	})
+}
+
 func (d *BoltDBDriver) SetOrigin(digest godigest.Digest, originPath string) error {
 	if originPath == "" {
 		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).

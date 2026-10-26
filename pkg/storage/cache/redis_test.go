@@ -1012,3 +1012,54 @@ func TestRedisMocked(t *testing.T) {
 		}
 	})
 }
+
+func TestRedisPutDuplicateAndReplaceBlob(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	for _, useRelPaths := range []bool{false, true} {
+		Convey("PutDuplicate and ReplaceBlob keep the origin consistent", t, func() {
+			miniRedis.FlushAll()
+
+			dir := t.TempDir()
+
+			connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
+			client := redis.NewClient(connOpts)
+
+			cacheDriver, err := storage.Create("redis",
+				cache.RedisDriverParameters{client, dir, useRelPaths, "zot"}, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			origin := path.Join(dir, "repo-a", "blobs", "sha256", "abc")
+			second := path.Join(dir, "repo-b", "blobs", "sha256", "abc")
+			third := path.Join(dir, "repo-c", "blobs", "sha256", "abc")
+
+			So(cacheDriver.PutDuplicate("digest", origin), ShouldEqual, zerr.ErrCacheMiss)
+			So(cacheDriver.PutDuplicate("digest", ""), ShouldEqual, zerr.ErrEmptyValue)
+
+			_, err = cacheDriver.GetBlob("digest")
+			So(err, ShouldEqual, zerr.ErrCacheMiss)
+
+			So(cacheDriver.PutBlob("digest", origin), ShouldBeNil)
+			So(cacheDriver.PutDuplicate("digest", second), ShouldBeNil)
+			So(cacheDriver.HasBlob("digest", second), ShouldBeTrue)
+
+			So(cacheDriver.ReplaceBlob("digest", third, second), ShouldEqual, zerr.ErrCacheConflict)
+			So(cacheDriver.ReplaceBlob("digest", origin, third), ShouldEqual, zerr.ErrCacheConflict)
+			So(cacheDriver.ReplaceBlob("missing", origin, second), ShouldEqual, zerr.ErrCacheConflict)
+			So(cacheDriver.ReplaceBlob("digest", "", second), ShouldEqual, zerr.ErrEmptyValue)
+
+			So(cacheDriver.ReplaceBlob("digest", origin, second), ShouldBeNil)
+
+			stored, err := cacheDriver.GetBlob("digest")
+			So(err, ShouldBeNil)
+
+			if useRelPaths {
+				So(stored, ShouldEqual, path.Join("repo-b", "blobs", "sha256", "abc"))
+			} else {
+				So(stored, ShouldEqual, second)
+			}
+
+			So(cacheDriver.HasBlob("digest", origin), ShouldBeTrue)
+		})
+	}
+}
