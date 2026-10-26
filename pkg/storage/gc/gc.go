@@ -1175,13 +1175,14 @@ func (gc GarbageCollect) deleteBlobUploads(repo string, delay time.Duration) (in
 			continue
 		}
 
-		err = gc.imgStore.DeleteBlobUpload(repo, uuid)
+		var deletedUpload bool
+		deletedUpload, err = gc.imgStore.DeleteBlobUploadIfIdle(repo, uuid)
 		if err != nil {
 			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("blobUpload", uuid).
 				Str("size", strconv.FormatInt(size, 10)).Str("modified", modtime.String()).Msg("failed to delete blob upload")
 
 			aggregatedErr = errors.Join(aggregatedErr, err)
-		} else {
+		} else if deletedUpload {
 			deleted++
 		}
 	}
