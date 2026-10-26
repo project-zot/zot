@@ -52,7 +52,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
           AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
       - name: upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-minimal
           path: coverage-minimal.txt
@@ -99,7 +99,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
           AZURITEMOCK_ENDPOINT: http://127.0.0.1:10000/devstoreaccount1
       - name: upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-extended
           path: coverage-extended.txt
@@ -136,7 +136,7 @@ jobs:
       - name: run zot development-mode unit tests (possibly using failure injection)
         run: make test-devmode
       - name: upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-devmode
           path: coverage-dev-*.txt
@@ -178,7 +178,7 @@ jobs:
           GCSMOCK_ENDPOINT: http://localhost:9000/
           STORAGE_EMULATOR_HOST: localhost:9000
       - name: upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-needprivileges
           path: coverage-needprivileges-*.txt
@@ -199,7 +199,7 @@ jobs:
           check-latest: true
           go-version-file: .go-version
       - name: download all workflow coverage files
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       - name: merge code coverage
         run: |
           cd $GITHUB_WORKSPACE
@@ -211,7 +211,7 @@ jobs:
           mkdir unified-coverage
           cp coverage.txt coverage.html unified-coverage/
       - name: upload unified-coverage as build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unified-coverage
           path: unified-coverage/*
