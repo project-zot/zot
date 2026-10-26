@@ -14,7 +14,7 @@ permissions: read-all
 jobs:
   build:
     name: Build binaries and tools
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -22,7 +22,6 @@ jobs:
       - uses: ./.github/actions/build-zot-binaries
         with:
           make-targets: binary binary-minimal cli bench blackbox-tools
-          with-skopeo-build-deps: "true"
           artifact-name: ecosystem-bins-${{ github.sha }}
           artifact-path: |
             bin/
@@ -31,7 +30,7 @@ jobs:
   floci-blackbox-cloud:
     name: floci - Blackbox cloud CI
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,7 +62,7 @@ jobs:
   floci-scale-out-dynamodb:
     name: floci - Cloud scale-out DynamoDB
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,7 +105,7 @@ jobs:
   floci-scale-out-redis:
     name: floci - Cloud scale-out Redis
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

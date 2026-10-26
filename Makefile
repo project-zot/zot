@@ -559,11 +559,14 @@ $(BATS):
 	rm -rf bats-core
 
 # Build skopeo into hack/tools/bin for shared CI artifacts.
+# One binary is shared by Ubuntu 24.04 and 26.04 jobs. The default skopeo
+# build links libgpgme, libassuan, and libdevmapper, and those SONAMEs differ
+# across those releases, so build the CGO-free variant (copy/inspect/delete only).
 $(SKOPEO):
 	mkdir -p $(TOOLSDIR)/bin
 	rm -rf skopeo-src
 	git clone -b $(SKOPEO_VERSION) --depth 1 https://github.com/containers/skopeo.git skopeo-src
-	$(MAKE) -C skopeo-src bin/skopeo
+	CGO_ENABLED=0 $(MAKE) -C skopeo-src bin/skopeo DISABLE_CGO=1 GO_DYN_FLAGS=
 	cp skopeo-src/bin/skopeo $(SKOPEO)
 	chmod +x $(SKOPEO)
 	rm -rf skopeo-src

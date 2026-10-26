@@ -63,7 +63,7 @@ jobs:
           # install-swag is required for binary-debug (swaggercheck).
           make install-swag
           sudo apt-get update
-          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config python3-jsonschema
+          sudo apt-get install python3-jsonschema
           # $(SKOPEO) is $(pwd)/hack/tools/bin/skopeo; pass workspace path so Make matches.
           make "${GITHUB_WORKSPACE}/hack/tools/bin/skopeo"
           sudo cp hack/tools/bin/skopeo /usr/bin/skopeo

@@ -27,7 +27,7 @@ jobs:
   cluster-minio:
     name: Stateless zot with minio (${{ matrix.backend }})
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         backend: [bolt, redis]
