@@ -164,6 +164,134 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
+func (d *RedisDriver) PutDuplicate(digest godigest.Digest, path string) error {
+	ctx := context.TODO()
+
+	if path == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("failed to provide non-empty path")
+
+		return zerr.ErrEmptyValue
+	}
+
+	if d.useRelPaths {
+		rel, err := filepath.Rel(d.rootDir, path)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", path).Msg("failed to get relative path")
+
+			return err
+		}
+
+		path = rel
+	}
+
+	lock := d.rs.NewMutex(d.join(constants.RedisLocksBucket, digest.String()))
+	if err := lock.Lock(); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
+
+		return err
+	}
+
+	defer func() {
+		if _, err := lock.Unlock(); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		}
+	}()
+
+	exists, err := d.db.HExists(ctx, d.join(constants.BlobsCache, constants.OriginalBucket), digest.String()).Result()
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return zerr.ErrCacheMiss
+	}
+
+	pathSet := d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())
+	if err := d.db.SAdd(ctx, pathSet, path).Err(); err != nil {
+		d.log.Error().Err(err).Str("sadd", pathSet).Str("value", path).Msg("unable to put record")
+
+		return err
+	}
+
+	return nil
+}
+
+func (d *RedisDriver) ReplaceBlob(digest godigest.Digest, oldPath, newPath string) error {
+	ctx := context.TODO()
+
+	if oldPath == "" || newPath == "" {
+		return zerr.ErrEmptyValue
+	}
+
+	if d.useRelPaths {
+		rel, err := filepath.Rel(d.rootDir, oldPath)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", oldPath).Msg("failed to get relative path")
+
+			return err
+		}
+
+		oldPath = rel
+
+		rel, err = filepath.Rel(d.rootDir, newPath)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", newPath).Msg("failed to get relative path")
+
+			return err
+		}
+
+		newPath = rel
+	}
+
+	lock := d.rs.NewMutex(d.join(constants.RedisLocksBucket, digest.String()))
+	if err := lock.Lock(); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
+
+		return err
+	}
+
+	defer func() {
+		if _, err := lock.Unlock(); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		}
+	}()
+
+	originKey := d.join(constants.BlobsCache, constants.OriginalBucket)
+
+	current, err := d.db.HGet(ctx, originKey, digest.String()).Result()
+	if err != nil {
+		if goerrors.Is(err, redis.Nil) {
+			return zerr.ErrCacheConflict
+		}
+
+		d.log.Error().Err(err).Str("hget", originKey).Str("digest", digest.String()).Msg("failed to get record")
+
+		return err
+	}
+
+	if path.Clean(current) != path.Clean(oldPath) {
+		return zerr.ErrCacheConflict
+	}
+
+	tracked, err := d.db.SIsMember(ctx, d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String()),
+		newPath).Result()
+	if err != nil {
+		return err
+	}
+
+	if !tracked {
+		return zerr.ErrCacheConflict
+	}
+
+	if err := d.db.HSet(ctx, originKey, digest.String(), newPath).Err(); err != nil {
+		d.log.Error().Err(err).Str("hset", originKey).Str("value", newPath).Msg("unable to put record")
+
+		return err
+	}
+
+	return nil
+}
+
 func (d *RedisDriver) SetOrigin(digest godigest.Digest, originPath string) error {
 	ctx := context.TODO()
 

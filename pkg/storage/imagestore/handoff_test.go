@@ -41,7 +41,8 @@ func (d *failingMoveDriver) Move(sourcePath, destPath string) error {
 
 var errSetOriginFailed = errors.New("set origin failed") //nolint: gochecknoglobals
 
-// failingSetOriginCache fails the first failures calls to SetOrigin, then delegates.
+// failingSetOriginCache fails the first failures calls that change the origin, SetOrigin or
+// ReplaceBlob, then delegates.
 type failingSetOriginCache struct {
 	storageTypes.Cache
 
@@ -56,6 +57,16 @@ func (c *failingSetOriginCache) SetOrigin(digest godigest.Digest, path string) e
 	}
 
 	return c.Cache.SetOrigin(digest, path)
+}
+
+func (c *failingSetOriginCache) ReplaceBlob(digest godigest.Digest, oldPath, newPath string) error {
+	if c.failures > 0 {
+		c.failures--
+
+		return errSetOriginFailed
+	}
+
+	return c.Cache.ReplaceBlob(digest, oldPath, newPath)
 }
 
 // newLocalDedupeStoreAt returns a local image store with dedupe on and a BoltDB cache that
