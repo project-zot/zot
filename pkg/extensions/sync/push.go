@@ -30,6 +30,17 @@ type PushService interface {
 	PushRepo(ctx context.Context, repo string) error
 }
 
+// pushDestination is the outbound registry surface the push loop needs. It is an interface so
+// the loop can be driven by a test double: the guarantee that a failed referrer fails the push
+// is only worth anything if a test can make that failure happen.
+type pushDestination interface {
+	URL() string
+	GetImageReference(repo, reference string) (ref.Ref, error)
+	CanSkipImage(ctx context.Context, repo, reference string, digest godigest.Digest) (bool, error)
+	CopyImage(ctx context.Context, sourceRef, targetRef ref.Ref) error
+	Close(ctx context.Context, imageRef ref.Ref)
+}
+
 // PushDestination is one outbound registry. Every destination gets its own regclient because
 // a client carries the host config (TLS, certs, credentials) of one host: sharing the pull
 // client would mean pushing with the source's transport settings.
@@ -120,6 +131,11 @@ func (service *BaseService) InitPushMode() error {
 		Msg("sync push mode enabled, local content is mirrored to the configured destinations")
 
 	return nil
+}
+
+// URL is the destination as configured, for logs and errors.
+func (destination *PushDestination) URL() string {
+	return destination.url
 }
 
 // GetImageReference builds the destination ref for repo and reference. The host comes from
@@ -317,16 +333,16 @@ func (service *BaseService) pushTag(ctx context.Context, imageStore storageTypes
 
 	// Ask every destination before staging anything: a fully synced edge costs one HEAD per
 	// tag and no local copy.
-	targets := make([]*PushDestination, 0, len(service.pushTargets))
+	targets := make([]pushDestination, 0, len(service.pushTargets))
 
 	for _, destination := range service.pushTargets {
 		skip, err := destination.CanSkipImage(ctx, repo, tag, digest)
 		if err != nil {
-			return fmt.Errorf("checking %s:%s on %s: %w", repo, tag, destination.url, err)
+			return fmt.Errorf("checking %s:%s on %s: %w", repo, tag, destination.URL(), err)
 		}
 
 		if skip {
-			service.log.Debug().Str("repo", repo).Str("tag", tag).Str("destination", destination.url).
+			service.log.Debug().Str("repo", repo).Str("tag", tag).Str("destination", destination.URL()).
 				Msg("destination already has this digest, skipping push")
 
 			continue
@@ -370,12 +386,12 @@ func (service *BaseService) pushTag(ctx context.Context, imageStore storageTypes
 		sourceRef := stagingRef.SetDigest(digest.String())
 
 		if err := destination.CopyImage(ctx, sourceRef, targetRef); err != nil {
-			return fmt.Errorf("pushing %s:%s to %s: %w", repo, tag, destination.url, err)
+			return fmt.Errorf("pushing %s:%s to %s: %w", repo, tag, destination.URL(), err)
 		}
 
 		destination.Close(ctx, targetRef)
 
-		service.log.Info().Str("repo", repo).Str("tag", tag).Str("destination", destination.url).
+		service.log.Info().Str("repo", repo).Str("tag", tag).Str("destination", destination.URL()).
 			Msg("pushed image to destination")
 	}
 
@@ -386,7 +402,7 @@ func (service *BaseService) pushTag(ctx context.Context, imageStore storageTypes
 		if err != nil {
 			// A push without its signatures is worse than a failed push: the destination would
 			// serve an image whose signature chain silently stops at the last successful run.
-			return fmt.Errorf("pushing referrers of %s:%s to %s: %w", repo, tag, destination.url, err)
+			return fmt.Errorf("pushing referrers of %s:%s to %s: %w", repo, tag, destination.URL(), err)
 		}
 	}
 

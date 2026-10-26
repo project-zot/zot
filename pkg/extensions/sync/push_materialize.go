@@ -183,7 +183,7 @@ func (service *BaseService) localManifestContent(imageStore storageTypes.ImageSt
 // Signatures are referrers, so this is the step that keeps the dhi/secureblue signature chain
 // intact: an error here fails the push instead of leaving an unsigned image behind.
 func (service *BaseService) pushReferrers(ctx context.Context, source, staging storageTypes.ImageStore,
-	stagingRef ref.Ref, repo string, destination *PushDestination, subject godigest.Digest, platforms []string,
+	stagingRef ref.Ref, repo string, destination pushDestination, subject godigest.Digest, platforms []string,
 ) error {
 	seen := map[godigest.Digest]struct{}{subject: {}}
 
@@ -191,7 +191,7 @@ func (service *BaseService) pushReferrers(ctx context.Context, source, staging s
 }
 
 func (service *BaseService) pushReferrersFor(ctx context.Context, source, staging storageTypes.ImageStore,
-	stagingRef ref.Ref, repo string, destination *PushDestination, subject godigest.Digest,
+	stagingRef ref.Ref, repo string, destination pushDestination, subject godigest.Digest,
 	platforms []string, seen map[godigest.Digest]struct{},
 ) error {
 	referrers, err := service.localReferrers(source, repo, subject)
@@ -228,7 +228,7 @@ func (service *BaseService) pushReferrersFor(ctx context.Context, source, stagin
 			destination.Close(ctx, targetRef)
 
 			service.log.Info().Str("repo", repo).Str("referrer", desc.Digest.String()).
-				Str("subject", subject.String()).Str("destination", destination.url).
+				Str("subject", subject.String()).Str("destination", destination.URL()).
 				Msg("pushed referrer to destination")
 		}
 

@@ -98,7 +98,7 @@ type BaseService struct {
 	streamManager StreamManager
 	// pushTargets are the destination registries of a push entry, one client per destination.
 	// Empty for a pull entry.
-	pushTargets []*PushDestination
+	pushTargets []pushDestination
 
 	clientLock sync.RWMutex
 	log        log.Logger
