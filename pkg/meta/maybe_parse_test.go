@@ -152,6 +152,9 @@ func TestMaybeParseStorageGate(t *testing.T) {
 	})
 
 	Convey("a repo that fails to parse is not stamped", t, func() {
+		// an earlier stamp is cleared, so the next fast restart cannot skip the reparse
+		cleared := false
+
 		// StatIndex fails for the only repo, so it is skipped (failedRepos > 0).
 		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
 			GetRepositoriesFn: func() ([]string, error) { return []string{repo}, nil },
@@ -162,8 +165,12 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 		mock := mocks.MetaDBMock{
 			GetAllRepoNamesFn: func() ([]string, error) { return nil, nil },
-			SetFastRestartStampFn: func(string) error {
-				t.Fatal("must not stamp when a repo failed to parse")
+			SetFastRestartStampFn: func(stamp string) error {
+				if stamp != "" {
+					t.Fatal("must not stamp when a repo failed to parse")
+				}
+
+				cleared = true
 
 				return nil
 			},
@@ -171,9 +178,13 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 		err := meta.MaybeParseStorage(mock, store, false, "v1", logger)
 		So(err, ShouldBeNil)
+		So(cleared, ShouldBeTrue)
 	})
 
 	Convey("a repo with a missing manifest blob is not stamped", t, func() {
+		// an earlier stamp is cleared, so the next fast restart cannot skip the reparse
+		cleared := false
+
 		// The repo parses, but its only manifest blob is missing, so the repo is
 		// only partially parsed (partialRepos > 0).
 		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
@@ -194,8 +205,12 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 		mock := mocks.MetaDBMock{
 			GetAllRepoNamesFn: func() ([]string, error) { return nil, nil },
-			SetFastRestartStampFn: func(string) error {
-				t.Fatal("must not stamp when a repo was only partially parsed")
+			SetFastRestartStampFn: func(stamp string) error {
+				if stamp != "" {
+					t.Fatal("must not stamp when a repo was only partially parsed")
+				}
+
+				cleared = true
 
 				return nil
 			},
@@ -203,9 +218,13 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 		err := meta.MaybeParseStorage(mock, store, false, "v1", logger)
 		So(err, ShouldBeNil)
+		So(cleared, ShouldBeTrue)
 	})
 
 	Convey("a suspiciously empty storage walk is not stamped (issue #4336)", t, func() {
+		// an earlier stamp is cleared, so the next fast restart cannot skip the reparse
+		cleared := false
+
 		// metaDB already knows about a repo, but the storage walk comes back empty - the guard
 		// in parseStorage should skip deleting it and MaybeParseStorage must not lock that state
 		// in via the fast-restart stamp, or the next restart would take the fast path and skip
@@ -216,8 +235,12 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 		mock := mocks.MetaDBMock{
 			GetAllRepoNamesFn: func() ([]string, error) { return []string{repo}, nil },
-			SetFastRestartStampFn: func(string) error {
-				t.Fatal("must not stamp when the storage walk looked suspiciously empty")
+			SetFastRestartStampFn: func(stamp string) error {
+				if stamp != "" {
+					t.Fatal("must not stamp when the storage walk looked suspiciously empty")
+				}
+
+				cleared = true
 
 				return nil
 			},
@@ -225,5 +248,38 @@ func TestMaybeParseStorageGate(t *testing.T) {
 
 		err := meta.MaybeParseStorage(mock, store, false, "v1", logger)
 		So(err, ShouldBeNil)
+		So(cleared, ShouldBeTrue)
+	})
+
+	Convey("a forced reparse that finds the walk incomplete makes the next fast restart reparse", t, func() {
+		// a stamp an earlier, complete run wrote
+		storedStamp := "v1"
+		parses := 0
+
+		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) {
+				parses++
+
+				return []string{}, nil
+			},
+		}}
+
+		mock := mocks.MetaDBMock{
+			GetAllRepoNamesFn:     func() ([]string, error) { return []string{repo}, nil },
+			GetFastRestartStampFn: func() (string, error) { return storedStamp, nil },
+			SetFastRestartStampFn: func(stamp string) error {
+				storedStamp = stamp
+
+				return nil
+			},
+		}
+
+		// --force-reparse: fastRestart off, and the walk looks suspiciously empty
+		So(meta.MaybeParseStorage(mock, store, false, "v1", logger), ShouldBeNil)
+		So(parses, ShouldEqual, 1)
+
+		// the next normal restart does not take the fast path on the earlier stamp
+		So(meta.MaybeParseStorage(mock, store, true, "v1", logger), ShouldBeNil)
+		So(parses, ShouldEqual, 2)
 	})
 }

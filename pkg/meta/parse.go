@@ -194,12 +194,20 @@ func MaybeParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreControl
 		return nil
 	}
 
-	// Leave the stamp untouched on an incomplete walk so the next restart
-	// reparses and can recover.
+	/* After an incomplete walk the next restart must reparse to recover, so the stamp is cleared,
+	not merely left as it was: a stamp an earlier run wrote still matches when this run did not
+	consult it (fastRestart false, as with --force-reparse), and the next fast restart would then
+	skip the reparse. */
 	if !stats.complete() {
 		log.Warn().Str("component", "metadb").
 			Int("failedRepos", stats.failedRepos).Int("partialRepos", stats.partialRepos).
-			Msg("storage parse incomplete; skipping fast-restart stamp so the next restart reparses")
+			Bool("suspectEmptyWalk", stats.suspectEmptyWalk).
+			Msg("storage parse incomplete; clearing fast-restart stamp so the next restart reparses")
+
+		if err := metaDB.SetFastRestartStamp(""); err != nil {
+			log.Warn().Err(err).Str("component", "metadb").
+				Msg("failed to clear fast-restart stamp; a fast restart may skip the reparse")
+		}
 
 		return nil
 	}
