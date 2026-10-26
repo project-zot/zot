@@ -18,7 +18,7 @@ permissions: read-all
 jobs:
   build-binaries:
     name: Build binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,7 +35,7 @@ jobs:
   dedupe:
     name: Dedupe/restore blobs
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,7 +60,7 @@ jobs:
   sync:
     name: Sync harness
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out source code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -80,7 +80,7 @@ jobs:
     needs: build-binaries
     # Peak disk use is three copies of the ~20GiB layer (upstream storage, the downstream's staged
     # copy and its committed blob), more than a hosted runner has free; the step below reclaims space.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -100,7 +100,7 @@ jobs:
   gc-referrers-stress-s3:
     name: GC(with referrers) on S3(localstack) with short interval
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -142,7 +142,7 @@ jobs:
   gc-stress-s3:
     name: GC(without referrers) on S3(localstack) with short interval
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -235,7 +235,7 @@ jobs:
 
   docker-image:
     name: Build docker image (for users still using Docker environments)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -248,7 +248,7 @@ jobs:
   kind-setup:
     name: Prometheus setup
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -274,7 +274,7 @@ jobs:
   kind-config-reload:
     name: Config hot reload on ConfigMap update
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -294,7 +294,7 @@ jobs:
   kind-sync-ondemand:
     name: On-demand sync mirror regression (issue 4184)
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -314,7 +314,7 @@ jobs:
   oidc-workload-identity:
     name: OIDC Workload Identity E2E
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -337,7 +337,7 @@ jobs:
 
   aws-secrets-manager-bearer:
     name: AWS Secrets Manager Bearer Auth E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

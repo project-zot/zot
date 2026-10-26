@@ -18,7 +18,7 @@ permissions: read-all
 jobs:
   build-binaries:
     name: Build binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,7 +35,7 @@ jobs:
   floci-dedupe:
     name: floci Dedupe/restore blobs
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,7 +60,7 @@ jobs:
   floci-sync:
     name: floci Sync harness
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out source code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,7 +78,7 @@ jobs:
   floci-gc-referrers-stress-s3:
     name: floci GC(with referrers) on S3(floci) with short interval
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -122,7 +122,7 @@ jobs:
   floci-gc-stress-s3:
     name: floci GC(without referrers) on S3(floci) with short interval
     needs: build-binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -164,7 +164,7 @@ jobs:
 
   floci-aws-secrets-manager-bearer:
     name: floci AWS Secrets Manager Bearer Auth E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -14,7 +14,7 @@ permissions: read-all
 jobs:
   build:
     name: Build binaries and tools
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,7 +30,7 @@ jobs:
   blackbox-ci:
     name: Blackbox CI (${{ matrix.shard }})
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -83,7 +83,7 @@ jobs:
   blackbox-cloud:
     name: Blackbox cloud CI
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -115,7 +115,7 @@ jobs:
   scale-out-dynamodb:
     name: Cloud scale-out DynamoDB
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -158,7 +158,7 @@ jobs:
   scale-out-redis:
     name: Cloud scale-out Redis
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -208,7 +208,7 @@ jobs:
       - blackbox-cloud
       - scale-out-dynamodb
       - scale-out-redis
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Confirm all ecosystem jobs succeeded
         run: |
