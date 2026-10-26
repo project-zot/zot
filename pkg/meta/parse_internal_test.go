@@ -15,6 +15,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	stypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	testimage "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -212,6 +213,43 @@ func TestParseStorageStats(t *testing.T) {
 		stats, err := parseStorage(metaDBWithRepos, store, logger)
 		So(err, ShouldBeNil)
 		So(deleteCalled, ShouldBeFalse)
+		So(stats.suspectEmptyWalk, ShouldBeTrue)
+		So(stats.complete(), ShouldBeFalse)
+	})
+
+	Convey("an empty walk of one store keeps its metaDB repos while another store has repos", t, func() {
+		deleted := []string{}
+
+		metaDB := mocks.MetaDBMock{
+			GetAllRepoNamesFn: func() ([]string, error) {
+				return []string{"a/app", "a/lib", "b/app", "b/gone", "top"}, nil
+			},
+			DeleteRepoMetaFn: func(repo string) error {
+				deleted = append(deleted, repo)
+
+				return nil
+			},
+		}
+
+		store := storage.StoreController{
+			DefaultStore: mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) { return []string{"top"}, nil },
+			},
+			SubStore: map[string]stypes.ImageStore{
+				// this substore's walk failed or found nothing, though metaDB knows two of its repos
+				"/a": mocks.MockedImageStore{
+					GetRepositoriesFn: func() ([]string, error) { return []string{}, nil },
+				},
+				"/b": mocks.MockedImageStore{
+					GetRepositoriesFn: func() ([]string, error) { return []string{"b/app"}, nil },
+				},
+			},
+		}
+
+		stats, err := parseStorage(metaDB, store, logger)
+		So(err, ShouldBeNil)
+		// only the repo gone from a store whose walk found some is deleted
+		So(deleted, ShouldResemble, []string{"b/gone"})
 		So(stats.suspectEmptyWalk, ShouldBeTrue)
 		So(stats.complete(), ShouldBeFalse)
 	})

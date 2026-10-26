@@ -15,6 +15,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta/convert"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/storage"
 	stypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -27,7 +28,7 @@ const (
 type parseStats struct {
 	failedRepos      int  // skipped on a StatIndex or ParseRepo error
 	partialRepos     int  // parsed, but a manifest blob was missing
-	suspectEmptyWalk bool // storage walk returned no repos while metaDB had some; deletion pass was skipped
+	suspectEmptyWalk bool // a store's walk returned no repos while metaDB had some of its repos; they were kept
 }
 
 // complete reports whether the walk fully populated the metaDB.
@@ -51,7 +52,7 @@ func parseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 
 	var stats parseStats
 
-	allStorageRepos, err := getAllRepos(storeController, log)
+	allStorageRepos, emptyStores, err := getAllRepos(storeController, log)
 	if err != nil {
 		return parseStats{}, err
 	}
@@ -65,27 +66,36 @@ func parseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 		return parseStats{}, err
 	}
 
-	// A storage walk that comes back empty while metaDB already has entries is far more likely to be
-	// a failed or partial walk (a storage backend error swallowed upstream, a scoped/misconfigured
-	// prefix, transient unavailability) than every previously-known repo disappearing from storage at
-	// once. Deleting metaDB's repos on that signal turns a storage hiccup into permanent data loss, so
-	// skip the deletion pass and leave metaDB untouched rather than trusting an empty walk here.
-	if len(allStorageRepos) == 0 && len(allMetaDBRepos) > 0 {
+	/* A store whose walk comes back empty while metaDB still has repos it serves is far more likely
+	to have had a failed or partial walk (a storage backend error swallowed upstream, a scoped or
+	misconfigured prefix, transient unavailability) than to have lost every one of its repos at
+	once. Deleting them on that signal turns a storage hiccup into permanent data loss, so they
+	are kept, and the parse is marked incomplete for the next restart to retry. This is judged per
+	store: with substores, another store's repos would otherwise hide one store's empty walk. */
+	keptRepos := map[string]int{}
+
+	for _, repo := range getReposToBeDeleted(allStorageRepos, allMetaDBRepos) {
+		if route := storeRoute(storeController, repo); emptyStores[route] {
+			keptRepos[route]++
+
+			continue
+		}
+
+		err := metaDB.DeleteRepoMeta(repo)
+		if err != nil {
+			log.Error().Err(err).Str("rootDir", storeController.GetImageStore(repo).RootDir()).Str("component", "metadb").
+				Str("repo", repo).Msg("failed to delete repo meta")
+
+			return parseStats{}, err
+		}
+	}
+
+	for route, kept := range keptRepos {
 		stats.suspectEmptyWalk = true
 
-		log.Warn().Str("component", "metadb").Int("metaDBRepos", len(allMetaDBRepos)).
-			Msg("storage walk returned no repositories while metaDB has existing entries; " +
-				"skipping repo deletion to avoid wiping metaDB on a possibly-failed walk")
-	} else {
-		for _, repo := range getReposToBeDeleted(allStorageRepos, allMetaDBRepos) {
-			err := metaDB.DeleteRepoMeta(repo)
-			if err != nil {
-				log.Error().Err(err).Str("rootDir", storeController.GetImageStore(repo).RootDir()).Str("component", "metadb").
-					Str("repo", repo).Msg("failed to delete repo meta")
-
-				return parseStats{}, err
-			}
-		}
+		log.Warn().Str("component", "metadb").Str("route", route).Int("metaDBRepos", kept).
+			Msg("storage walk of a store returned no repositories while metaDB has some of its repos; " +
+				"keeping them to avoid wiping metaDB on a possibly-failed walk")
 	}
 
 	for i, repo := range allStorageRepos {
@@ -328,19 +338,40 @@ func parseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 	return partial, err
 }
 
-func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]string, error) {
+// defaultStoreRoute is the route storeRoute gives the default store, which no substore has.
+const defaultStoreRoute = ""
+
+// storeRoute returns the route of the store serving repo, as StoreController.GetImageStore picks
+// it, or defaultStoreRoute.
+func storeRoute(storeController stypes.StoreController, repo string) string {
+	route := storage.GetRoutePrefix(repo)
+	if _, ok := storeController.GetImageSubStores()[route]; ok {
+		return route
+	}
+
+	return defaultStoreRoute
+}
+
+// getAllRepos returns the repos every store's walk found, and the routes of the stores whose walk
+// found none (see storeRoute).
+func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]string, map[string]bool, error) {
 	allRepos := make([]string, 0)
 	repoSet := make(map[string]struct{})
+	emptyStores := map[string]bool{}
 
 	// Process substores first
 	if storeController.GetImageSubStores() != nil {
-		for _, store := range storeController.GetImageSubStores() {
+		for route, store := range storeController.GetImageSubStores() {
 			substoreRepos, err := store.GetRepositories()
 			if err != nil {
 				log.Error().Err(err).Str("rootDir", store.RootDir()).
 					Msg("failed to get all repo names present under rootDir")
 
-				return nil, err
+				return nil, nil, err
+			}
+
+			if len(substoreRepos) == 0 {
+				emptyStores[route] = true
 			}
 
 			for _, repo := range substoreRepos {
@@ -358,7 +389,11 @@ func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]stri
 		log.Error().Err(err).Str("rootDir", storeController.GetDefaultImageStore().RootDir()).
 			Msg("failed to get all repo names present under rootDir")
 
-		return nil, err
+		return nil, nil, err
+	}
+
+	if len(defaultRepos) == 0 {
+		emptyStores[defaultStoreRoute] = true
 	}
 
 	for _, repo := range defaultRepos {
@@ -368,7 +403,7 @@ func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]stri
 		}
 	}
 
-	return allRepos, nil
+	return allRepos, emptyStores, nil
 }
 
 func GetSignatureLayersInfo(repo, tag, manifestDigest, signatureType string, manifestBlob []byte,
