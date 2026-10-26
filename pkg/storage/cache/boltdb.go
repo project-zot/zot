@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"go.etcd.io/bbolt"
@@ -13,13 +14,59 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 type BoltDBDriver struct {
 	rootDir     string
 	db          *bbolt.DB
 	log         zlog.Logger
-	useRelPaths bool // whether or not to use relative paths, should be true for filesystem and false for s3
+	useRelPaths bool          // whether or not to use relative paths, should be true for filesystem and false for s3
+	claimLease  time.Duration // how long a reclaim claim stays live (see types.BlobRefIndex)
+	// tx is the read-write transaction of the batch this driver is a view of, nil outside one
+	// (see WriteBatch)
+	tx *bbolt.Tx
+}
+
+// update runs fn in a read-write transaction: the batch's in a batch view, one of its own,
+// committed and synced to disk, otherwise.
+func (d *BoltDBDriver) update(fn func(tx *bbolt.Tx) error) error {
+	if d.tx != nil {
+		return fn(d.tx)
+	}
+
+	return d.db.Update(fn)
+}
+
+// view runs fn in a read-only transaction, or in a batch view in the batch's transaction, which
+// is the one that sees the batch's writes. Opening another meanwhile could deadlock: bbolt may
+// have to remap the file for the open read-write transaction, which waits for read-only ones.
+func (d *BoltDBDriver) view(fn func(tx *bbolt.Tx) error) error {
+	if d.tx != nil {
+		return fn(d.tx)
+	}
+
+	return d.db.View(fn)
+}
+
+/*
+WriteBatch runs write with a view of d whose reads and writes all run in one read-write
+transaction, committed, with one sync to disk, once write returns nil, and rolled back
+otherwise. Each write outside a batch pays for a sync of its own. The transaction holds bbolt's
+write lock until write returns, so writes through d itself, from any goroutine, wait for it:
+write must use only the view. Called on a view, write runs in the enclosing batch.
+*/
+func (d *BoltDBDriver) WriteBatch(write func(batch storageTypes.Cache) error) error {
+	if d.tx != nil {
+		return write(d)
+	}
+
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		batch := *d
+		batch.tx = tx
+
+		return write(&batch)
+	})
 }
 
 type BoltDBDriverParameters struct {
@@ -66,11 +113,13 @@ func NewBoltDBCache(parameters any, log zlog.Logger) (*BoltDBDriver, error) {
 	}
 
 	if err := cacheDB.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(constants.BlobsCache)); err != nil {
-			// this is a serious failure
-			log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a root bucket")
+		for _, bucket := range []string{constants.BlobsCache, constants.BlobRefsBucket} {
+			if _, err := tx.CreateBucketIfNotExists([]byte(bucket)); err != nil {
+				// this is a serious failure
+				log.Error().Err(err).Str("dbPath", dbPath).Msg("failed to create a root bucket")
 
-			return err
+				return err
+			}
 		}
 
 		return nil
@@ -86,6 +135,7 @@ func NewBoltDBCache(parameters any, log zlog.Logger) (*BoltDBDriver, error) {
 		db:          cacheDB,
 		useRelPaths: properParameters.UseRelPaths,
 		log:         log,
+		claimLease:  constants.DefaultReclaimClaimLease,
 	}, nil
 }
 
@@ -114,7 +164,7 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 		}
 	}
 
-	if err := d.db.Update(func(tx *bbolt.Tx) error {
+	if err := d.update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
 			// this is a serious failure
@@ -199,7 +249,7 @@ func (d *BoltDBDriver) SetOrigin(digest godigest.Digest, originPath string) erro
 	}
 
 	// Single Update transaction: replace origin in place and keep the duplicate set.
-	return d.db.Update(func(tx *bbolt.Tx) error {
+	return d.update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
 			err := zerr.ErrCacheRootBucket
@@ -273,7 +323,7 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 
 	blobPaths := []string{}
 
-	if err := d.db.View(func(tx *bbolt.Tx) error {
+	if err := d.view(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
 			// this is a serious failure
@@ -322,7 +372,7 @@ func (d *BoltDBDriver) GetAllBlobs(digest godigest.Digest) ([]string, error) {
 func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	var blobPath strings.Builder
 
-	if err := d.db.View(func(tx *bbolt.Tx) error {
+	if err := d.view(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
 			// this is a serious failure
@@ -359,7 +409,7 @@ func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
 		}
 	}
 
-	if err := d.db.View(func(tx *bbolt.Tx) error {
+	if err := d.view(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
 			// this is a serious failure
@@ -419,7 +469,7 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		}
 	}
 
-	if err := d.db.Update(func(tx *bbolt.Tx) error {
+	if err := d.update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(constants.BlobsCache))
 		if root == nil {
 			// this is a serious failure

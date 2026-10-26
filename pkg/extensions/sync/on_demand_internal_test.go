@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -27,8 +28,11 @@ import (
 // stubOnDemandService is a synchronous Service stub for BaseOnDemand unit tests.
 type stubOnDemandService struct {
 	syncImageErr           error
+	syncImageFn            func() error // overrides syncImageErr, for errors that change per call
 	syncReferrersErr       error
 	canRetry               bool
+	maxRetries             int
+	retryDelay             time.Duration
 	timeout                time.Duration
 	syncImageCalls         int
 	onDemandInBackground   bool
@@ -42,6 +46,10 @@ func (s *stubOnDemandService) SyncRepo(_ context.Context, _ string) error { retu
 func (s *stubOnDemandService) SyncImage(_ context.Context, _, _ string) error {
 	s.syncImageCalls++
 
+	if s.syncImageFn != nil {
+		return s.syncImageFn()
+	}
+
 	return s.syncImageErr
 }
 
@@ -52,6 +60,10 @@ func (s *stubOnDemandService) SyncReferrers(_ context.Context, _, _ string, _ []
 func (s *stubOnDemandService) ResetCatalog() {}
 
 func (s *stubOnDemandService) CanRetryOnError() bool { return s.canRetry }
+
+func (s *stubOnDemandService) GetRetryOptions() (int, time.Duration) {
+	return s.maxRetries, s.retryDelay
+}
 
 func (s *stubOnDemandService) GetSyncTimeout() time.Duration {
 	if s.timeout == 0 {
@@ -442,6 +454,78 @@ func TestOnDemandNoBackgroundWhenCannotRetry(t *testing.T) {
 			return true
 		})
 		So(count, ShouldEqual, 0)
+	})
+}
+
+func TestOnDemandBackgroundRetriesUntilUpstreamIsBack(t *testing.T) {
+	Convey("the background routine retries maxRetries times, retryDelay apart", t, func() {
+		unavailable := errors.New("upstream unavailable")
+
+		var calls atomic.Int32
+
+		svc := &stubOnDemandService{canRetry: true, maxRetries: 3, retryDelay: 10 * time.Millisecond}
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(svc)
+
+		// the routine is done once it gives up its requestStore slot
+		waitForRoutine := func() {
+			for start := time.Now(); time.Since(start) < 10*time.Second; time.Sleep(5 * time.Millisecond) {
+				pending := false
+
+				onDemand.requestStore.Range(func(_, _ any) bool {
+					pending = true
+
+					return false
+				})
+
+				if !pending {
+					return
+				}
+			}
+
+			t.Fatal("background retry routine did not exit")
+		}
+
+		Convey("and syncs the image once the upstream answers again", func() {
+			// the request and the routine's first attempt fail, its second succeeds
+			svc.syncImageFn = func() error {
+				if calls.Add(1) <= 2 {
+					return unavailable
+				}
+
+				return nil
+			}
+
+			So(onDemand.SyncImage(context.Background(), "repo", "tag"), ShouldNotBeNil)
+			waitForRoutine()
+			So(calls.Load(), ShouldEqual, 3)
+		})
+
+		Convey("and gives up after maxRetries attempts", func() {
+			svc.syncImageFn = func() error {
+				calls.Add(1)
+
+				return unavailable
+			}
+
+			So(onDemand.SyncImage(context.Background(), "repo", "tag"), ShouldNotBeNil)
+			waitForRoutine()
+			So(calls.Load(), ShouldEqual, 1+3)
+		})
+
+		Convey("and stops once the upstream says the image is not there", func() {
+			svc.syncImageFn = func() error {
+				if calls.Add(1) == 1 {
+					return unavailable
+				}
+
+				return zerr.ErrManifestNotFound
+			}
+
+			So(onDemand.SyncImage(context.Background(), "repo", "tag"), ShouldNotBeNil)
+			waitForRoutine()
+			So(calls.Load(), ShouldEqual, 2)
+		})
 	})
 }
 

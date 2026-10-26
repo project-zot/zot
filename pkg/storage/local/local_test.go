@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -1177,6 +1178,14 @@ func FuzzRunGCRepo(f *testing.F) {
 }
 
 func TestDedupeLinks(t *testing.T) {
+	// writeMigrationMarker lets a store open over existing repos without running the one-time
+	// global blobstore upgrade, for subtests that exercise the dedupe walk alone.
+	writeMigrationMarker := func(rootDir string) error {
+		markerPath := path.Join(rootDir, storageConstants.BlobstoreMigratedMarker)
+
+		return os.WriteFile(markerPath, []byte("1"), 0o600)
+	}
+
 	testCases := []struct {
 		dedupe   bool
 		expected bool
@@ -1437,6 +1446,9 @@ func TestDedupeLinks(t *testing.T) {
 				})
 
 				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					for i := range 10 {
 						taskScheduler := runAndGetScheduler()
 						defer taskScheduler.Shutdown()
@@ -1472,6 +1484,9 @@ func TestDedupeLinks(t *testing.T) {
 				})
 
 				Convey("rebuild dedupe index error cache nil", func() {
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					// switch dedupe to true from false
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
@@ -1494,6 +1509,9 @@ func TestDedupeLinks(t *testing.T) {
 				})
 
 				Convey("rebuild dedupe index cache error on original blob", func() {
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					// switch dedupe to true from false
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
@@ -1522,6 +1540,9 @@ func TestDedupeLinks(t *testing.T) {
 				})
 
 				Convey("rebuild dedupe index cache error on duplicate blob", func() {
+					err := writeMigrationMarker(dir)
+					So(err, ShouldBeNil)
+
 					// switch dedupe to true from false
 					taskScheduler := runAndGetScheduler()
 					defer taskScheduler.Shutdown()
@@ -4438,5 +4459,297 @@ func TestGetNextRepositoriesWithMissingLast(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 		So(repos, ShouldResemble, []string{"a-foo", "b"})
+	})
+}
+
+func TestUpgradeToGlobalBlobstore(t *testing.T) {
+	Convey("Upgrade from pre-blobstore layout to global blobstore", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		// Simulate an older, pre-dedupe zot release.
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		content1 := []byte("blob-content-shared")
+		digest1 := godigest.FromBytes(content1)
+
+		upload, err := imgStoreOld.NewBlobUpload(context.Background(), "repo1")
+		So(err, ShouldBeNil)
+
+		_, err = imgStoreOld.PutBlobChunkStreamed(context.Background(), "repo1", upload, bytes.NewBuffer(content1))
+		So(err, ShouldBeNil)
+
+		err = imgStoreOld.FinishBlobUpload("repo1", upload, bytes.NewBuffer(nil), digest1)
+		So(err, ShouldBeNil)
+
+		cblob, cdigest := GetRandomImageConfig()
+		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "repo1", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		manifest := ispec.Manifest{
+			MediaType: ispec.MediaTypeImageManifest,
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayerGzip,
+					Digest:    digest1,
+					Size:      int64(len(content1)),
+				},
+			},
+			SchemaVersion: 2,
+		}
+
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStoreOld.PutImageManifest(
+			context.Background(), "repo1", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{},
+		)
+		So(err, ShouldBeNil)
+
+		// Same content uploaded to repo2: pre-dedupe, this is a separate on-disk copy.
+		upload, err = imgStoreOld.NewBlobUpload(context.Background(), "repo2")
+		So(err, ShouldBeNil)
+
+		_, err = imgStoreOld.PutBlobChunkStreamed(context.Background(), "repo2", upload, bytes.NewBuffer(content1))
+		So(err, ShouldBeNil)
+
+		err = imgStoreOld.FinishBlobUpload("repo2", upload, bytes.NewBuffer(nil), digest1)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "repo2", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStoreOld.PutImageManifest(
+			context.Background(), "repo2", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{},
+		)
+		So(err, ShouldBeNil)
+
+		// No _blobstore yet: this is the pre-upgrade state.
+		blobstoreDir := path.Join(dir, storageConstants.GlobalBlobsRepo)
+		_, err = os.Stat(blobstoreDir)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		// Re-opening with dedupe enabled triggers the upgrade.
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStoreNew := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStoreNew, ShouldNotBeNil)
+
+		_, err = os.Stat(blobstoreDir)
+		So(err, ShouldBeNil)
+
+		globalBlobs, err := imgStoreNew.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(len(globalBlobs), ShouldBeGreaterThan, 0)
+		So(slices.Contains(globalBlobs, digest1), ShouldBeTrue)
+
+		// repo1's blob and the _blobstore copy must be hard-linked (same inode).
+		repo1BlobPath := path.Join(dir, "repo1", "blobs", digest1.Algorithm().String(), digest1.Encoded())
+		globalBlobPath := path.Join(dir, storageConstants.GlobalBlobsRepo, "blobs",
+			digest1.Algorithm().String(), digest1.Encoded())
+
+		fi1, err1 := os.Stat(repo1BlobPath)
+		So(err1, ShouldBeNil)
+
+		fi2, err2 := os.Stat(globalBlobPath)
+		So(err2, ShouldBeNil)
+
+		isSameFile := err1 == nil && err2 == nil && os.SameFile(fi1, fi2)
+		So(isSameFile, ShouldBeTrue)
+
+		blobContent, err := os.ReadFile(globalBlobPath)
+		So(err, ShouldBeNil)
+		So(blobContent, ShouldResemble, content1)
+	})
+
+	// This checks blob-count stability across a real two-open sequence on an
+	// already-upgraded store, not that the migration scan was literally skipped -
+	// a count staying the same is also consistent with the upgrade re-running
+	// idempotently. That the scan is actually skipped is proven separately, via a
+	// Walk-counting mock, by TestNewImageStoreSkipsMigrationScanWhenMarkerExists in
+	// pkg/storage/imagestore.
+	Convey("Blob state is stable across repeated opens of an already-upgraded store", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		// Simulate an older, pre-dedupe zot release.
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		content := []byte("skip-test-blob")
+		digest := godigest.FromBytes(content)
+
+		_, _, err := imgStoreOld.FullBlobUpload(context.Background(), "myrepo", bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		cblob, cdigest := GetRandomImageConfig()
+		_, _, err = imgStoreOld.FullBlobUpload(context.Background(), "myrepo", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		manifest := ispec.Manifest{
+			MediaType: ispec.MediaTypeImageManifest,
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayerGzip,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+			},
+			SchemaVersion: 2,
+		}
+
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStoreOld.PutImageManifest(
+			context.Background(), "myrepo", tag, ispec.MediaTypeImageManifest, manifestBuf, []string{},
+		)
+		So(err, ShouldBeNil)
+
+		// First open with dedupe: runs the upgrade and populates _blobstore.
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(len(globalBlobs), ShouldBeGreaterThan, 0)
+
+		blobCountAfterFirstUpgrade := len(globalBlobs)
+
+		// Second open with dedupe: the first open already wrote the migration marker,
+		// so upgrade must be skipped (a populated _blobstore alone doesn't gate this -
+		// see upgradeToGlobalBlobstore's marker check).
+		cacheDriver2, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache2",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore2 := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver2, nil, nil)
+		So(imgStore2, ShouldNotBeNil)
+
+		globalBlobs2, err := imgStore2.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(len(globalBlobs2), ShouldEqual, blobCountAfterFirstUpgrade)
+	})
+
+	Convey("Upgrade with no existing repos is a no-op", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		// No repos to upgrade from, so _blobstore stays empty.
+		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(len(globalBlobs), ShouldEqual, 0)
+
+		markerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+		_, err = os.Stat(markerPath)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Upgrade writes marker when digests are only legacy 0-byte markers", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		err := imgStoreOld.InitRepo(context.Background(), "markerrepo")
+		So(err, ShouldBeNil)
+
+		digest := godigest.FromString("legacy-marker-only")
+		markerBlobPath := path.Join(dir, "markerrepo", "blobs", digest.Algorithm().String(), digest.Encoded())
+		err = os.MkdirAll(path.Dir(markerBlobPath), 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(markerBlobPath, []byte{}, 0o600)
+		So(err, ShouldBeNil)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		migrationMarkerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+		_, err = os.Stat(migrationMarkerPath)
+		So(err, ShouldBeNil)
+
+		globalBlobs, err := imgStore.GetAllBlobs(storageConstants.GlobalBlobsRepo)
+		So(err, ShouldBeNil)
+		So(slices.Contains(globalBlobs, digest), ShouldBeTrue)
+	})
+
+	Convey("Upgrade does not write marker when repos exist but no digests are promoted", t, func() {
+		dir := t.TempDir()
+
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		imgStoreOld := local.NewImageStore(dir, false, true, log, metrics, nil, nil, nil, nil)
+		So(imgStoreOld, ShouldNotBeNil)
+
+		err := imgStoreOld.InitRepo(context.Background(), "emptyrepo")
+		So(err, ShouldBeNil)
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := local.NewImageStore(dir, true, true, log, metrics, nil, cacheDriver, nil, nil)
+		So(imgStore, ShouldNotBeNil)
+
+		migrationMarkerPath := path.Join(dir, storageConstants.BlobstoreMigratedMarker)
+		_, err = os.Stat(migrationMarkerPath)
+		So(os.IsNotExist(err), ShouldBeTrue)
 	})
 }

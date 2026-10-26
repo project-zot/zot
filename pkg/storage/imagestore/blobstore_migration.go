@@ -1,0 +1,364 @@
+package imagestore
+
+// The one-time upgrade of a store from the per-repo blob layout of earlier releases to the
+// global blobstore.
+
+import (
+	"maps"
+	"path"
+	"slices"
+
+	guuid "github.com/gofrs/uuid"
+	godigest "github.com/opencontainers/go-digest"
+
+	zerr "zotregistry.dev/zot/v2/errors"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+)
+
+// blobCandidate is the repo copy of a digest chosen to become its global blobstore copy.
+type blobCandidate struct {
+	repoName string
+	blobPath string
+	size     int64
+}
+
+// repoBlobRef is one repo's copy of a digest, recorded in the cache once the digest is promoted.
+type repoBlobRef struct {
+	digest   godigest.Digest
+	repoName string
+	blobPath string
+}
+
+/*
+upgradeToGlobalBlobstore promotes every digest found in a repo into the global blobstore and
+makes the blobstore copy its cache origin, unless BlobstoreMigratedMarker shows a previous pass
+completed. It runs while the store is created, before anything is served, so it takes no lock.
+
+The marker is written only after a complete pass: when repos exist but none holds a blob, it
+is left out and the next start runs the pass again, which is safe because every step repeats
+harmlessly. A storage or cache failure, including a repo that cannot be listed, is returned,
+and the store is not created. Repo copies on separate inodes, from a time dedupe was off, are linked to
+the blobstore copy by the dedupe walk that runs at startup.
+*/
+func (is *ImageStore) upgradeToGlobalBlobstore() error {
+	markerPath := path.Join(is.rootDir, storageConstants.BlobstoreMigratedMarker)
+
+	if _, err := is.storeDriver.Stat(markerPath); err == nil {
+		return nil
+	} else if !errclass.IsStorageObjectMissing(err) {
+		return err
+	}
+
+	// unlocked: the store is still being created, and nothing else can use it yet
+	repos, err := is.getRepositories()
+	if err != nil {
+		return err
+	}
+
+	if len(repos) == 0 {
+		is.writeBlobstoreMigrationMarker(markerPath)
+		is.blobRefsRebuilt.Store(true)
+
+		return nil
+	}
+
+	is.log.Info().Int("repoCount", len(repos)).Msg("upgrading storage: populating global blobstore from existing repos")
+
+	candidates := map[godigest.Digest]blobCandidate{}
+	refsByDigest := map[godigest.Digest][]repoBlobRef{}
+
+	for _, repoName := range repos {
+		// A repo left out could hold the only copy with content, an earlier release's origin,
+		// while the repos listed hold placeholders: the pass would then promote a placeholder and
+		// record it as the origin, leaving the content unreachable until another start.
+		repoBlobs, err := is.GetAllBlobs(repoName)
+		if err != nil {
+			is.log.Error().Err(err).Str("repo", repoName).Msg("failed to list blobs during upgrade")
+
+			return err
+		}
+
+		for _, digest := range repoBlobs {
+			repoBlobPath := is.BlobPath(repoName, digest)
+
+			// A copy that cannot be checked must not be taken for an empty one: a placeholder
+			// could then be promoted, and the copy holding the content replaced by it.
+			binfo, err := is.storeDriver.Stat(repoBlobPath)
+			if err != nil {
+				// listed, then deleted: nothing to promote or record
+				if errclass.IsStorageObjectMissing(err) {
+					continue
+				}
+
+				return err
+			}
+
+			candidate, found := candidates[digest]
+			if !found {
+				candidate = blobCandidate{repoName: repoName, blobPath: repoBlobPath}
+			}
+
+			// prefer a copy with content over an empty one
+			if binfo.Size() > 0 && candidate.size == 0 {
+				candidate = blobCandidate{repoName: repoName, blobPath: repoBlobPath, size: binfo.Size()}
+			}
+
+			candidates[digest] = candidate
+			refsByDigest[digest] = append(refsByDigest[digest],
+				repoBlobRef{digest: digest, repoName: repoName, blobPath: repoBlobPath})
+		}
+	}
+
+	digests := slices.Sorted(maps.Keys(candidates))
+	markerOnlyDigests := 0
+
+	for start := 0; start < len(digests); start += upgradeBatchDigests {
+		batch := digests[start:min(start+upgradeBatchDigests, len(digests))]
+
+		markerOnly, err := is.upgradeDigests(batch, candidates, refsByDigest)
+		markerOnlyDigests += markerOnly
+
+		if err != nil {
+			return err
+		}
+	}
+
+	// every repo copy is recorded now, so the reclaim sweep need not wait for the dedupe walk
+	is.blobRefsRebuilt.Store(true)
+
+	return is.completeBlobstoreUpgrade(markerPath, len(candidates), markerOnlyDigests)
+}
+
+// upgradeBatchDigests is how many digests the upgrade promotes and records in one cache batch.
+const upgradeBatchDigests = 512
+
+/*
+upgradeDigests promotes each of digests and records it and its repo copies in one cache batch,
+then has the copies give up their content. A cache such as BoltDB syncs to disk on each write
+it commits by itself, which on a slow disk made the upgrade of even a small store take seconds.
+Only once the batch is committed do the copies give up their content, so a failure before
+that leaves every copy as it was, and the next start runs the pass again over them. It returns
+how many of digests had only empty copies.
+*/
+func (is *ImageStore) upgradeDigests(digests []godigest.Digest, candidates map[godigest.Digest]blobCandidate,
+	refsByDigest map[godigest.Digest][]repoBlobRef,
+) (int, error) {
+	markerOnlyDigests := 0
+
+	err := is.withCacheBatch(func(cacheDriver storageTypes.Cache, lifecycle blobLifecycle) error {
+		for _, digest := range digests {
+			candidate := candidates[digest]
+
+			if lacksContent(digest, candidate.size) {
+				markerOnlyDigests++
+
+				is.log.Warn().Str("digest", digest.String()).Str("repo", candidate.repoName).
+					Msg("upgrading digest with only empty copies found")
+			}
+
+			/* The repos own the payload before it is checked or published: a peer that finished its
+			upgrade already may be sweeping, and one owner keeps its sweep from claiming the digest.
+			Checked first, the payload could be deleted between the check and the owners, and the
+			copies would then give up their content to a payload that is gone. A sweep already
+			deleting is waited out, and promotion then finds the payload gone and publishes it
+			anew. Ownership also comes before a copy gives up its content, so that a failure in
+			between leaves a copy with content, never a placeholder nothing owns. */
+			for _, ref := range refsByDigest[digest] {
+				if err := lifecycle.PutBlobRef(ref.digest, ref.blobPath); err != nil {
+					is.log.Error().Err(err).Str("digest", ref.digest.String()).Str("repo", ref.repoName).
+						Msg("failed to record repo blob ownership during upgrade")
+
+					return err
+				}
+			}
+
+			globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+			if err := is.promoteBlobCandidate(cacheDriver, lifecycle, candidate, digest, globalBlobPath); err != nil {
+				return err
+			}
+
+			// recorded once the payload is the origin, so that no reader takes a placeholder for it
+			for _, ref := range refsByDigest[digest] {
+				if err := cacheDriver.PutBlob(ref.digest, ref.blobPath); err != nil {
+					is.log.Error().Err(err).Str("digest", ref.digest.String()).Str("repo", ref.repoName).
+						Msg("failed to record repo blob during upgrade")
+
+					return err
+				}
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return markerOnlyDigests, err
+	}
+
+	for _, digest := range digests {
+		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+
+		for _, ref := range refsByDigest[digest] {
+			if err := is.lifecycle.RemoveMigratedRepoBlob(globalBlobPath, ref.blobPath); err != nil {
+				is.log.Error().Err(err).Str("digest", ref.digest.String()).Str("repo", ref.repoName).
+					Str("repoBlobPath", ref.blobPath).Msg("failed to remove migrated repo blob")
+
+				return markerOnlyDigests, err
+			}
+		}
+	}
+
+	return markerOnlyDigests, nil
+}
+
+/*
+withCacheBatch runs record with the store's cache and blob lifecycle, both writing through one
+batch of the cache where it offers one (see storageTypes.CacheBatchWriter). The batch holds
+the cache's write lock until record returns, so it serves only the upgrade, which runs before
+the store is in use.
+*/
+func (is *ImageStore) withCacheBatch(record func(cacheDriver storageTypes.Cache, lifecycle blobLifecycle) error,
+) error {
+	batcher, ok := is.cache.(storageTypes.CacheBatchWriter)
+	if !ok {
+		return record(is.cache, is.lifecycle)
+	}
+
+	return batcher.WriteBatch(func(batch storageTypes.Cache) error {
+		return record(batch, is.lifecycle.withRefs(batch))
+	})
+}
+
+// promoteBlobCandidate makes the global blobstore copy of digest from candidate and records it,
+// through cacheDriver and lifecycle, as the digest's cache origin, replacing a repo copy
+// recorded as origin by an earlier release.
+func (is *ImageStore) promoteBlobCandidate(cacheDriver storageTypes.Cache, lifecycle blobLifecycle,
+	candidate blobCandidate, digest godigest.Digest, globalBlobPath string,
+) error {
+	if lacksContent(digest, candidate.size) {
+		// Resume safety: a pass that stopped part way may have promoted a copy with content
+		// already, which an empty copy must not replace.
+		binfo, err := is.storeDriver.Stat(globalBlobPath)
+		if err == nil && binfo.Size() > 0 {
+			is.log.Info().Str("digest", digest.String()).Str("repo", candidate.repoName).
+				Msg("keeping the global blobstore copy, its repo copies are empty")
+
+			if err := cacheDriver.SetOrigin(digest, globalBlobPath); err != nil {
+				return err
+			}
+
+			return lifecycle.PutBlobRef(digest, globalBlobPath)
+		}
+
+		if err != nil && !errclass.IsStorageObjectMissing(err) {
+			return err
+		}
+	}
+
+	if err := is.storeDriver.EnsureDir(path.Dir(globalBlobPath)); err != nil {
+		is.log.Error().Err(err).Str("dir", path.Dir(globalBlobPath)).Msg("failed to create algorithm dir")
+
+		return err
+	}
+
+	// staged as a push is, so that the stray copy a stop leaves behind is a stale upload for GC
+	stagingUUID, err := guuid.NewV4()
+	if err != nil {
+		return err
+	}
+
+	stagingPath := is.BlobUploadPath(candidate.repoName, stagingUUID.String())
+
+	if err := lifecycle.PromoteCandidate(digest, candidate.size, candidate.blobPath, stagingPath,
+		globalBlobPath); err != nil {
+		is.log.Error().Err(err).Str("src", candidate.blobPath).Str("dst", globalBlobPath).
+			Msg("failed to promote blob to global blobstore")
+
+		return err
+	}
+
+	// Repo copies give up their content once the payload is there, so it must be whole. The
+	// remote lifecycle verifies what it publishes; this also covers what it chose to keep.
+	if !lacksContent(digest, candidate.size) {
+		binfo, err := is.storeDriver.Stat(globalBlobPath)
+		if err != nil {
+			return err
+		}
+
+		if binfo.Size() != candidate.size {
+			is.log.Error().Str("digest", digest.String()).Int64("size", binfo.Size()).
+				Int64("expected", candidate.size).Msg("promoted blob has the wrong size")
+
+			return zerr.ErrBadBlob
+		}
+	}
+
+	// PutBlob never replaces an origin, and an earlier release recorded a repo copy as one
+	if err := cacheDriver.SetOrigin(digest, globalBlobPath); err != nil {
+		is.log.Error().Err(err).Str("digest", digest.String()).
+			Msg("failed to record the global blobstore copy as origin during upgrade")
+
+		return err
+	}
+
+	// recorded as present: a sweep only ever claims a payload the index records
+	if err := lifecycle.PutBlobRef(digest, globalBlobPath); err != nil {
+		is.log.Error().Err(err).Str("digest", digest.String()).
+			Msg("failed to record the global blobstore copy during upgrade")
+
+		return err
+	}
+
+	is.log.Info().Str("digest", digest.String()).Str("repo", candidate.repoName).
+		Msg("promoted blob to global blobstore")
+
+	return nil
+}
+
+// completeBlobstoreUpgrade writes the migration marker once a pass has promoted at least one
+// digest; otherwise the next start runs the pass again.
+func (is *ImageStore) completeBlobstoreUpgrade(markerPath string, promotedDigests int, markerOnlyDigests int) error {
+	is.log.Info().Int("blobCount", promotedDigests).Int("markerOnlyDigestCount", markerOnlyDigests).
+		Msg("global blobstore upgrade completed")
+
+	if promotedDigests == 0 {
+		is.log.Warn().Msg("blobstore upgrade incomplete: migration marker not written because no digests were promoted")
+
+		return nil
+	}
+
+	is.writeBlobstoreMigrationMarker(markerPath)
+
+	return nil
+}
+
+// invalidateBlobstoreUpgrade removes the migration marker before the restore walk, run with
+// dedupe off, gives the first repo copy its content back. From then on the store leaves the
+// upgraded layout: on remote storage the sweep reclaims the payloads no repo owns any more. Were
+// the marker kept, turning dedupe back on would skip the upgrade, and with no global blobstore
+// copy left the dedupe walk would make a repo copy the origin again, the layout of earlier
+// releases. A failure fails the digest's restore, so no copy is restored while the marker stays.
+func (is *ImageStore) invalidateBlobstoreUpgrade() error {
+	if is.upgradeInvalidated.Load() {
+		return nil
+	}
+
+	err := is.storeDriver.Delete(path.Join(is.rootDir, storageConstants.BlobstoreMigratedMarker))
+	if err != nil && !errclass.IsStorageObjectMissing(err) {
+		return err
+	}
+
+	is.upgradeInvalidated.Store(true)
+
+	return nil
+}
+
+// writeBlobstoreMigrationMarker records a completed upgrade at the store root, so later starts
+// skip the scan. Failing to write it only means the next start scans again.
+func (is *ImageStore) writeBlobstoreMigrationMarker(markerPath string) {
+	if _, err := is.storeDriver.WriteFile(markerPath, []byte("1")); err != nil {
+		is.log.Warn().Err(err).Msg("failed to write blobstore migration marker")
+	}
+}
