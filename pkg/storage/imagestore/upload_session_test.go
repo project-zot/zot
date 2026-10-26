@@ -319,6 +319,46 @@ func TestFinalizeKeepsSealedSessionWhenSourceRemains(t *testing.T) {
 	}
 }
 
+func TestDeleteBlobUploadIfIdleCleansSealedSource(t *testing.T) {
+	root := t.TempDir()
+	driver := &leavingMoveDriver{Driver: local.New(true)}
+	store := imagestore.NewImageStore(root, "", false, true, zlog.NewTestLogger(),
+		monitoring.NewNopMetricServer(), nil, driver, nil, nil, nil)
+	if store == nil {
+		t.Fatal("NewImageStore returned nil")
+	}
+
+	ctx := context.Background()
+	repo := "idle-sealed-source"
+	content := []byte("sealed-content")
+	digest := godigest.FromBytes(content)
+	uuid, err := store.NewBlobUpload(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.PutBlobChunkStreamed(ctx, repo, uuid, bytes.NewReader(content)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.FinishBlobUpload(repo, uuid, bytes.NewReader(nil), digest); err != nil {
+		t.Fatal(err)
+	}
+
+	deleter, ok := store.(idleUploadDeleter)
+	if !ok {
+		t.Fatal("image store does not expose idle upload deletion")
+	}
+	deleted, err := deleter.DeleteBlobUploadIfIdle(repo, uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatal("sealed upload was not deleted")
+	}
+	if _, err := os.Stat(store.BlobUploadPath(repo, uuid)); !os.IsNotExist(err) {
+		t.Fatalf("source upload still exists after idle cleanup, stat error = %v", err)
+	}
+}
+
 func TestDeleteBlobUploadIfIdleDoesNotWaitForActiveWriter(t *testing.T) {
 	store, _, _ := newUploadHashGateStore(t)
 	deleter, ok := store.(idleUploadDeleter)

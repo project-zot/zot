@@ -39,8 +39,11 @@ import (
 )
 
 const (
-	cosignSignatureTagSuffix = "sig"
-	SBOMTagSuffix            = "sbom"
+	cosignSignatureTagSuffix      = "sig"
+	SBOMTagSuffix                 = "sbom"
+	maxStoragePathComponentLength = 255
+	maxLocalStoragePathLength     = 4095
+	maxObjectStoragePathLength    = 1024
 )
 
 // ImageStore provides the image storage operations.
@@ -1211,6 +1214,28 @@ func (is *ImageStore) BlobUploadPath(repo, uuid string) string {
 	return blobUploadPath
 }
 
+func (is *ImageStore) validateUploadPath(repo, uuid string) error {
+	if err := validateUploadSessionID(uuid); err != nil {
+		return err
+	}
+
+	for component := range strings.SplitSeq(repo, "/") {
+		if len(component) > maxStoragePathComponentLength {
+			return zerr.ErrUploadNotFound
+		}
+	}
+
+	pathLengthLimit := maxObjectStoragePathLength
+	if is.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		pathLengthLimit = maxLocalStoragePathLength
+	}
+	if len(is.BlobUploadPath(repo, uuid)) > pathLengthLimit {
+		return zerr.ErrUploadNotFound
+	}
+
+	return nil
+}
+
 /*
 ListBlobUploads returns all blob uploads present in the repository. The caller function MUST lock from outside.
 */
@@ -1283,7 +1308,7 @@ func (is *ImageStore) NewBlobUpload(ctx context.Context, repo string) (string, e
 
 // GetBlobUpload returns the current size of a blob upload.
 func (is *ImageStore) GetBlobUpload(repo, uuid string) (int64, error) {
-	if err := validateUploadPath(repo, uuid); err != nil {
+	if err := is.validateUploadPath(repo, uuid); err != nil {
 		return -1, err
 	}
 
@@ -1373,7 +1398,7 @@ func (is *ImageStore) cleanupUploadSessionIfMissing(src string, session *uploadS
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
 func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid string, body io.Reader) (int64, error) {
-	if err := validateUploadPath(repo, uuid); err != nil {
+	if err := is.validateUploadPath(repo, uuid); err != nil {
 		return -1, err
 	}
 
@@ -1406,7 +1431,7 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from, to int64,
 	body io.Reader,
 ) (int64, error) {
-	if err := validateUploadPath(repo, uuid); err != nil {
+	if err := is.validateUploadPath(repo, uuid); err != nil {
 		return -1, err
 	}
 
@@ -1445,7 +1470,7 @@ func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from,
 
 // BlobUploadInfo returns the current blob size in bytes.
 func (is *ImageStore) BlobUploadInfo(repo, uuid string) (int64, error) {
-	if err := validateUploadPath(repo, uuid); err != nil {
+	if err := is.validateUploadPath(repo, uuid); err != nil {
 		return -1, err
 	}
 
@@ -1469,7 +1494,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	if err := dstDigest.Validate(); err != nil {
 		return err
 	}
-	if err := validateUploadPath(repo, uuid); err != nil {
+	if err := is.validateUploadPath(repo, uuid); err != nil {
 		return err
 	}
 
@@ -1928,7 +1953,7 @@ func (is *ImageStore) DeleteBlobUploadIfIdle(repo, uuid string) (bool, error) {
 }
 
 func (is *ImageStore) deleteBlobUpload(repo, uuid string, wait bool) (bool, error) {
-	if err := validateUploadPath(repo, uuid); err != nil {
+	if err := is.validateUploadPath(repo, uuid); err != nil {
 		if !wait && errors.Is(err, zerr.ErrUploadNotFound) {
 			return false, nil
 		}

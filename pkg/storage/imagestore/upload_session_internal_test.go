@@ -19,9 +19,17 @@ type missingUploadDriver struct {
 	storageTypes.Driver
 }
 
+func (*missingUploadDriver) Name() string {
+	return constants.LocalStorageDriverName
+}
+
 type successfulDeleteDriver struct {
 	storageTypes.Driver
 	deleted bool
+}
+
+func (*successfulDeleteDriver) Name() string {
+	return constants.LocalStorageDriverName
 }
 
 type successfulDeleteWriter struct {
@@ -120,6 +128,26 @@ func TestOverlongRepositoryPathDoesNotRegisterSession(t *testing.T) {
 	store.uploads.lock.Unlock()
 	if exists {
 		t.Fatal("overlong repository path was retained in the registry")
+	}
+}
+
+func TestOverlongUploadPathDoesNotRegisterSession(t *testing.T) {
+	root := t.TempDir()
+	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}}
+	component := strings.Repeat("r", 240)
+	repo := strings.TrimSuffix(strings.Repeat(component+"/", 18), "/")
+	uuid := "upload"
+
+	if err := store.DeleteBlobUpload(repo, uuid); !errors.Is(err, zerr.ErrUploadNotFound) {
+		t.Fatalf("DeleteBlobUpload error = %v, want ErrUploadNotFound", err)
+	}
+
+	src := store.BlobUploadPath(repo, uuid)
+	store.uploads.lock.Lock()
+	_, exists := store.uploads.sessions[src]
+	store.uploads.lock.Unlock()
+	if exists {
+		t.Fatal("overlong upload path was retained in the registry")
 	}
 }
 
