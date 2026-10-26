@@ -76,16 +76,6 @@ func (cm ContentManager) FilterLocalTags(repo string, tags []string) ([]string, 
 	return cm.filterTags(cm.GetContentByLocalRepo(repo), tags)
 }
 
-// MatchesLocalRepo reports whether a local repo may leave the store. No content rules at all
-// means the whole store: an operator who configured no allowlist asked for a mirror.
-func (cm ContentManager) MatchesLocalRepo(repo string) bool {
-	if len(cm.contents) == 0 {
-		return true
-	}
-
-	return cm.GetContentByLocalRepo(repo) != nil
-}
-
 // EffectiveLocalPlatforms is EffectivePlatforms for a local repo name.
 func (cm ContentManager) EffectiveLocalPlatforms(repo string, registryDefault []string) []string {
 	return effectivePeriodicPlatforms(cm.GetContentByLocalRepo(repo), registryDefault)

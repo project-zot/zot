@@ -64,11 +64,10 @@ func TestPushDestinationGetImageReference(t *testing.T) {
 }
 
 func TestContentMatchesLocalRepo(t *testing.T) {
-	Convey("No content rules select the whole store", t, func() {
+	Convey("No content rules select nothing, which is why push requires them", t, func() {
 		manager := NewContentManager(nil, log.NewTestLogger())
 
-		So(manager.MatchesLocalRepo("library/alpine"), ShouldBeTrue)
-		So(manager.MatchesLocalRepo("anything/at/all"), ShouldBeTrue)
+		So(manager.LocalContentMatches("library/alpine"), ShouldBeEmpty)
 	})
 
 	Convey("Content rules are the allowlist and they match local names", t, func() {
@@ -77,9 +76,9 @@ func TestContentMatchesLocalRepo(t *testing.T) {
 			{Prefix: "secureblue/*", Destination: "mirror"},
 		}, log.NewTestLogger())
 
-		So(manager.MatchesLocalRepo("library/alpine"), ShouldBeTrue)
-		So(manager.MatchesLocalRepo("mirror/secureblue/securecore"), ShouldBeTrue)
-		So(manager.MatchesLocalRepo("unrelated/repo"), ShouldBeFalse)
+		So(manager.LocalContentMatches("library/alpine"), ShouldHaveLength, 1)
+		So(manager.LocalContentMatches("mirror/secureblue/securecore"), ShouldHaveLength, 1)
+		So(manager.LocalContentMatches("unrelated/repo"), ShouldBeEmpty)
 	})
 }
 

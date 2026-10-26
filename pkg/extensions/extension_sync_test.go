@@ -22,6 +22,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 func newTestSyncExtensionDeps(t *testing.T) (storage.StoreController, *scheduler.Scheduler, log.Logger) {
@@ -412,6 +413,124 @@ func TestEnableSyncExtensionServiceInitFailure(t *testing.T) {
 						OnDemand: true,
 						CertDir:  badCertDir,
 						Content:  []syncconf.Content{{Prefix: "**"}},
+					},
+				},
+			},
+		}
+
+		onDemand, err := extensions.EnableSyncExtension(conf, nil, storeController, sch, nil, logger)
+		So(err, ShouldNotBeNil)
+		So(onDemand, ShouldBeNil)
+	})
+}
+
+// TestEnableSyncExtensionPushEntry: a push-only entry starts the outbound loop and does not
+// register an on-demand handler, because it has no upstream to pull from.
+func TestEnableSyncExtensionPushEntry(t *testing.T) {
+	Convey("A push-only entry is accepted and schedules its loop", t, func() {
+		storeController, sch, logger := newTestSyncExtensionDeps(t)
+		enabled := true
+
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{
+				Registries: []syncconf.RegistryConfig{
+					{
+						PollInterval: time.Hour,
+						Content:      []syncconf.Content{{Prefix: "library/**"}},
+						Push: &syncconf.PushConfig{
+							Enabled: &enabled,
+							URLs:    []string{"https://push-destination.invalid:5000"},
+						},
+					},
+				},
+			},
+		}
+
+		onDemand, err := extensions.EnableSyncExtension(conf, nil, storeController, sch, nil, logger)
+		So(err, ShouldBeNil)
+		So(onDemand, ShouldNotBeNil)
+		So(onDemand.IsStreamingEnabledForRepo("library/foo"), ShouldBeFalse)
+	})
+}
+
+// TestEnableSyncExtensionPushWithPull: one entry may carry upstreams and destinations, and both
+// paths are wired from the same content list.
+func TestEnableSyncExtensionPushWithPull(t *testing.T) {
+	Convey("An entry with urls and push runs both directions", t, func() {
+		storeController, sch, logger := newTestSyncExtensionDeps(t)
+		enabled := true
+
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{
+				Registries: []syncconf.RegistryConfig{
+					{
+						URLs:         []string{"https://upstream.invalid"},
+						PollInterval: time.Hour,
+						Content:      []syncconf.Content{{Prefix: "library/**"}},
+						Push: &syncconf.PushConfig{
+							Enabled: &enabled,
+							URLs:    []string{"https://push-destination.invalid:5000"},
+						},
+					},
+				},
+			},
+		}
+
+		onDemand, err := extensions.EnableSyncExtension(conf, nil, storeController, sch, nil, logger)
+		So(err, ShouldBeNil)
+		So(onDemand, ShouldNotBeNil)
+	})
+}
+
+// TestEnableSyncExtensionPushSubStore: every store that can hold content gets its own generator.
+func TestEnableSyncExtensionPushSubStore(t *testing.T) {
+	Convey("A store controller with sub stores still enables push", t, func() {
+		storeController, sch, logger := newTestSyncExtensionDeps(t)
+		storeController.SubStore = map[string]storageTypes.ImageStore{"sub": storeController.DefaultStore}
+		enabled := true
+
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{
+				Registries: []syncconf.RegistryConfig{
+					{
+						PollInterval: time.Hour,
+						Content:      []syncconf.Content{{Prefix: "library/**"}},
+						Push: &syncconf.PushConfig{
+							Enabled: &enabled,
+							URLs:    []string{"https://push-destination.invalid:5000"},
+						},
+					},
+				},
+			},
+		}
+
+		onDemand, err := extensions.EnableSyncExtension(conf, nil, storeController, sch, nil, logger)
+		So(err, ShouldBeNil)
+		So(onDemand, ShouldNotBeNil)
+	})
+}
+
+// TestEnableSyncExtensionPushInvalidURL: a destination that is not a registry url fails startup
+// instead of being skipped.
+func TestEnableSyncExtensionPushInvalidURL(t *testing.T) {
+	Convey("An unusable destination url fails enabling the extension", t, func() {
+		storeController, sch, logger := newTestSyncExtensionDeps(t)
+		enabled := true
+
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{
+				Registries: []syncconf.RegistryConfig{
+					{
+						PollInterval: time.Hour,
+						Content:      []syncconf.Content{{Prefix: "library/**"}},
+						Push: &syncconf.PushConfig{
+							Enabled: &enabled,
+							URLs:    []string{"https://"},
+						},
 					},
 				},
 			},
