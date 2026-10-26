@@ -2040,8 +2040,17 @@ func validateSyncPush(regID int, regCfg syncconf.RegistryConfig, logger zlog.Log
 
 	for _, rawURL := range push.URLs {
 		parsed, err := url.Parse(rawURL)
-		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return invalid(fmt.Sprintf("push.urls entry %q is not an http(s) registry url", rawURL))
+		if err != nil {
+			// No echo of the value: a malformed url can still contain a credential.
+			return invalid("a push.urls entry is not a parsable url")
+		}
+
+		if parsed.User != nil {
+			return invalid("push.urls must not carry credentials, put them in sync.credentialsFile")
+		}
+
+		if parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return invalid(fmt.Sprintf("push.urls entry %q is not an http(s) registry url", parsed.Redacted()))
 		}
 	}
 

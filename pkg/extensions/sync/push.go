@@ -80,13 +80,14 @@ func NewPushDestination(rawURL string, push *syncconf.PushConfig, parent synccon
 		return nil, err
 	}
 
-	return newPushDestinationFromClient(client, parsed, rawURL, log), nil
+	return newPushDestinationFromClient(client, parsed, log), nil
 }
 
-func newPushDestinationFromClient(client *regclient.RegClient, parsed *url.URL, rawURL string,
-	log log.Logger,
-) *PushDestination {
-	return &PushDestination{rc: client, url: rawURL, host: parsed.Host, log: log}
+func newPushDestinationFromClient(client *regclient.RegClient, parsed *url.URL, log log.Logger) *PushDestination {
+	// Redacted keeps scheme, host and port and masks a password if one ever reaches this point.
+	// Config validation rejects userinfo outright; this is the second line of defence, because
+	// this string ends up in logs and in every error message about a destination.
+	return &PushDestination{rc: client, url: parsed.Redacted(), host: parsed.Host, log: log}
 }
 
 // InitPushMode builds one client per destination. None of them shares the service's client:

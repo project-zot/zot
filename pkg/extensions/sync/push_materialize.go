@@ -46,6 +46,23 @@ func (service *BaseService) newPushStaging(repo, reference string) (ref.Ref, sto
 func (service *BaseService) materializeTree(ctx context.Context, source, staging storageTypes.ImageStore,
 	repo string, digest godigest.Digest, mediaType string, platforms []string,
 ) error {
+	return service.materializeInto(ctx, source, staging, repo, digest, mediaType, platforms,
+		map[godigest.Digest]struct{}{})
+}
+
+// materializeInto is materializeTree with the set of manifests this walk already handled. Digest
+// addressing makes a cycle infeasible, but a diamond-shaped index would otherwise be walked once
+// per path, and nothing stops a repository from containing a deeply nested chain of indexes.
+func (service *BaseService) materializeInto(ctx context.Context, source, staging storageTypes.ImageStore,
+	repo string, digest godigest.Digest, mediaType string, platforms []string,
+	seen map[godigest.Digest]struct{},
+) error {
+	if _, handled := seen[digest]; handled {
+		return nil
+	}
+
+	seen[digest] = struct{}{}
+
 	if present, _, _, err := staging.StatBlob(repo, digest); err == nil && present {
 		return nil
 	}
@@ -63,7 +80,7 @@ func (service *BaseService) materializeTree(ctx context.Context, source, staging
 
 	// Children and blobs go first: PutImageManifest validates the tree it is handed, so a
 	// manifest written before its content would be rejected by the store itself.
-	if err := service.materializeChildren(ctx, source, staging, repo, man, platforms); err != nil {
+	if err := service.materializeChildren(ctx, source, staging, repo, man, platforms, seen); err != nil {
 		return err
 	}
 
@@ -76,7 +93,7 @@ func (service *BaseService) materializeTree(ctx context.Context, source, staging
 
 // materializeChildren walks one parsed manifest and materializes everything it references.
 func (service *BaseService) materializeChildren(ctx context.Context, source, staging storageTypes.ImageStore,
-	repo string, man manifest.Manifest, platforms []string,
+	repo string, man manifest.Manifest, platforms []string, seen map[godigest.Digest]struct{},
 ) error {
 	// Every regclient manifest type implements exactly one of Indexer and Imager.
 	switch typed := man.(type) {
@@ -98,7 +115,8 @@ func (service *BaseService) materializeChildren(ctx context.Context, source, sta
 				}
 			}
 
-			if err := service.materializeTree(ctx, source, staging, repo, child.Digest, child.MediaType, platforms); err != nil {
+			err := service.materializeInto(ctx, source, staging, repo, child.Digest, child.MediaType, platforms, seen)
+			if err != nil {
 				return err
 			}
 		}

@@ -3,6 +3,7 @@ package server
 import (
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -99,6 +100,29 @@ func TestSyncPushConfig(t *testing.T) {
 			}`)
 
 			So(LoadConfiguration(config.New(), noURLs), ShouldNotBeNil)
+		})
+
+		Convey("Credentials in a destination url are rejected and not echoed", func() {
+			withCreds := writePushConfig(t, `{
+				"distSpecVersion": "1.1.1",
+				"storage": {"rootDirectory": "/tmp/zot-push-config-test"},
+				"http": {"address": "127.0.0.1", "port": "8080"},
+				"extensions": {
+					"sync": {
+						"enable": true,
+						"registries": [{
+							"pollInterval": "6h",
+							"content": [{"prefix": "library/**"}],
+							"push": {"enabled": true, "urls": ["https://user:token@zot.edge:5000"]}
+						}]
+					}
+				}
+			}`)
+
+			err := LoadConfiguration(config.New(), withCreds)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "must not carry credentials")
+			So(strings.Contains(err.Error(), "token"), ShouldBeFalse)
 		})
 
 		Convey("An entry may pull and push at once", func() {

@@ -1570,6 +1570,11 @@ the same fields:
 The allowlist is mandatory. Without `content` there is nothing to select, and an empty list used
 to mean "the whole store"; state that on purpose with `{"prefix": "**"}` if that is what you want.
 
+`tlsVerify: false` keeps TLS but skips verification, and credentials then travel over an
+unverified connection; an `http://` url turns TLS off entirely. Use either only on a network you
+trust. Credentials belong in `sync.credentialsFile`, never in `push.urls` - a url carrying
+credentials is rejected at config load.
+
 One entry can have both `urls` and `push.urls`: the content list is then read in both
 directions, upstream names for the pull side and local names for the push side (the
 `destination` and `stripPrefix` rules are applied in reverse, see `GetContentByLocalRepo`). If a

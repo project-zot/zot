@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -483,4 +484,16 @@ func TestContentFirstMatchWins(t *testing.T) {
 
 func strPtr(value string) *string {
 	return &value
+}
+
+func TestPushDestinationRedactsCredentials(t *testing.T) {
+	Convey("A destination url never carries a password into logs or errors", t, func() {
+		destination, err := NewPushDestination("https://user:secret@zot.edge:5000",
+			&syncconf.PushConfig{}, syncconf.RegistryConfig{}, nil, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		So(destination.URL(), ShouldContainSubstring, "zot.edge:5000")
+		So(strings.Contains(destination.URL(), "secret"), ShouldBeFalse)
+		So(destination.URL(), ShouldContainSubstring, "xxxxx")
+	})
 }
