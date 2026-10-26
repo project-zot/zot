@@ -121,6 +121,14 @@ Notes:
   (`reqConcurrent`), so a client may subscribe before that blob's download starts. The copier
   waits until it starts, the client disconnects, or teardown's `Abort` (the sync itself is
   bounded by `syncTimeout`).
+- **Priority download.** A blob a client is waiting on is not left in that queue. When a client
+  connects to a stream whose download has not started, the manager also opens the blob through
+  a second regclient (`BaseService.priorityRC`), built from the same registry config but with its
+  own per-host `reqConcurrent` and `reqPerSec` budget. Whichever download starts first feeds the
+  stream: the other drops its reader (the queued one waits for the blob like another sync would),
+  so the blob is fetched once. Only one priority download is started per blob; if it can't open the
+  blob, the sync's download is unaffected. It runs only while the sync is in `DownloadStreamedBlobs`,
+  under that sync's context.
 - **Blob GET after commit.** The sync commits a blob before its stream is torn down. A GET that
   finds neither storage nor a stream rechecks storage. `HEAD` and `Range` GETs follow the same
   order. A range is served from the stream only for a single range; a multi-range request gets
