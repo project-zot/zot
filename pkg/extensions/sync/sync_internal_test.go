@@ -3535,7 +3535,7 @@ func (f *fakeStreamManagerForOnDemand) ConnectClient(_, _ string, _ io.Writer) (
 	return nil, zerr.ErrBlobNotFoundInActiveStreams
 }
 
-func (f *fakeStreamManagerForOnDemand) DownloadStreamedBlobs(_ context.Context, _, _ string, _ BlobFetcher,
+func (f *fakeStreamManagerForOnDemand) DownloadStreamedBlobs(_ context.Context, _, _ string, _, _ BlobFetcher,
 ) map[godigest.Digest]string {
 	return nil
 }
