@@ -48,15 +48,6 @@ func (s concurrentReadSafeStore) ConcurrentReadSafe() bool {
 	return true
 }
 
-type idleDeleteMockStore struct {
-	mocks.MockedImageStore
-	deleteIfIdleFn func(repo, uuid string) (bool, error)
-}
-
-func (s *idleDeleteMockStore) DeleteBlobUploadIfIdle(repo, uuid string) (bool, error) {
-	return s.deleteIfIdleFn(repo, uuid)
-}
-
 var (
 	errGC    = errors.New("gc error")
 	repoName = "test" //nolint: gochecknoglobals
@@ -358,11 +349,11 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 				StatBlobUploadFn: func(repo, uuid string) (bool, int64, time.Time, error) {
 					return true, 1024, time.Now().Add(-2 * time.Hour), nil
 				},
-				DeleteBlobUploadFn: func(repo, uuid string) error {
+				DeleteBlobUploadIfIdleFn: func(repo, uuid string) (bool, error) {
 					So(uuid, ShouldEqual, uploadUUID)
 					deletedUpload = true
 
-					return nil
+					return true, nil
 				},
 				PutIndexContentFn: func(repo string, index ispec.Index) error {
 					So(deletedUpload, ShouldBeTrue)
@@ -2095,21 +2086,14 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 
 		Convey("deleteBlobUploads uses non-blocking upload cleanup", func() {
 			called := false
-			imgStore := &idleDeleteMockStore{
-				MockedImageStore: mocks.MockedImageStore{
-					ListBlobUploadsFn: func(repo string) ([]string, error) {
-						return []string{"upload-1"}, nil
-					},
-					StatBlobUploadFn: func(repo, uuid string) (bool, int64, time.Time, error) {
-						return true, 1024, time.Now().Add(-2 * time.Hour), nil
-					},
-					DeleteBlobUploadFn: func(repo, uuid string) error {
-						So(false, ShouldBeTrue)
-
-						return nil
-					},
+			imgStore := mocks.MockedImageStore{
+				ListBlobUploadsFn: func(repo string) ([]string, error) {
+					return []string{"upload-1"}, nil
 				},
-				deleteIfIdleFn: func(repo, uuid string) (bool, error) {
+				StatBlobUploadFn: func(repo, uuid string) (bool, int64, time.Time, error) {
+					return true, 1024, time.Now().Add(-2 * time.Hour), nil
+				},
+				DeleteBlobUploadIfIdleFn: func(repo, uuid string) (bool, error) {
 					called = true
 
 					return false, nil

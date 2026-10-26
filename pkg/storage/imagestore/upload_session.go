@@ -8,7 +8,10 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 )
 
-const maxUploadSessionIDLength = 255
+const (
+	maxStoragePathComponentLength = 255
+	maxUploadSessionIDLength      = maxStoragePathComponentLength
+)
 
 type uploadSessionState uint32
 
@@ -137,6 +140,20 @@ func (session *uploadSession) tryCleanupSealed(callback func() error) (bool, err
 func validateUploadSessionID(uuid string) error {
 	if uuid == "" || len(uuid) > maxUploadSessionIDLength || strings.IndexByte(uuid, 0) >= 0 {
 		return zerr.ErrUploadNotFound
+	}
+
+	return nil
+}
+
+func validateUploadPath(repo, uuid string) error {
+	if err := validateUploadSessionID(uuid); err != nil {
+		return err
+	}
+
+	for component := range strings.SplitSeq(repo, "/") {
+		if len(component) > maxStoragePathComponentLength {
+			return zerr.ErrUploadNotFound
+		}
 	}
 
 	return nil

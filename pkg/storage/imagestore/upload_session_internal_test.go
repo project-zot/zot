@@ -104,6 +104,25 @@ func TestInvalidUploadIDDoesNotRegisterSession(t *testing.T) {
 	}
 }
 
+func TestOverlongRepositoryPathDoesNotRegisterSession(t *testing.T) {
+	root := t.TempDir()
+	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}}
+	repo := strings.Repeat("r", maxStoragePathComponentLength+1)
+	uuid := "upload"
+
+	if err := store.DeleteBlobUpload(repo, uuid); !errors.Is(err, zerr.ErrUploadNotFound) {
+		t.Fatalf("DeleteBlobUpload error = %v, want ErrUploadNotFound", err)
+	}
+
+	src := store.BlobUploadPath(repo, uuid)
+	store.uploads.lock.Lock()
+	_, exists := store.uploads.sessions[src]
+	store.uploads.lock.Unlock()
+	if exists {
+		t.Fatal("overlong repository path was retained in the registry")
+	}
+}
+
 func TestSuccessfulIdleDeleteRemovesSession(t *testing.T) {
 	driver := &successfulDeleteDriver{}
 	store := &ImageStore{rootDir: t.TempDir(), storeDriver: driver}

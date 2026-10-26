@@ -1283,7 +1283,7 @@ func (is *ImageStore) NewBlobUpload(ctx context.Context, repo string) (string, e
 
 // GetBlobUpload returns the current size of a blob upload.
 func (is *ImageStore) GetBlobUpload(repo, uuid string) (int64, error) {
-	if err := validateUploadSessionID(uuid); err != nil {
+	if err := validateUploadPath(repo, uuid); err != nil {
 		return -1, err
 	}
 
@@ -1373,7 +1373,7 @@ func (is *ImageStore) cleanupUploadSessionIfMissing(src string, session *uploadS
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
 func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid string, body io.Reader) (int64, error) {
-	if err := validateUploadSessionID(uuid); err != nil {
+	if err := validateUploadPath(repo, uuid); err != nil {
 		return -1, err
 	}
 
@@ -1406,7 +1406,7 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from, to int64,
 	body io.Reader,
 ) (int64, error) {
-	if err := validateUploadSessionID(uuid); err != nil {
+	if err := validateUploadPath(repo, uuid); err != nil {
 		return -1, err
 	}
 
@@ -1445,7 +1445,7 @@ func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from,
 
 // BlobUploadInfo returns the current blob size in bytes.
 func (is *ImageStore) BlobUploadInfo(repo, uuid string) (int64, error) {
-	if err := validateUploadSessionID(uuid); err != nil {
+	if err := validateUploadPath(repo, uuid); err != nil {
 		return -1, err
 	}
 
@@ -1469,7 +1469,7 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	if err := dstDigest.Validate(); err != nil {
 		return err
 	}
-	if err := validateUploadSessionID(uuid); err != nil {
+	if err := validateUploadPath(repo, uuid); err != nil {
 		return err
 	}
 
@@ -1928,7 +1928,7 @@ func (is *ImageStore) DeleteBlobUploadIfIdle(repo, uuid string) (bool, error) {
 }
 
 func (is *ImageStore) deleteBlobUpload(repo, uuid string, wait bool) (bool, error) {
-	if err := validateUploadSessionID(uuid); err != nil {
+	if err := validateUploadPath(repo, uuid); err != nil {
 		if !wait && errors.Is(err, zerr.ErrUploadNotFound) {
 			return false, nil
 		}

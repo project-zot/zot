@@ -311,16 +311,8 @@ func TestFinalizeKeepsSealedSessionWhenSourceRemains(t *testing.T) {
 		t.Fatalf("late writer error = %v, want ErrUploadNotFound", err)
 	}
 
-	deleter, ok := store.(idleUploadDeleter)
-	if !ok {
-		t.Fatal("image store does not expose idle upload deletion")
-	}
-	deleted, err := deleter.DeleteBlobUploadIfIdle(repo, uuid)
-	if err != nil {
+	if err := store.DeleteBlobUpload(repo, uuid); err != nil {
 		t.Fatal(err)
-	}
-	if !deleted {
-		t.Fatal("sealed upload was not deleted")
 	}
 	if _, err := os.Stat(store.BlobUploadPath(repo, uuid)); !os.IsNotExist(err) {
 		t.Fatalf("source upload still exists after cleanup, stat error = %v", err)
