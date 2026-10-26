@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -286,6 +287,8 @@ func (d *DynamoDBDriver) PutDuplicate(digest godigest.Digest, path string) error
 		if isConditionalCheckFailed(err) {
 			return zerr.ErrCacheMiss
 		}
+
+		err = capacityError(err)
 
 		d.log.Error().Err(err).Str("digest", digest.String()).Str("path", path).Msg("failed to put duplicate")
 
@@ -640,10 +643,31 @@ func (d *DynamoDBDriver) putDuplicateBlob(digest godigest.Digest, origin, path s
 	attrPaths := types.AttributeValueMemberSS{Value: []string{path}}
 	originPath := types.AttributeValueMemberS{Value: origin}
 
-	return d.updateItem(digest, expression, map[string]types.AttributeValue{
+	err := d.updateItem(digest, expression, map[string]types.AttributeValue{
 		":i":      &attrPaths,
 		":origin": &originPath,
 	}, &condition)
+
+	return capacityError(err)
+}
+
+// capacityError wraps err in ErrCacheFull when DynamoDB rejected a write because the record
+// would grow past its item size limit. A digest shared by many repositories tracks one path
+// per copy in a single item, so this is reached by the most widely shared digests. DynamoDB has
+// no error code of its own for it: the error is a ValidationException that names the item size.
+func capacityError(err error) error {
+	var apiErr smithy.APIError
+
+	if err == nil || !errors.As(err, &apiErr) || apiErr.ErrorCode() != "ValidationException" {
+		return err
+	}
+
+	message := apiErr.ErrorMessage()
+	if strings.Contains(message, "Item size") && strings.Contains(message, "exceeded the maximum allowed size") {
+		return fmt.Errorf("%w: %w", zerr.ErrCacheFull, err)
+	}
+
+	return err
 }
 
 func (d *DynamoDBDriver) updateItem(digest godigest.Digest, expression string,
