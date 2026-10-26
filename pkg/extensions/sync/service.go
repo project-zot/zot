@@ -96,6 +96,9 @@ type BaseService struct {
 	// SyncRepo index/child ensures).
 	imageFlight   singleflight.Group
 	streamManager StreamManager
+	// pushTargets are the destination registries of a push entry, one client per destination.
+	// Empty for a pull entry.
+	pushTargets []*PushDestination
 
 	clientLock sync.RWMutex
 	log        log.Logger

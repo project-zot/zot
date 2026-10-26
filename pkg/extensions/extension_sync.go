@@ -3,6 +3,7 @@
 package extensions
 
 import (
+	"fmt"
 	"net"
 	"net/url"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 // EnableSyncExtension builds the sync services for config. prev is the SyncOnDemand from before a
@@ -42,6 +44,16 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		)
 
 		for _, registryConfig := range syncConfig.Registries {
+			if registryConfig.IsPushEnabled() {
+				if err := enablePushEntry(registryConfig, syncConfig, config, storeController, metaDB, sch, log); err != nil {
+					log.Error().Err(err).Msg("failed to enable sync push mode")
+
+					return nil, err
+				}
+
+				continue
+			}
+
 			if len(registryConfig.URLs) > 1 {
 				if err := removeSelfURLs(httpAddress, httpPort, &registryConfig, log); err != nil {
 					return nil, err
@@ -121,6 +133,68 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 	log.Info().Msg("sync config not provided or disabled, so not enabling sync")
 
 	return nil, nil //nolint: nilnil
+}
+
+// enablePushEntry starts the outbound loop for one push registry entry: one generator per
+// image store, each walking that store's repository catalog.
+func enablePushEntry(registryConfig syncconf.RegistryConfig, syncConfig *syncconf.Config, config *config.Config,
+	storeController storage.StoreController, metaDB mTypes.MetaDB, sch *scheduler.Scheduler, log log.Logger,
+) error {
+	push := registryConfig.Push
+
+	pullConfig := registryConfig
+	// push.URLs names destinations, not sources: the first one backs the service's own client,
+	// and InitPushMode adds one client per further destination.
+	pullConfig.URLs = push.URLs[:1]
+	pullConfig.TLSVerify = push.TLSVerify
+	pullConfig.CertDir = push.CertDir
+	// A push entry has no upstream. Leaving the pull-only switches in place would make the
+	// service answer on-demand requests for a registry it never pulls from.
+	pullConfig.OnDemand = false
+	pullConfig.OnDemandInBackground = nil
+	pullConfig.Stream = nil
+	pullConfig.ManifestCheckInterval = 0
+	pullConfig.OnlySigned = nil
+
+	service, err := sync.New(pullConfig, syncConfig.CredentialsFile, config.CopyClusterConfig(),
+		syncConfig.DownloadDir, storeController, nil, metaDB, log)
+	if err != nil {
+		return err
+	}
+
+	if err := service.InitPushMode(); err != nil {
+		return err
+	}
+
+	interval := registryConfig.PollInterval
+	if interval == 0 {
+		return fmt.Errorf("push registry entry needs a pollInterval: %w", zerr.ErrSyncInvalidURL)
+	}
+
+	for _, store := range pushImageStores(storeController) {
+		generator := sync.NewPushTaskGenerator(service, []storageTypes.ImageStore{store}, log)
+		sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
+	}
+
+	return nil
+}
+
+// pushImageStores returns every store that can hold local content: the default store plus any
+// route-specific sub stores.
+func pushImageStores(storeController storage.StoreController) []storageTypes.ImageStore {
+	subStores := storeController.GetImageSubStores()
+	if len(subStores) == 0 {
+		return []storageTypes.ImageStore{storeController.GetDefaultImageStore()}
+	}
+
+	stores := make([]storageTypes.ImageStore, 0, len(subStores)+1)
+	stores = append(stores, storeController.GetDefaultImageStore())
+
+	for _, store := range subStores {
+		stores = append(stores, store)
+	}
+
+	return stores
 }
 
 // reuseOrNewStreamManager returns prev's stream manager, not yet resized (EnableSyncExtension does

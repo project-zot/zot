@@ -1932,6 +1932,10 @@ func validateRegistryStreamingSyncConfig(regCfg syncconf.RegistryConfig) error {
 }
 
 func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	if pushErr := validateSyncPush(regID, regCfg, logger); pushErr != nil {
+		return pushErr
+	}
+
 	if bgValidationErr := validateRegistryOnDemandInBackground(regCfg); bgValidationErr != nil {
 		logger.Error().Err(bgValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
 			regCfg).Msg("invalid config for onDemandInBackground")
@@ -2007,6 +2011,60 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 	}
 
 	return validateSyncContent(config, regCfg, logger)
+}
+
+// validateSyncPush checks the outbound half of a registry entry. A push entry has no upstream,
+// so the pull-only switches are rejected instead of silently ignored, and a destination list is
+// required when the loop is enabled.
+func validateSyncPush(regID int, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	push := regCfg.Push
+	if push == nil {
+		return nil
+	}
+
+	invalid := func(msg string) error {
+		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id].push",
+			push).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	if !push.IsEnabled() {
+		return nil
+	}
+
+	if len(push.URLs) == 0 {
+		return invalid("push.urls must list at least one destination registry")
+	}
+
+	for _, rawURL := range push.URLs {
+		parsed, err := url.Parse(rawURL)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return invalid(fmt.Sprintf("push.urls entry %q is not an http(s) registry url", rawURL))
+		}
+	}
+
+	if regCfg.PollInterval == 0 {
+		return invalid("pollInterval is required for a push registry: it is the push loop interval")
+	}
+
+	if regCfg.OnDemand {
+		return invalid("onDemand cannot be combined with push: a push entry has no upstream to pull from")
+	}
+
+	if regCfg.Stream != nil && *regCfg.Stream {
+		return invalid("stream cannot be combined with push: streaming requires onDemand")
+	}
+
+	if regCfg.ManifestCheckInterval != 0 {
+		return invalid("manifestCheckInterval cannot be combined with push: it schedules upstream checks")
+	}
+
+	if regCfg.OnlySigned != nil && *regCfg.OnlySigned {
+		return invalid("onlySigned is a pull-side gate: a push cannot verify what it never fetched")
+	}
+
+	return nil
 }
 
 // invalidOptionalPositiveFloat reports whether an optional float setting is set to a value that is

@@ -67,8 +67,31 @@ func effectivePeriodicPlatforms(content *syncconf.Content, registryDefault []str
 
 // FilterTags filters a repo tags based on content config rules (semver, regex).
 func (cm ContentManager) FilterTags(repo string, tags []string) ([]string, error) {
-	content := cm.getContentByUpstreamRepo(repo)
+	return cm.filterTags(cm.getContentByUpstreamRepo(repo), tags)
+}
 
+// FilterLocalTags is FilterTags for a local repo name, so the push loop applies the same tag
+// rules the pull loop applies upstream.
+func (cm ContentManager) FilterLocalTags(repo string, tags []string) ([]string, error) {
+	return cm.filterTags(cm.GetContentByLocalRepo(repo), tags)
+}
+
+// MatchesLocalRepo reports whether a local repo may leave the store. No content rules at all
+// means the whole store: an operator who configured no allowlist asked for a mirror.
+func (cm ContentManager) MatchesLocalRepo(repo string) bool {
+	if len(cm.contents) == 0 {
+		return true
+	}
+
+	return cm.GetContentByLocalRepo(repo) != nil
+}
+
+// EffectiveLocalPlatforms is EffectivePlatforms for a local repo name.
+func (cm ContentManager) EffectiveLocalPlatforms(repo string, registryDefault []string) []string {
+	return effectivePeriodicPlatforms(cm.GetContentByLocalRepo(repo), registryDefault)
+}
+
+func (cm ContentManager) filterTags(content *syncconf.Content, tags []string) ([]string, error) {
 	var err error
 	// filter based on tags rules
 	if content != nil && content.Tags != nil {

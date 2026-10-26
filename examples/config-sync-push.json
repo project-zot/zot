@@ -1,0 +1,36 @@
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "enable": true,
+            "credentialsFile": "./examples/sync-auth-filepath.json",
+            "registries": [
+                {
+                    "pollInterval": "6h",
+                    "content": [
+                        {
+                            "prefix": "library/**"
+                        }
+                    ],
+                    "push": {
+                        "enabled": true,
+                        "urls": [
+                            "https://zot.edge.example:5000"
+                        ],
+                        "tlsVerify": true
+                    }
+                }
+            ]
+        }
+    }
+}
