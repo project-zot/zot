@@ -43,6 +43,23 @@ Driver/walk misbehaves → return real error (or distinguish empty vs failed)
               _catalog → 500 / logs; parseStorage → err, no silent trust
 ```
 
+### What upstream #4514 already covers (2026-10-05)
+
+`fix(storage): fail closed on GC, dedupe, and incomplete listings` (#4514) moved part of the way
+there for `GetRepositories()`:
+
+- A walk that fails with an error other than "missing" now returns `nil, err` rather than a
+  partial list, so `parseStorage()` gets the error instead of trusting what was listed.
+- A walk that fails with "missing" (`errclass.IsStorageObjectMissing`) is accepted as an empty
+  store only if `confirmEmptyStore()` finds the root absent or empty by listing it; a nested
+  directory that vanished mid-walk (local, GCS/Azure fallback walks) is reported as an
+  incomplete listing instead.
+
+It does **not** cover the S3 case in the audit below: on an empty or wrongly scoped prefix, S3
+`Walk` returns no error and no entries, so `confirmEmptyStore()` never runs and `[] + nil` is
+still trusted. That is the case #4338's guard catches, and why Symptom B remains mitigated, not
+root-caused. Symptom A is untouched: `GetNextRepositories()` still soft-skips by design.
+
 ## S3 Walk audit (2026-08-20)
 
 Empirical results from calling the vendored `distribution/distribution` S3 driver directly
@@ -62,7 +79,8 @@ image zot's CI uses).
 from "walk silently found nothing" on S3, because `Walk` returns the identical `(nil, [])` for
 both. `Stat(rootDir)` *does* carry that distinction. A root-cause fix could call `Stat` first to
 decide whether an empty `Walk` result is trustworthy — reserving `PathNotFoundError` → empty
-only for a provably uninitialized root, as suggested in review.
+only for a provably uninitialized root, as suggested in review. (#4514's `confirmEmptyStore()`
+only runs after a walk error, so it does not apply here; see above.)
 
 **Not reproducible locally**: IAM-denied access. LocalStack community edition doesn't enforce
 IAM policies. This needs either a real AWS bucket with a restrictive policy, or evidence from
