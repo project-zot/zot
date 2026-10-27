@@ -23,10 +23,11 @@ import (
 
 const testManifestCheckTable = "ManifestCheckTable"
 
-// fakeDynamoTransport stands in for DynamoDB without an emulator. It keeps PutItem items in a
-// map keyed by the Digest attribute and answers GetItem from it. Each action can be made to
-// fail with an InternalServerError, and the whole transport can be made to block until the
-// request is cancelled.
+// fakeDynamoTransport stands in for DynamoDB without an emulator. It keeps items in a map keyed
+// by the Digest attribute and answers GetItem, PutItem, UpdateItem and DeleteItem from it,
+// evaluating the condition expressions the manifest check and sync lease stores issue. Each
+// action can be made to fail with an InternalServerError, and the whole transport can be made
+// to block until the request is cancelled.
 type fakeDynamoTransport struct {
 	mu          sync.Mutex
 	items       map[string]map[string]any
@@ -49,9 +50,11 @@ func (t *fakeDynamoTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	}
 
 	var reqBody struct {
-		TableName string
-		Key       map[string]any
-		Item      map[string]any
+		TableName                 string
+		Key                       map[string]any
+		Item                      map[string]any
+		ConditionExpression       string
+		ExpressionAttributeValues map[string]map[string]any
 	}
 
 	rawBody, _ := io.ReadAll(req.Body)
@@ -79,18 +82,45 @@ func (t *fakeDynamoTransport) RoundTrip(req *http.Request) (*http.Response, erro
 			`{"__type":"com.amazonaws.dynamodb.v20120810#ResourceNotFoundException","message":"no such table"}`), nil
 	}
 
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	switch action {
 	case "PutItem":
-		t.mu.Lock()
-		t.items[digestAttr(reqBody.Item)] = reqBody.Item
-		t.mu.Unlock()
+		key := digestAttr(reqBody.Item)
+		existing, exists := t.items[key]
+
+		if reqBody.ConditionExpression != "" &&
+			exists && !leaseExpired(existing, reqBody.ExpressionAttributeValues) &&
+			!ownerMatches(existing, reqBody.ExpressionAttributeValues) {
+			return conditionFailed(), nil
+		}
+
+		t.items[key] = reqBody.Item
+
+		return dynamoResponse(http.StatusOK, "{}"), nil
+	case "UpdateItem":
+		existing, exists := t.items[digestAttr(reqBody.Key)]
+		if !exists || !ownerMatches(existing, reqBody.ExpressionAttributeValues) {
+			return conditionFailed(), nil
+		}
+
+		existing["ExpiresAt"] = reqBody.ExpressionAttributeValues[":exp"]
+
+		return dynamoResponse(http.StatusOK, "{}"), nil
+	case "DeleteItem":
+		key := digestAttr(reqBody.Key)
+
+		existing, exists := t.items[key]
+		if !exists || !ownerMatches(existing, reqBody.ExpressionAttributeValues) {
+			return conditionFailed(), nil
+		}
+
+		delete(t.items, key)
 
 		return dynamoResponse(http.StatusOK, "{}"), nil
 	case "GetItem":
-		t.mu.Lock()
 		item, ok := t.items[digestAttr(reqBody.Key)]
-		t.mu.Unlock()
-
 		if !ok {
 			return dynamoResponse(http.StatusOK, "{}"), nil
 		}
@@ -110,6 +140,30 @@ func digestAttr(attrs map[string]any) string {
 	value, _ := digest["S"].(string)
 
 	return value
+}
+
+// ownerMatches reports whether item's Owner attribute equals the :owner expression value.
+func ownerMatches(item map[string]any, values map[string]map[string]any) bool {
+	owner, _ := item["Owner"].(map[string]any)
+
+	return owner["S"] == values[":owner"]["S"]
+}
+
+// leaseExpired reports whether item's ExpiresAt attribute is before the :now expression value.
+func leaseExpired(item map[string]any, values map[string]map[string]any) bool {
+	expires, _ := item["ExpiresAt"].(map[string]any)
+	expiresAt, _ := expires["N"].(string)
+	now, _ := values[":now"]["N"].(string)
+
+	expiresEpoch, _ := strconv.ParseInt(expiresAt, 10, 64)
+	nowEpoch, _ := strconv.ParseInt(now, 10, 64)
+
+	return expiresAt != "" && expiresEpoch < nowEpoch
+}
+
+func conditionFailed() *http.Response {
+	return dynamoResponse(http.StatusBadRequest,
+		`{"__type":"com.amazonaws.dynamodb.v20120810#ConditionalCheckFailedException","message":"condition failed"}`)
 }
 
 func dynamoResponse(status int, body string) *http.Response {
@@ -150,6 +204,24 @@ func (t *fakeDynamoTransport) callCount(action string) int {
 	return count
 }
 
+// item returns a copy of the stored item for key, or nil when absent.
+func (t *fakeDynamoTransport) item(key string) map[string]any {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	item, ok := t.items[key]
+	if !ok {
+		return nil
+	}
+
+	clone := make(map[string]any, len(item))
+	for name, value := range item {
+		clone[name] = value
+	}
+
+	return clone
+}
+
 // lastChecked returns the stored LastChecked attribute of key, or false when absent.
 func (t *fakeDynamoTransport) lastChecked(key string) (int64, bool) {
 	t.mu.Lock()
@@ -187,19 +259,21 @@ func (t *fakeDynamoTransport) corrupt(key string) {
 	t.items[key]["LastChecked"] = map[string]any{"S": "not-a-timestamp"}
 }
 
-func newFakeDynamoManifestCheckTracker(interval time.Duration, transport *fakeDynamoTransport,
-	urls ...string,
-) *dynamoManifestCheckTracker {
-	client := dynamodb.New(dynamodb.Options{
+func newFakeDynamoClient(transport *fakeDynamoTransport) *dynamodb.Client {
+	return dynamodb.New(dynamodb.Options{
 		Region:           "us-east-2",
 		BaseEndpoint:     aws.String("http://dynamodb.invalid"),
 		Credentials:      aws.AnonymousCredentials{},
 		HTTPClient:       &http.Client{Transport: transport},
 		RetryMaxAttempts: 1,
 	})
+}
 
+func newFakeDynamoManifestCheckTracker(interval time.Duration, transport *fakeDynamoTransport,
+	urls ...string,
+) *dynamoManifestCheckTracker {
 	return &dynamoManifestCheckTracker{
-		client:    client,
+		client:    newFakeDynamoClient(transport),
 		tableName: testManifestCheckTable,
 		keyPrefix: manifestCheckKeyPrefix + manifestCheckNamespace(urls) + "#",
 		interval:  interval,
