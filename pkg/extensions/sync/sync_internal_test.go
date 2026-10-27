@@ -3472,6 +3472,31 @@ func TestNewManifestCheckStore(t *testing.T) {
 
 		_, ok := service.checkTracker.(*dynamoManifestCheckTracker)
 		So(ok, ShouldBeTrue)
+		So(service.syncLease, ShouldBeNil)
+	})
+
+	Convey("coordinateOnDemand wires a lease coordinator on the same table", t, func() {
+		service, err := New(syncconf.RegistryConfig{
+			URLs:                  []string{"localhost:9999"},
+			OnDemand:              true,
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore: &syncconf.ManifestCheckStoreConfig{
+				Name:               "dynamodb",
+				TableName:          "test-table",
+				Region:             "us-west-2",
+				CoordinateOnDemand: true,
+			},
+		}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{},
+			log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.syncLease, ShouldNotBeNil)
+		So(service.syncLease.owner, ShouldNotBeEmpty)
+
+		leaseStore, ok := service.syncLease.store.(*dynamoSyncLeaseStore)
+		So(ok, ShouldBeTrue)
+		So(leaseStore.tableName, ShouldEqual, "test-table")
+		So(leaseStore.keyPrefix, ShouldEqual,
+			syncLeaseKeyPrefix+manifestCheckNamespace([]string{"localhost:9999"})+"#")
 	})
 }
 

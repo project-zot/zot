@@ -4407,6 +4407,22 @@ func TestManifestCheckIntervalConfig(t *testing.T) {
 			So(store.Name, ShouldEqual, "dynamodb")
 			So(store.TableName, ShouldEqual, "t")
 			So(store.Region, ShouldEqual, "us-east-2")
+			So(store.CoordinateOnDemand, ShouldBeFalse)
+		})
+
+		Convey("Parse coordinateOnDemand under manifestCheckStore", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "manifestCheckInterval": "10m",
+				"manifestCheckStore": {"name": "dynamodb", "tableName": "t", "region": "us-east-2",
+				"coordinateOnDemand": true}}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.Extensions.Sync.Registries[0].ManifestCheckStore.CoordinateOnDemand, ShouldBeTrue)
 		})
 
 		Convey("Reject manifestCheckStore without manifestCheckInterval", func() {
