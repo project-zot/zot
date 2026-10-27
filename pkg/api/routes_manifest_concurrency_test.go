@@ -1,0 +1,207 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/gorilla/mux"
+	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/stretchr/testify/require"
+
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/local"
+	image "zotregistry.dev/zot/v2/pkg/test/image-utils"
+)
+
+type delayedManifestMetaDB struct {
+	mTypes.MetaDB
+
+	method  string
+	digest  godigest.Digest
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (db *delayedManifestMetaDB) SetRepoReference(ctx context.Context, repo, reference string,
+	imageMeta mTypes.ImageMeta, opts ...mTypes.SetRepoReferenceOption,
+) error {
+	if db.method == http.MethodPut && repo == "repo" && reference == "latest" && imageMeta.Digest == db.digest {
+		close(db.entered)
+		<-db.release
+	}
+
+	return db.MetaDB.SetRepoReference(ctx, repo, reference, imageMeta, opts...)
+}
+
+func (db *delayedManifestMetaDB) RemoveRepoReference(repo, reference string, digest godigest.Digest) error {
+	if db.method == http.MethodDelete && repo == "repo" {
+		close(db.entered)
+		<-db.release
+	}
+
+	return db.MetaDB.RemoveRepoReference(repo, reference, digest)
+}
+
+func TestManifestMutationsKeepMetaDBConsistent(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		method    string
+		byDigest  bool
+		extraTags bool
+	}{
+		{name: "push-push", method: http.MethodPut},
+		{name: "delete-push", method: http.MethodDelete},
+		{name: "multi-tag-push-push", method: http.MethodPut, byDigest: true, extraTags: true},
+		{name: "digest-delete-push", method: http.MethodDelete, byDigest: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rootDir := t.TempDir()
+			logger := log.NewTestLogger()
+			store := local.NewImageStore(rootDir, false, false, logger,
+				monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+			driver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, driver.Close()) })
+			metaDB, err := boltdb.New(driver, logger)
+			require.NoError(t, err)
+
+			ctlr := &Controller{
+				Config:          config.New(),
+				Log:             logger,
+				MetaDB:          metaDB,
+				StoreController: storage.StoreController{DefaultStore: store},
+			}
+			require.Zero(t, ctlr.Config.Storage.MaxRepoBytes)
+			handler := &RouteHandler{c: ctlr}
+			firstImage := image.CreateRandomImage()
+			secondImage := image.CreateRandomImage()
+			require.NoError(t, image.WriteImageToFileSystem(firstImage, "repo", "seed-a", ctlr.StoreController))
+			require.NoError(t, image.WriteImageToFileSystem(secondImage, "repo", "seed-b", ctlr.StoreController))
+			require.NoError(t, image.WriteImageToFileSystem(secondImage, "other", "seed", ctlr.StoreController))
+			firstBody, err := json.Marshal(firstImage.Manifest)
+			require.NoError(t, err)
+			secondBody, err := json.Marshal(secondImage.Manifest)
+			require.NoError(t, err)
+
+			run := func(method, repo, reference string, body []byte, extraTags bool) *httptest.ResponseRecorder {
+				url := "/v2/" + repo + "/manifests/" + reference
+				if extraTags {
+					url += "?tag=latest&tag=alias"
+				}
+
+				request := httptest.NewRequestWithContext(t.Context(), method, url, bytes.NewReader(body))
+				request = mux.SetURLVars(request, map[string]string{"name": repo, "reference": reference})
+				request.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
+				response := httptest.NewRecorder()
+				if method == http.MethodPut {
+					handler.UpdateManifest(response, request)
+				} else {
+					handler.DeleteManifest(response, request)
+				}
+
+				return response
+			}
+			if tc.method == http.MethodDelete {
+				require.Equal(t, http.StatusCreated, run(http.MethodPut, "repo", "latest", firstBody, false).Code)
+			}
+
+			delayedDB := &delayedManifestMetaDB{
+				MetaDB: metaDB, method: tc.method, digest: firstImage.Digest(),
+				entered: make(chan struct{}), release: make(chan struct{}),
+			}
+			ctlr.MetaDB = delayedDB
+			var releaseOnce sync.Once
+			release := func() { releaseOnce.Do(func() { close(delayedDB.release) }) }
+			defer release()
+
+			firstDone := make(chan *httptest.ResponseRecorder, 1)
+			reference := "latest"
+			if tc.byDigest {
+				reference = firstImage.DigestStr()
+			}
+			go func() { firstDone <- run(tc.method, "repo", reference, firstBody, tc.extraTags) }()
+			select {
+			case <-delayedDB.entered:
+			case <-time.After(10 * time.Second):
+				t.Fatal("first mutation did not reach the MetaDB hook")
+			}
+
+			// A paused repository must not block mutations in another repository.
+			otherDone := make(chan *httptest.ResponseRecorder, 1)
+			go func() { otherDone <- run(http.MethodPut, "other", "latest", secondBody, false) }()
+			select {
+			case response := <-otherDone:
+				require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+			case <-time.After(10 * time.Second):
+				t.Fatal("unrelated repository mutation was blocked")
+			}
+
+			secondDone := make(chan *httptest.ResponseRecorder, 1)
+			go func() { secondDone <- run(http.MethodPut, "repo", "latest", secondBody, false) }()
+
+			// Wait for the second request to queue on the lock, not for an arbitrary
+			// sleep. Without serialization it completes while the first hook is paused.
+			deadline := time.After(10 * time.Second)
+			ticker := time.NewTicker(time.Millisecond)
+			defer ticker.Stop()
+
+		waitForSecond:
+			for {
+				ctlr.repoMutationLocks.mu.Lock()
+				lock := ctlr.repoMutationLocks.locks["repo"]
+				queued := lock != nil && lock.references == 2
+				ctlr.repoMutationLocks.mu.Unlock()
+				if queued {
+					break
+				}
+
+				select {
+				case response := <-secondDone:
+					secondDone <- response
+					t.Error("second mutation completed before the first MetaDB hook")
+
+					break waitForSecond
+				case <-deadline:
+					t.Fatal("second mutation neither queued nor completed")
+				case <-ticker.C:
+				}
+			}
+
+			release()
+			for i, done := range []chan *httptest.ResponseRecorder{firstDone, secondDone} {
+				select {
+				case response := <-done:
+					status := http.StatusCreated
+					if i == 0 && tc.method == http.MethodDelete {
+						status = http.StatusAccepted
+					}
+					require.Equal(t, status, response.Code, response.Body.String())
+				case <-time.After(10 * time.Second):
+					t.Fatalf("mutation %d did not finish", i)
+				}
+			}
+
+			_, storedDigest, _, err := store.GetImageManifest("repo", "latest")
+			require.NoError(t, err)
+			require.Equal(t, secondImage.Digest(), storedDigest)
+			repoMeta, err := metaDB.GetRepoMeta(t.Context(), "repo")
+			require.NoError(t, err)
+			require.Equal(t, storedDigest.String(), repoMeta.Tags["latest"].Digest)
+			if tc.extraTags {
+				require.Equal(t, firstImage.DigestStr(), repoMeta.Tags["alias"].Digest)
+			}
+		})
+	}
+}
