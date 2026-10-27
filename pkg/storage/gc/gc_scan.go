@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"slices"
@@ -281,7 +282,16 @@ type readLockedStore struct {
 	types.ImageStore
 }
 
+// errBlobDigestMismatch reports that the scan read a blob whose content does not hash to the
+// digest it was requested by. The scan memoizes what it reads, and a corrupt manifest can be
+// repaired in place without changing index.json, so a plan built from it must not commit.
+var errBlobDigestMismatch = errors.New("gc scan read a blob that does not match its digest")
+
 func (s readLockedStore) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
+	if err := digest.Validate(); err != nil {
+		return nil, err
+	}
+
 	var content []byte
 
 	err := s.ImageStore.WithRepoReadLock(repo, func() error {
@@ -291,8 +301,15 @@ func (s readLockedStore) GetBlobContent(repo string, digest godigest.Digest) ([]
 
 		return readErr
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	return content, err
+	if digest.Algorithm().FromBytes(content) != digest {
+		return nil, fmt.Errorf("%w: %s", errBlobDigestMismatch, digest)
+	}
+
+	return content, nil
 }
 
 func (s readLockedStore) StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {

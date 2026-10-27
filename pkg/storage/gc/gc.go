@@ -184,6 +184,13 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 			continue
 		}
 
+		if errors.Is(err, errBlobDigestMismatch) {
+			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
+				Msg("gc scan read a corrupt blob, scanning under the repository lock")
+
+			return gc.cleanRepoUnderLock(ctx, repo)
+		}
+
 		if err != nil {
 			return err
 		}
@@ -220,6 +227,10 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	gc.log.Warn().Str("module", "gc").Str("repository", repo).Int("attempts", maxOptimisticGCAttempts).
 		Msg("gc scan kept conflicting with concurrent writes, scanning under the repository lock")
 
+	return gc.cleanRepoUnderLock(ctx, repo)
+}
+
+func (gc GarbageCollect) cleanRepoUnderLock(ctx context.Context, repo string) error {
 	return gc.imgStore.WithRepoCleanupLock(repo, func() error {
 		return gc.cleanRepoLocked(ctx, repo)
 	})
