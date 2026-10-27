@@ -4,6 +4,9 @@ package sync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,6 +23,9 @@ import (
 // both share a table: a digest never contains "#".
 const manifestCheckKeyPrefix = "manifestcheck#"
 
+// manifestCheckNamespaceLen is how many hex characters of the registry hash go into a key.
+const manifestCheckNamespaceLen = 16
+
 // manifestCheckStoreTimeout bounds each store call. A read that exceeds it counts as due and a
 // write that exceeds it is dropped, so a slow store delays a pull by at most this much.
 const manifestCheckStoreTimeout = 5 * time.Second
@@ -33,28 +39,39 @@ type manifestCheckItem struct {
 type dynamoManifestCheckTracker struct {
 	client    *dynamodb.Client
 	tableName string
+	keyPrefix string
 	interval  time.Duration
 	log       log.Logger
 }
 
-func newDynamoManifestCheckTracker(interval time.Duration, cfg *syncconf.ManifestCheckStoreConfig,
-	log log.Logger,
+func newDynamoManifestCheckTracker(config syncconf.RegistryConfig, log log.Logger,
 ) (*dynamoManifestCheckTracker, error) {
-	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(cfg.Region))
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+		awsconfig.WithRegion(config.ManifestCheckStore.Region))
 	if err != nil {
 		return nil, err
 	}
 
 	return &dynamoManifestCheckTracker{
 		client:    dynamodb.NewFromConfig(awsCfg),
-		tableName: cfg.TableName,
-		interval:  interval,
+		tableName: config.ManifestCheckStore.TableName,
+		keyPrefix: manifestCheckKeyPrefix + manifestCheckNamespace(config.URLs) + "#",
+		interval:  config.ManifestCheckInterval,
 		log:       log,
 	}, nil
 }
 
-func manifestCheckDigestKey(repo, reference string) string {
-	return manifestCheckKeyPrefix + trackerKey(repo, reference)
+// manifestCheckNamespace derives a key namespace from a registry's URLs, so that replicas with
+// the same registry configuration share check state while other registries in the same table,
+// a fallback mirror for instance, do not.
+func manifestCheckNamespace(urls []string) string {
+	sum := sha256.Sum256([]byte(strings.Join(urls, "\n")))
+
+	return hex.EncodeToString(sum[:])[:manifestCheckNamespaceLen]
+}
+
+func (t *dynamoManifestCheckTracker) key(repo, reference string) string {
+	return t.keyPrefix + trackerKey(repo, reference)
 }
 
 // ShouldCheckUpstream reports whether an upstream check is due for repo:reference. A read or
@@ -66,7 +83,7 @@ func (t *dynamoManifestCheckTracker) ShouldCheckUpstream(ctx context.Context, re
 	resp, err := t.client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(t.tableName),
 		Key: map[string]types.AttributeValue{
-			"Digest": &types.AttributeValueMemberS{Value: manifestCheckDigestKey(repo, reference)},
+			"Digest": &types.AttributeValueMemberS{Value: t.key(repo, reference)},
 		},
 		ConsistentRead: aws.Bool(true),
 	})
@@ -97,7 +114,7 @@ func (t *dynamoManifestCheckTracker) ShouldCheckUpstream(ctx context.Context, re
 // the next request for this reference checks upstream again.
 func (t *dynamoManifestCheckTracker) MarkChecked(ctx context.Context, repo, reference string) {
 	item, err := attributevalue.MarshalMap(manifestCheckItem{
-		Digest:      manifestCheckDigestKey(repo, reference),
+		Digest:      t.key(repo, reference),
 		LastChecked: time.Now().UnixNano(),
 	})
 	if err != nil {

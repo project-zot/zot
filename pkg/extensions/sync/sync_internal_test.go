@@ -3422,24 +3422,29 @@ func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 
 func TestNewManifestCheckStore(t *testing.T) {
 	Convey("A nil store config keeps the in-process tracker", t, func() {
-		store, err := newManifestCheckStore(time.Hour, nil, log.NewTestLogger())
+		store, err := newManifestCheckStore(syncconf.RegistryConfig{ManifestCheckInterval: time.Hour}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 		_, ok := store.(*manifestCheckTracker)
 		So(ok, ShouldBeTrue)
 	})
 
 	Convey("An unsupported store name is rejected", t, func() {
-		_, err := newManifestCheckStore(time.Hour, &syncconf.ManifestCheckStoreConfig{
-			Name: "not-a-backend",
+		_, err := newManifestCheckStore(syncconf.RegistryConfig{
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore:    &syncconf.ManifestCheckStoreConfig{Name: "not-a-backend"},
 		}, log.NewTestLogger())
 		So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
 	})
 
 	Convey("dynamodb builds a shared tracker without contacting AWS", t, func() {
-		store, err := newManifestCheckStore(time.Hour, &syncconf.ManifestCheckStoreConfig{
-			Name:      "dynamodb",
-			TableName: "test-table",
-			Region:    "us-west-2",
+		store, err := newManifestCheckStore(syncconf.RegistryConfig{
+			URLs:                  []string{"https://registry-1.docker.io"},
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore: &syncconf.ManifestCheckStoreConfig{
+				Name:      "dynamodb",
+				TableName: "test-table",
+				Region:    "us-west-2",
+			},
 		}, log.NewTestLogger())
 		So(err, ShouldBeNil)
 
@@ -3447,6 +3452,8 @@ func TestNewManifestCheckStore(t *testing.T) {
 		So(ok, ShouldBeTrue)
 		So(tracker.tableName, ShouldEqual, "test-table")
 		So(tracker.interval, ShouldEqual, time.Hour)
+		So(tracker.keyPrefix, ShouldEqual,
+			manifestCheckKeyPrefix+manifestCheckNamespace([]string{"https://registry-1.docker.io"})+"#")
 	})
 
 	Convey("A service built with a store config uses that store", t, func() {
@@ -3469,13 +3476,28 @@ func TestNewManifestCheckStore(t *testing.T) {
 }
 
 func TestManifestCheckDigestKey(t *testing.T) {
-	Convey("Distinct repo:reference pairs get distinct keys that cannot match a digest", t, func() {
-		a := manifestCheckDigestKey("repoA", "latest")
+	newTracker := func(urls ...string) *dynamoManifestCheckTracker {
+		return &dynamoManifestCheckTracker{keyPrefix: manifestCheckKeyPrefix + manifestCheckNamespace(urls) + "#"}
+	}
 
-		So(a, ShouldNotEqual, manifestCheckDigestKey("repoA", "v2"))
-		So(a, ShouldNotEqual, manifestCheckDigestKey("repoB", "latest"))
+	Convey("Distinct repo:reference pairs get distinct keys that cannot match a digest", t, func() {
+		tracker := newTracker("https://registry-1.docker.io")
+		a := tracker.key("repoA", "latest")
+
+		So(a, ShouldNotEqual, tracker.key("repoA", "v2"))
+		So(a, ShouldNotEqual, tracker.key("repoB", "latest"))
 		So(strings.HasPrefix(a, manifestCheckKeyPrefix), ShouldBeTrue)
 		So(strings.HasPrefix(godigest.FromString("anything").String(), manifestCheckKeyPrefix), ShouldBeFalse)
+	})
+
+	Convey("Registries with the same URLs share keys, others do not", t, func() {
+		primary := newTracker("https://registry-1.docker.io", "https://mirror.example")
+		replica := newTracker("https://registry-1.docker.io", "https://mirror.example")
+		fallback := newTracker("https://fallback.example")
+
+		So(primary.key("repo", "latest"), ShouldEqual, replica.key("repo", "latest"))
+		So(primary.key("repo", "latest"), ShouldNotEqual, fallback.key("repo", "latest"))
+		So(len(manifestCheckNamespace(nil)), ShouldEqual, manifestCheckNamespaceLen)
 	})
 }
 

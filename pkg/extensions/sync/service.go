@@ -122,7 +122,7 @@ func New(
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
 
 	if config.ManifestCheckInterval > 0 {
-		checkTracker, err := newManifestCheckStore(config.ManifestCheckInterval, config.ManifestCheckStore, log)
+		checkTracker, err := newManifestCheckStore(config, log)
 		if err != nil {
 			return nil, err
 		}
