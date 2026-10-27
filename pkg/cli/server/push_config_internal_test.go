@@ -5,10 +5,12 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -147,6 +149,93 @@ func TestSyncPushConfig(t *testing.T) {
 			conf := config.New()
 			So(LoadConfiguration(conf, combined), ShouldBeNil)
 			So(validateSync(conf, log.NewTestLogger()), ShouldBeNil)
+		})
+		Convey("A negative pollInterval is rejected", func() {
+			negativePoll := writePushConfig(t, `{
+				"distSpecVersion": "1.1.1",
+				"storage": {"rootDirectory": "/tmp/zot-push-config-test"},
+				"http": {"address": "127.0.0.1", "port": "8080"},
+				"extensions": {
+					"sync": {
+						"enable": true,
+						"registries": [{
+							"pollInterval": "-1s",
+							"content": [{"prefix": "library/**"}],
+							"push": {"enabled": true, "urls": ["https://zot.edge:5000"]}
+						}]
+					}
+				}
+			}`)
+
+			err := LoadConfiguration(config.New(), negativePoll)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "pollInterval")
+		})
+
+		Convey("push.platforms is validated", func() {
+			invalidPlatform := writePushConfig(t, `{
+				"distSpecVersion": "1.1.1",
+				"storage": {"rootDirectory": "/tmp/zot-push-config-test"},
+				"http": {"address": "127.0.0.1", "port": "8080"},
+				"extensions": {
+					"sync": {
+						"enable": true,
+						"registries": [{
+							"pollInterval": "6h",
+							"content": [{"prefix": "library/**"}],
+							"push": {"enabled": true, "urls": ["https://zot.edge:5000"],
+								"platforms": ["not a platform"]}
+						}]
+					}
+				}
+			}`)
+
+			err := LoadConfiguration(config.New(), invalidPlatform)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "invalid push.platforms")
+
+			validPlatform := writePushConfig(t, `{
+				"distSpecVersion": "1.1.1",
+				"storage": {"rootDirectory": "/tmp/zot-push-config-test"},
+				"http": {"address": "127.0.0.1", "port": "8080"},
+				"extensions": {
+					"sync": {
+						"enable": true,
+						"registries": [{
+							"pollInterval": "6h",
+							"content": [{"prefix": "library/**"}],
+							"push": {"enabled": true, "urls": ["https://zot.edge:5000"],
+								"platforms": ["linux/amd64"]}
+						}]
+					}
+				}
+			}`)
+
+			So(LoadConfiguration(config.New(), validPlatform), ShouldBeNil)
+		})
+
+		Convey("A rejected credential url is redacted in the log", func() {
+			logPath := path.Join(t.TempDir(), "zot.log")
+			logger := log.NewLogger("debug", logPath)
+
+			enabled := true
+			regCfg := syncconf.RegistryConfig{
+				PollInterval: time.Hour,
+				Content:      []syncconf.Content{{Prefix: "library/**"}},
+				Push: &syncconf.PushConfig{
+					Enabled: &enabled,
+					URLs:    []string{"https://user:token@zot.edge:5000"},
+				},
+			}
+
+			err := validateSyncPush(0, regCfg, logger)
+			So(err, ShouldNotBeNil)
+			So(strings.Contains(err.Error(), "token"), ShouldBeFalse)
+
+			logged, readErr := os.ReadFile(logPath)
+			So(readErr, ShouldBeNil)
+			So(string(logged), ShouldContainSubstring, "xxxxx")
+			So(strings.Contains(string(logged), "token"), ShouldBeFalse)
 		})
 	})
 }
