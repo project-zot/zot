@@ -55,7 +55,7 @@ func (db *delayedManifestMetaDB) RemoveRepoReference(repo, reference string, dig
 }
 
 func TestManifestMutationsKeepMetaDBConsistent(t *testing.T) {
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		name      string
 		method    string
 		byDigest  bool
@@ -66,7 +66,7 @@ func TestManifestMutationsKeepMetaDBConsistent(t *testing.T) {
 		{name: "multi-tag-push-push", method: http.MethodPut, byDigest: true, extraTags: true},
 		{name: "digest-delete-push", method: http.MethodDelete, byDigest: true},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			rootDir := t.TempDir()
 			logger := log.NewTestLogger()
 			store := local.NewImageStore(rootDir, false, false, logger,
@@ -113,25 +113,27 @@ func TestManifestMutationsKeepMetaDBConsistent(t *testing.T) {
 
 				return response
 			}
-			if tc.method == http.MethodDelete {
+			if testCase.method == http.MethodDelete {
 				require.Equal(t, http.StatusCreated, run(http.MethodPut, "repo", "latest", firstBody, false).Code)
 			}
 
 			delayedDB := &delayedManifestMetaDB{
-				MetaDB: metaDB, method: tc.method, digest: firstImage.Digest(),
+				MetaDB: metaDB, method: testCase.method, digest: firstImage.Digest(),
 				entered: make(chan struct{}), release: make(chan struct{}),
 			}
 			ctlr.MetaDB = delayedDB
+
 			var releaseOnce sync.Once
 			release := func() { releaseOnce.Do(func() { close(delayedDB.release) }) }
 			defer release()
 
 			firstDone := make(chan *httptest.ResponseRecorder, 1)
 			reference := "latest"
-			if tc.byDigest {
+
+			if testCase.byDigest {
 				reference = firstImage.DigestStr()
 			}
-			go func() { firstDone <- run(tc.method, "repo", reference, firstBody, tc.extraTags) }()
+			go func() { firstDone <- run(testCase.method, "repo", reference, firstBody, testCase.extraTags) }()
 			select {
 			case <-delayedDB.entered:
 			case <-time.After(10 * time.Second):
@@ -180,11 +182,12 @@ func TestManifestMutationsKeepMetaDBConsistent(t *testing.T) {
 			}
 
 			release()
+
 			for i, done := range []chan *httptest.ResponseRecorder{firstDone, secondDone} {
 				select {
 				case response := <-done:
 					status := http.StatusCreated
-					if i == 0 && tc.method == http.MethodDelete {
+					if i == 0 && testCase.method == http.MethodDelete {
 						status = http.StatusAccepted
 					}
 					require.Equal(t, status, response.Code, response.Body.String())
@@ -199,7 +202,7 @@ func TestManifestMutationsKeepMetaDBConsistent(t *testing.T) {
 			repoMeta, err := metaDB.GetRepoMeta(t.Context(), "repo")
 			require.NoError(t, err)
 			require.Equal(t, storedDigest.String(), repoMeta.Tags["latest"].Digest)
-			if tc.extraTags {
+			if testCase.extraTags {
 				require.Equal(t, firstImage.DigestStr(), repoMeta.Tags["alias"].Digest)
 			}
 		})
