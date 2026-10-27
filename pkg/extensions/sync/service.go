@@ -377,7 +377,7 @@ func (service *BaseService) ShouldCheckUpstream(repo, reference string) bool {
 		return true
 	}
 
-	return service.checkTracker.ShouldCheckUpstream(repo, reference)
+	return service.checkTracker.ShouldCheckUpstream(context.Background(), repo, reference)
 }
 
 // IsOnDemandInBackgroundForRepo reports whether this registry should use
@@ -397,12 +397,12 @@ func (service *BaseService) IsOnDemandInBackgroundForRepo(repo string) bool {
 
 // markUpstreamChecked records a successful upstream check, so that subsequent on-demand
 // requests for the same reference can be served locally until the interval elapses.
-func (service *BaseService) markUpstreamChecked(repo, reference string) {
+func (service *BaseService) markUpstreamChecked(ctx context.Context, repo, reference string) {
 	if service.checkTracker == nil {
 		return
 	}
 
-	service.checkTracker.MarkChecked(repo, reference)
+	service.checkTracker.MarkChecked(ctx, repo, reference)
 }
 
 func (service *BaseService) GetSyncTimeout() time.Duration {
@@ -595,7 +595,7 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 		return err
 	}
 
-	service.markUpstreamChecked(repo, reference)
+	service.markUpstreamChecked(ctx, repo, reference)
 
 	return nil
 }
@@ -645,7 +645,7 @@ func (service *BaseService) SyncImageForStream(ctx context.Context, repo, tag st
 		return err
 	}
 
-	service.markUpstreamChecked(repo, tag)
+	service.markUpstreamChecked(ctx, repo, tag)
 
 	return nil
 }
@@ -819,7 +819,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 		// Child expansion is only for indexes/lists. Single-arch manifests are already
 		// fully copied above; skipping avoids a redundant GetManifestList ManifestGet.
 		if !compat.IsImageIndexMediaType(mediaType) {
-			service.markUpstreamChecked(localRepo, tag)
+			service.markUpstreamChecked(ctx, localRepo, tag)
 
 			continue
 		}
@@ -862,7 +862,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 
 		// periodic sync just validated this tag against upstream, so on-demand requests
 		// arriving right after do not need to check it again.
-		service.markUpstreamChecked(localRepo, tag)
+		service.markUpstreamChecked(ctx, localRepo, tag)
 	}
 
 	service.log.Info().Str("repo", repo).Msg("sync: finished syncing repo")

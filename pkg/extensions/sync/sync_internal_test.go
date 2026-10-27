@@ -3183,36 +3183,36 @@ func TestManifestCheckTracker(t *testing.T) {
 	Convey("A reference that was never checked is due for an upstream check", t, func() {
 		tracker := newManifestCheckTracker(time.Hour)
 
-		So(tracker.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+		So(tracker.ShouldCheckUpstream(context.Background(), "repo", "latest"), ShouldBeTrue)
 	})
 
 	Convey("A reference checked within the interval is served locally", t, func() {
 		tracker := newManifestCheckTracker(time.Hour)
-		tracker.MarkChecked("repo", "latest")
+		tracker.MarkChecked(context.Background(), "repo", "latest")
 
-		So(tracker.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
+		So(tracker.ShouldCheckUpstream(context.Background(), "repo", "latest"), ShouldBeFalse)
 
 		Convey("Only the marked reference is throttled", func() {
-			So(tracker.ShouldCheckUpstream("repo", "v1"), ShouldBeTrue)
-			So(tracker.ShouldCheckUpstream("other", "latest"), ShouldBeTrue)
+			So(tracker.ShouldCheckUpstream(context.Background(), "repo", "v1"), ShouldBeTrue)
+			So(tracker.ShouldCheckUpstream(context.Background(), "other", "latest"), ShouldBeTrue)
 		})
 	})
 
 	Convey("A reference checked before the interval elapsed is due again and dropped", t, func() {
 		tracker := newManifestCheckTracker(time.Millisecond)
-		tracker.MarkChecked("repo", "latest")
+		tracker.MarkChecked(context.Background(), "repo", "latest")
 
 		time.Sleep(5 * time.Millisecond)
 
-		So(tracker.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+		So(tracker.ShouldCheckUpstream(context.Background(), "repo", "latest"), ShouldBeTrue)
 		So(tracker.store, ShouldNotContainKey, trackerKey("repo", "latest"))
 	})
 
 	Convey("Keys of different repo and reference pairs never collide", t, func() {
 		tracker := newManifestCheckTracker(time.Hour)
-		tracker.MarkChecked("a", "b/c")
+		tracker.MarkChecked(context.Background(), "a", "b/c")
 
-		So(tracker.ShouldCheckUpstream("a/b", "c"), ShouldBeTrue)
+		So(tracker.ShouldCheckUpstream(context.Background(), "a/b", "c"), ShouldBeTrue)
 	})
 
 	Convey("The sweep period is never shorter than the minimum", t, func() {
@@ -3224,7 +3224,7 @@ func TestManifestCheckTracker(t *testing.T) {
 		tracker := newManifestCheckTracker(time.Millisecond)
 
 		for i := range 100 {
-			tracker.MarkChecked("repo", "tag"+strconv.Itoa(i))
+			tracker.MarkChecked(context.Background(), "repo", "tag"+strconv.Itoa(i))
 		}
 
 		So(len(tracker.store), ShouldEqual, 100)
@@ -3233,7 +3233,7 @@ func TestManifestCheckTracker(t *testing.T) {
 
 		// force the sweep to be due, then mark one more reference
 		tracker.lastEvict = time.Now().Add(-2 * minEvictPeriod)
-		tracker.MarkChecked("repo", "fresh")
+		tracker.MarkChecked(context.Background(), "repo", "fresh")
 
 		So(len(tracker.store), ShouldEqual, 1)
 		So(tracker.store, ShouldContainKey, trackerKey("repo", "fresh"))
@@ -3249,12 +3249,12 @@ func TestManifestCheckTracker(t *testing.T) {
 
 			go func(idx int) {
 				defer waitGroup.Done()
-				tracker.MarkChecked("repo", "tag"+strconv.Itoa(idx))
+				tracker.MarkChecked(context.Background(), "repo", "tag"+strconv.Itoa(idx))
 			}(i)
 
 			go func(idx int) {
 				defer waitGroup.Done()
-				tracker.ShouldCheckUpstream("repo", "tag"+strconv.Itoa(idx))
+				tracker.ShouldCheckUpstream(context.Background(), "repo", "tag"+strconv.Itoa(idx))
 			}(i)
 		}
 
@@ -3272,7 +3272,7 @@ func TestBaseServiceShouldCheckUpstream(t *testing.T) {
 		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
 
 		Convey("Marking a check is a no-op", func() {
-			service.markUpstreamChecked("repo", "latest")
+			service.markUpstreamChecked(context.Background(), "repo", "latest")
 			So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
 		})
 	})
@@ -3282,7 +3282,7 @@ func TestBaseServiceShouldCheckUpstream(t *testing.T) {
 
 		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
 
-		service.markUpstreamChecked("repo", "latest")
+		service.markUpstreamChecked(context.Background(), "repo", "latest")
 		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
 	})
 
