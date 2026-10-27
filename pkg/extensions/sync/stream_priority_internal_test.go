@@ -139,6 +139,53 @@ func TestChunkingStreamManagerPriorityDownload(t *testing.T) {
 	sm.RemoveStreamingImage("repo-a", predictTestTag, true)
 }
 
+// TestChunkingStreamManagerPriorityDownloadEarlyClient: a client that connected before the sync
+// reached its download is served with priority once it does, rather than left queued behind the
+// throttle.
+func TestChunkingStreamManagerPriorityDownloadEarlyClient(t *testing.T) {
+	t.Parallel()
+
+	root, storeCtrl := newTestStore(t)
+	regClient := regclient.New()
+
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
+
+	sm := newTestStreamManager(t, storeCtrl, 0)
+
+	streamable, layer := priorityTestImage(t, sm, regClient, root)
+
+	var clientBuf bytes.Buffer
+
+	copier, err := sm.ConnectClient("repo-a", layer.Digest.String(), &clientBuf)
+	require.NoError(t, err)
+
+	clientDone := make(chan error, 1)
+
+	go func() { clientDone <- copier.Copy() }()
+
+	bulk := newGatedFetcher(storeCtrl, "repo-a", layer.Digest)
+	priority := newStoreBlobFetcher(storeCtrl, "repo-a")
+
+	downloaded := startPriorityDownload(t, sm, streamable, bulk.fetch, priority.fetch)
+
+	select {
+	case err := <-clientDone:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the client stayed queued behind the gated download")
+	}
+
+	assert.Equal(t, layer.Digest, godigest.FromBytes(clientBuf.Bytes()))
+	assert.Equal(t, map[godigest.Digest]int{layer.Digest: 1}, priority.counts())
+
+	close(bulk.release)
+
+	files := <-downloaded
+	require.Contains(t, files, layer.Digest)
+
+	sm.RemoveStreamingImage("repo-a", predictTestTag, true)
+}
+
 // TestChunkingStreamManagerPriorityDownloadOpenFails: a priority download that can't open the blob
 // leaves it to the sync's download, which then feeds the waiting client.
 func TestChunkingStreamManagerPriorityDownloadOpenFails(t *testing.T) {

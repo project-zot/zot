@@ -538,6 +538,14 @@ func (cbr *ChunkedBlobReader) Subscribe() (chan int64, int) {
 	return channel, chanId
 }
 
+// HasClients reports whether any client is subscribed.
+func (cbr *ChunkedBlobReader) HasClients() bool {
+	cbr.clientMu.RLock()
+	defer cbr.clientMu.RUnlock()
+
+	return len(cbr.clients) > 0
+}
+
 // Unsubscribe removes a client and closes its channel. Unknown ids (including -1) are ignored.
 func (cbr *ChunkedBlobReader) Unsubscribe(clientId int) {
 	cbr.clientMu.Lock()

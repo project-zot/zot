@@ -347,31 +347,43 @@ func (sm *ChunkingStreamManager) setPriorityFetch(repo, reference string, priori
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
 
-	if staged, ok := sm.streamingRefs[repo+":"+reference]; ok {
-		staged.priority = priority
-	}
-}
-
-// prioritizeStream starts an out-of-band download of a blob a client just connected to, if its
-// download has not started. Must be called with streamLock held.
-func (sm *ChunkingStreamManager) prioritizeStream(repo, key string, stream *ChunkedBlobReader) {
-	if stream.Started() {
+	staged, ok := sm.streamingRefs[repo+":"+reference]
+	if !ok {
 		return
 	}
 
-	var priority *priorityFetch
+	staged.priority = priority
 
+	if priority == nil {
+		return
+	}
+
+	// Clients that connected before the sync reached its download are waiting too.
+	for key := range staged.streamKeys {
+		if stream, ok := sm.activeStreams[key]; ok && stream.HasClients() {
+			sm.startPriorityDownload(priority, key, stream)
+		}
+	}
+}
+
+// prioritizeStream starts an out-of-band download of a blob a client just connected to, if a sync
+// of a manifest staged under repo is downloading it. Must be called with streamLock held.
+func (sm *ChunkingStreamManager) prioritizeStream(repo, key string, stream *ChunkedBlobReader) {
 	prefix := repo + ":"
 
 	for refKey, staged := range sm.streamingRefs {
 		if _, ok := staged.streamKeys[key]; ok && staged.priority != nil && strings.HasPrefix(refKey, prefix) {
-			priority = staged.priority
+			sm.startPriorityDownload(staged.priority, key, stream)
 
-			break
+			return
 		}
 	}
+}
 
-	if priority == nil || !stream.ClaimPriority() {
+// startPriorityDownload downloads stream with priority, unless its download has started or a
+// priority download was already claimed. Must be called with streamLock held.
+func (sm *ChunkingStreamManager) startPriorityDownload(priority *priorityFetch, key string, stream *ChunkedBlobReader) {
+	if stream.Started() || !stream.ClaimPriority() {
 		return
 	}
 
