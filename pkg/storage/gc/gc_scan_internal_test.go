@@ -1106,3 +1106,97 @@ func TestGCDryRunTakesNoLock(t *testing.T) {
 
 	require.Zero(t, wrapped.locks.Load())
 }
+
+// Removing a digest's last tag deletes its statistics in metaDB, so the locked pass evaluates
+// the untagged keep rules without them and keeps that digest as unknown. The scan defers the
+// write, so its metadata view must drop the statistics the same way, or the newly untagged
+// digest competes for mostRecentlyPushedCount and displaces an older untagged digest.
+func TestGCScanAppliesDeferredTagRemovalToRetentionView(t *testing.T) {
+	store := newScanTestStore(t)
+	controller := storage.StoreController{DefaultStore: store}
+
+	older := image.CreateRandomImage()
+	newer := image.CreateRandomImage()
+	require.NoError(t, image.WriteImageToFileSystem(older, "repo", older.DigestStr(), controller))
+	require.NoError(t, image.WriteImageToFileSystem(newer, "repo", "v1", controller))
+
+	var (
+		mu      sync.Mutex
+		removed []string
+	)
+
+	metaDB := mocks.MetaDBMock{
+		GetRepoMetaFn: func(context.Context, string) (mTypes.RepoMeta, error) {
+			return mTypes.RepoMeta{
+				Name: "repo",
+				Tags: map[mTypes.Tag]mTypes.Descriptor{
+					"v1": {Digest: newer.DigestStr(), MediaType: ispec.MediaTypeImageManifest},
+				},
+				Statistics: map[mTypes.ImageDigest]mTypes.DescriptorStatistics{
+					older.DigestStr(): {PushTimestamp: time.Now().Add(-2 * time.Hour)},
+					newer.DigestStr(): {PushTimestamp: time.Now().Add(-time.Hour)},
+				},
+			}, nil
+		},
+		RemoveRepoReferenceFn: func(_, reference string, _ godigest.Digest) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			removed = append(removed, reference)
+
+			return nil
+		},
+	}
+
+	deleteUntagged := true
+	opts := Options{ImageRetention: config.ImageRetention{
+		Policies: []config.RetentionPolicy{{
+			Repositories:   []string{"**"},
+			DeleteUntagged: &deleteUntagged,
+			KeepTags:       []config.KeepTagsPolicy{{Patterns: []string{"release-.*"}}},
+			KeepUntagged:   &config.KeepUntaggedPolicy{MostRecentlyPushedCount: 1},
+		}},
+	}}
+
+	collector := NewGarbageCollect(store, metaDB, opts, nil, zlog.NewTestLogger(), monitoring.NewNopMetricServer())
+	require.NoError(t, collector.CleanRepo(context.Background(), "repo"))
+
+	_, _, _, err := store.GetImageManifest("repo", "v1")
+	require.ErrorIs(t, err, zerr.ErrManifestNotFound)
+
+	for _, digest := range []string{older.DigestStr(), newer.DigestStr()} {
+		_, _, _, err = store.GetImageManifest("repo", digest)
+		require.NoError(t, err, digest)
+	}
+
+	require.Equal(t, []string{"v1"}, removed)
+}
+
+func TestApplyMetaActionsDropsStatisticsWithLastTag(t *testing.T) {
+	shared := godigest.FromString("shared")
+	single := godigest.FromString("single")
+
+	repoMeta := mTypes.RepoMeta{
+		Tags: map[mTypes.Tag]mTypes.Descriptor{
+			"a": {Digest: shared.String()},
+			"b": {Digest: shared.String()},
+			"c": {Digest: single.String()},
+		},
+		Statistics: map[mTypes.ImageDigest]mTypes.DescriptorStatistics{
+			shared.String(): {}, single.String(): {},
+		},
+	}
+
+	view := applyMetaActions(repoMeta, []metaAction{
+		{reference: "a", digest: shared},
+		{reference: single.String(), digest: single},
+		{subject: shared, signature: true},
+	})
+
+	require.Equal(t, map[mTypes.Tag]mTypes.Descriptor{"b": {Digest: shared.String()}}, view.Tags)
+	require.Contains(t, view.Statistics, shared.String())
+	require.NotContains(t, view.Statistics, single.String())
+
+	require.Len(t, repoMeta.Tags, 3)
+	require.Len(t, repoMeta.Statistics, 2)
+}
