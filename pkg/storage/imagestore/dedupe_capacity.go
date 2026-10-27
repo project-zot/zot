@@ -9,6 +9,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 )
 
 // keepFullCopy replaces the unregistered copy at blobPath, which CheckBlob has just linked to
@@ -17,9 +18,11 @@ import (
 // is deleted, because the hand-off only considers the copies the cache lists.
 //
 // The copy is staged and verified without the store lock, which the caller holds and which is
-// held again on return, so that a large copy does not block every repository. The unregistered
-// copy is removed when the replacement fails. writeLocked tells which kind of lock the caller
-// holds, and the same kind is held again on return.
+// held again on return, so that a large copy does not block every repository. While the lock is
+// released, a push or another CheckBlob can put a full copy at blobPath; once the lock is held
+// again, such a copy is kept and the staged one dropped. Only a placeholder that is still
+// without content is replaced, or removed when staging failed. writeLocked tells which kind of
+// lock the caller holds, and the same kind is held again on return.
 func (is *ImageStore) keepFullCopy(ctx context.Context, repo, blobPath, origin string, digest godigest.Digest,
 	writeLocked bool, lockLatency *time.Time,
 ) error {
@@ -29,7 +32,7 @@ func (is *ImageStore) keepFullCopy(ctx context.Context, repo, blobPath, origin s
 		is.RUnlock(lockLatency)
 	}
 
-	staged, err := is.stageVerifiedCopy(ctx, repo, origin, digest)
+	staged, stageErr := is.stageVerifiedCopy(ctx, repo, origin, digest)
 
 	if writeLocked {
 		is.Lock(lockLatency)
@@ -37,21 +40,53 @@ func (is *ImageStore) keepFullCopy(ctx context.Context, repo, blobPath, origin s
 		is.RLock(lockLatency)
 	}
 
-	if err == nil {
-		err = is.storeDriver.Move(staged, blobPath)
-	}
-
+	placeholder, err := is.isPlaceholderCopy(digest, blobPath)
 	if err != nil {
 		if staged != "" {
 			_ = is.storeDriver.Delete(staged)
 		}
 
+		return err
+	}
+
+	if !placeholder {
+		if staged != "" {
+			_ = is.storeDriver.Delete(staged)
+		}
+
+		return nil
+	}
+
+	if stageErr != nil {
+		_ = is.storeDriver.Delete(blobPath)
+
+		return stageErr
+	}
+
+	if err := is.storeDriver.Move(staged, blobPath); err != nil {
+		_ = is.storeDriver.Delete(staged)
 		_ = is.storeDriver.Delete(blobPath)
 
 		return err
 	}
 
 	return nil
+}
+
+// isPlaceholderCopy reports whether the copy at blobPath still has no content: it is a
+// placeholder, or it is gone. A copy holding content, or a copy of the empty digest, is not
+// one.
+func (is *ImageStore) isPlaceholderCopy(digest godigest.Digest, blobPath string) (bool, error) {
+	binfo, err := is.storeDriver.Stat(blobPath)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return true, nil
+		}
+
+		return false, mapStorageErr(err)
+	}
+
+	return lacksContent(digest, binfo.Size()), nil
 }
 
 // stageVerifiedCopy copies the blob at src to a new upload path of repo, hashing the copy on
