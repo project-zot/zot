@@ -567,6 +567,7 @@ paths:
         and returns 202.
         A `digest` query parameter requests a monolithic upload and returns 201 on success.
         A `mount` query parameter requests a cross-repository blob mount and returns 201 or 202.
+        A `digest-algorithm` query parameter hints the algorithm for a multi-request upload.
       parameters:
       - description: repository name
         in: path
@@ -576,6 +577,10 @@ paths:
       - description: blob digest for monolithic upload
         in: query
         name: digest
+        type: string
+      - description: digest algorithm hint for multi-request uploads
+        in: query
+        name: digest-algorithm
         type: string
       - description: blob digest to mount into the repository
         in: query

@@ -2083,10 +2083,12 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 // @Description and returns 202.
 // @Description A `digest` query parameter requests a monolithic upload and returns 201 on success.
 // @Description A `mount` query parameter requests a cross-repository blob mount and returns 201 or 202.
+// @Description A `digest-algorithm` query parameter hints the algorithm for a multi-request upload.
 // @Accept  json
 // @Produce json
 // @Param   name    path    string     true        "repository name"
 // @Param   digest  query   string     false       "blob digest for monolithic upload"
+// @Param   digest-algorithm  query   string     false       "digest algorithm hint for multi-request uploads"
 // @Param   mount   query   string     false       "blob digest to mount into the repository"
 // @Success 201 "created"
 // @Header  201 {string} Location "/v2/{name}/blobs/{digest}"
@@ -2114,6 +2116,16 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 	imgStore := rh.getImageStore(name)
 
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+
+	digestAlgorithm, algoOK := parseDigestAlgorithmQuery(request)
+	if !algoOK {
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{
+			"digest-algorithm": strings.Join(request.URL.Query()["digest-algorithm"], ","),
+		})
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+		return
+	}
 
 	// Cross-repository mount: CheckBlob hard-links from the store dedupe cache when allowed.
 	if mountDigests, ok := request.URL.Query()["mount"]; ok {
@@ -2216,6 +2228,16 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
+		if digestAlgorithm != "" && digestAlgorithm != digest.Algorithm() {
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{
+				"digest":           digest.String(),
+				"digest-algorithm": digestAlgorithm.String(),
+			})
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
+
 		var contentLength int64
 
 		// request.ContentLength is pre-parsed by net/http: 0 for an explicit empty
@@ -2296,6 +2318,27 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, upload))
 	response.Header().Set("Range", "0-0")
 	response.WriteHeader(http.StatusAccepted)
+}
+
+// parseDigestAlgorithmQuery returns the optional digest-algorithm query value.
+// ok is false when the parameter is present but invalid (multiple values or
+// an unavailable algorithm). An absent parameter yields ("", true).
+func parseDigestAlgorithmQuery(request *http.Request) (godigest.Algorithm, bool) {
+	values, ok := request.URL.Query()["digest-algorithm"]
+	if !ok {
+		return "", true
+	}
+
+	if len(values) != 1 || values[0] == "" {
+		return "", false
+	}
+
+	algo := godigest.Algorithm(values[0])
+	if !algo.Available() {
+		return "", false
+	}
+
+	return algo, true
 }
 
 // GetBlobUpload godoc
