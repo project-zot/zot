@@ -93,6 +93,18 @@ func TestGCRepositoryLockTiming(t *testing.T) {
 			So(events[0].Error, ShouldEqual, err.Error())
 		})
 
+		Convey("nothing is logged when debug logging is disabled", func() {
+			output.Reset()
+
+			logger := zlog.Logger{Logger: slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelInfo}))}
+			gc := NewGarbageCollect(store, nil, Options{}, &logger, logger, monitoring.NewNopMetricServer())
+
+			err := gc.CleanRepo(context.Background(), "repo")
+			So(errors.Is(err, indexErr), ShouldBeTrue)
+
+			So(gcTimingEvents(&output), ShouldBeEmpty)
+		})
+
 		Convey("a lock that was never acquired reports no hold", func() {
 			lockErr := errors.New("lock unavailable") //nolint:err113 // test
 			store.lockErr = lockErr

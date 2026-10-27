@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -641,23 +642,28 @@ func incompleteListingErr(op, dir string, cause error) error {
 // Transient/Permanent ValidateRepo failures abort (inventory fail-closed for GC / metrics).
 // HTTP catalog soft-skips per-path outages via GetNextRepositories.
 func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (repository string, resultErr error) {
-	started := time.Now()
-
 	var lockLatency time.Time
 
 	dir := is.rootDir
 
-	is.RLock(&lockLatency)
+	if !is.log.Enabled(context.Background(), slog.LevelDebug) {
+		is.RLock(&lockLatency)
+		defer is.RUnlock(&lockLatency)
+	} else {
+		started := time.Now()
 
-	acquired := time.Now()
-	defer func() {
-		hold := time.Since(acquired)
-		is.RUnlock(&lockLatency)
-		is.log.Debug().Str("operation", "GetNextRepository").Str("storage", is.rootDir).
-			Str("repository", repository).Int("processed_repositories", len(processedRepos)).Err(resultErr).
-			Dur("lock_wait", acquired.Sub(started)).Dur("lock_hold", hold).
-			Dur("duration", time.Since(started)).Msg("repository scan completed")
-	}()
+		is.RLock(&lockLatency)
+
+		acquired := time.Now()
+		defer func() {
+			hold := time.Since(acquired)
+			is.RUnlock(&lockLatency)
+			is.log.Debug().Str("operation", "GetNextRepository").Str("storage", is.rootDir).
+				Str("repository", repository).Int("processed_repositories", len(processedRepos)).Err(resultErr).
+				Dur("lock_wait", acquired.Sub(started)).Dur("lock_hold", hold).
+				Dur("duration", time.Since(started)).Msg("repository scan completed")
+		}()
+	}
 
 	_, err := is.storeDriver.List(dir)
 	if err != nil {
@@ -2093,15 +2099,17 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	blobPath := is.BlobPath(repo, digest)
 
-	timing := blobCheckTiming{}
-	started := time.Now()
+	timing := newBlobCheckTiming(is.log.Enabled(ctx, slog.LevelDebug))
+	started := timing.start()
 
-	defer func() {
-		is.log.Debug().Str("repository", repo).Str("digest", digest.String()).
-			Bool("found", found).Int64("size", size).Err(resultErr).
-			Dur("duration", time.Since(started)).Interface("steps", timing).
-			Msg("blob check completed")
-	}()
+	if timing != nil {
+		defer func() {
+			is.log.Debug().Str("repository", repo).Str("digest", digest.String()).
+				Bool("found", found).Int64("size", size).Err(resultErr).
+				Dur("duration", time.Since(started)).Interface("steps", timing.steps).
+				Msg("blob check completed")
+		}()
+	}
 
 	writeLocked := is.dedupe && !is.isCacheNil()
 	lockStep := "read_lock"
@@ -2110,7 +2118,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		lockStep = "write_lock"
 	}
 
-	waitStarted := time.Now()
+	waitStarted := timing.start()
 
 	if writeLocked {
 		is.Lock(&lockLatency)
@@ -2120,7 +2128,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	timing.observe(lockStep+"_wait", waitStarted)
 
-	heldSince := time.Now()
+	heldSince := timing.start()
 
 	defer func() {
 		timing.observe(lockStep+"_hold", heldSince)
@@ -2132,7 +2140,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		}
 	}()
 
-	statStarted := time.Now()
+	statStarted := timing.start()
 	binfo, err := is.storeDriver.Stat(blobPath)
 
 	timing.observe("stat", statStarted)
@@ -2147,7 +2155,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 		statErr := err
 
-		cacheStarted := time.Now()
+		cacheStarted := timing.start()
 		dstRecord, err := is.checkCacheBlob(digest)
 
 		timing.observe("cache_lookup", cacheStarted)
@@ -2165,7 +2173,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 			return false, -1, mapStorageErr(err)
 		}
 
-		copyStarted := time.Now()
+		copyStarted := timing.start()
 		blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
 
 		timing.observe("copy_blob", copyStarted)
@@ -2182,7 +2190,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		}
 
 		// put deduped blob in cache
-		putStarted := time.Now()
+		putStarted := timing.start()
 		err = is.cache.PutBlob(digest, blobPath)
 
 		timing.observe("cache_put", putStarted)
@@ -2198,7 +2206,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 
 	if binfo.Size() > 0 {
 		// try to find blob size in blob descriptors, if blob can not be found
-		descriptorStarted := time.Now()
+		descriptorStarted := timing.start()
 		desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
 
 		timing.observe("descriptor_lookup", descriptorStarted)
@@ -2237,7 +2245,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	// Placeholder: the content copy is at the path the cache records.
-	cacheStarted := time.Now()
+	cacheStarted := timing.start()
 	dstRecord, err := is.checkCacheBlob(digest)
 
 	timing.observe("cache_lookup", cacheStarted)
@@ -2253,7 +2261,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 		return false, -1, mapStorageErr(err)
 	}
 
-	copyStarted := time.Now()
+	copyStarted := timing.start()
 	blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
 
 	timing.observe("copy_blob", copyStarted)
@@ -2273,7 +2281,7 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	// put deduped blob in cache
-	putStarted := time.Now()
+	putStarted := timing.start()
 	err = is.cache.PutBlob(digest, blobPath)
 
 	timing.observe("cache_put", putStarted)

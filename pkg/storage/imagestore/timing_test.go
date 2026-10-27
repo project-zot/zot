@@ -152,6 +152,30 @@ func TestCheckBlobTiming(t *testing.T) {
 			So(events[0].Steps, ShouldNotContainKey, "read_lock_wait")
 		})
 
+		Convey("nothing is logged when debug logging is disabled", func() {
+			var output bytes.Buffer
+
+			logger := zlog.Logger{Logger: slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelInfo}))}
+
+			imgStore := local.NewImageStore(t.TempDir(), false, false, logger,
+				monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+			So(imgStore.InitRepo(ctx, "repo"), ShouldBeNil)
+
+			_, _, err := imgStore.FullBlobUpload(ctx, "repo", bytes.NewReader(content), digest)
+			So(err, ShouldBeNil)
+
+			found, size, err := imgStore.CheckBlob(ctx, "repo", digest)
+			So(err, ShouldBeNil)
+			So(found, ShouldBeTrue)
+			So(size, ShouldEqual, len(content))
+
+			repo, err := imgStore.GetNextRepository(map[string]struct{}{})
+			So(err, ShouldBeNil)
+			So(repo, ShouldEqual, "repo")
+
+			So(output.Len(), ShouldEqual, 0)
+		})
+
 		Convey("an invalid digest is rejected before any timing", func() {
 			var output bytes.Buffer
 

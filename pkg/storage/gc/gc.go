@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"path"
 	"slices"
@@ -162,6 +163,12 @@ func (gc GarbageCollect) memo(repo string) *common.WalkMemo {
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	// removeUnreferencedBlobs deletes blobs one at a time, and with dedupe each delete may
 	// move or remove content other repositories link to; the store knows what that takes.
+	if !gc.log.Enabled(ctx, slog.LevelDebug) {
+		return gc.imgStore.WithRepoCleanupLock(repo, func() error {
+			return gc.cleanRepoLocked(ctx, repo)
+		})
+	}
+
 	started := time.Now()
 
 	var acquired time.Time
