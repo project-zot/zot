@@ -635,7 +635,7 @@ func TestGCCommitSkipsMetaDBReplayWhenCancelled(t *testing.T) {
 // reruns, and the locked pass skips the row for the same stat failure instead of removing it.
 func TestGCAgeRevalidationFailsClosedOnStatError(t *testing.T) {
 	store := &lockTrackingStore{}
-	untagged := godigest.FromString("untagged-manifest")
+	untagged := godigest.FromBytes(manifestJSON())
 	puts := 0
 	store.GetIndexContentFn = func(string) ([]byte, error) { return staleIndexJSON(untagged), nil }
 	store.GetAllBlobsFn = func(string) ([]godigest.Digest, error) { return []godigest.Digest{untagged}, nil }
@@ -952,7 +952,7 @@ func TestGCSkipsOrphanDeletedBeforeAgeCheck(t *testing.T) {
 // published even when the blob cleanup that follows fails.
 func TestGCAuditEventsSurviveCleanupFailureAfterIndexWrite(t *testing.T) {
 	store := &lockTrackingStore{}
-	untagged := godigest.FromString("untagged-manifest")
+	untagged := godigest.FromBytes(manifestJSON())
 	cleanupErr := errors.New("cleanup failed")
 	writes := 0
 	store.GetIndexContentFn = func(string) ([]byte, error) { return staleIndexJSON(untagged), nil }
@@ -1286,4 +1286,49 @@ func TestGCScanStatsAndReadsBlobsUnderReadLock(t *testing.T) {
 
 	require.Positive(t, wrapped.calls.Load())
 	require.Zero(t, wrapped.unlocked.Load(), "blob reads or stats issued without a store lock")
+}
+
+// A manifest blob that does not hash to its digest cannot be trusted by the scan: PutImageManifest
+// repairs such a blob in place without touching index.json, so a plan built from the corrupt
+// document would pass the commit's index check and delete the repaired manifest's config and
+// layers. The scan must stop at the mismatch and leave the repository to the locked pass.
+func TestGCScanRejectsManifestThatDoesNotMatchItsDigest(t *testing.T) {
+	store := newScanTestStore(t)
+	controller := storage.StoreController{DefaultStore: store}
+
+	img := image.CreateRandomImage()
+	require.NoError(t, image.WriteImageToFileSystem(img, "repo", "v1", controller))
+
+	manifestBytes, manifestDigest, _, err := store.GetImageManifest("repo", "v1")
+	require.NoError(t, err)
+
+	manifestPath := store.BlobPath("repo", manifestDigest)
+	require.NoError(t, os.WriteFile(manifestPath, []byte("{}"), 0o600))
+
+	wrapped := &scanHookStore{ImageStore: store}
+	wrapped.onLock = func(call int32) {
+		if call == 1 {
+			_, _, err := store.PutImageManifest(context.Background(), "repo", "v1", ispec.MediaTypeImageManifest,
+				manifestBytes, nil)
+			require.NoError(t, err)
+		}
+	}
+
+	collector := NewGarbageCollect(wrapped, nil, Options{Delay: 0}, nil, zlog.NewTestLogger(),
+		monitoring.NewNopMetricServer())
+	require.NoError(t, collector.CleanRepo(context.Background(), "repo"))
+
+	body, _, _, err := store.GetImageManifest("repo", "v1")
+	require.NoError(t, err)
+	require.Equal(t, manifestBytes, body)
+
+	_, err = store.GetBlobContent("repo", img.Manifest.Config.Digest)
+	require.NoError(t, err)
+
+	for _, layer := range img.Manifest.Layers {
+		_, err = store.GetBlobContent("repo", layer.Digest)
+		require.NoError(t, err)
+	}
+
+	require.EqualValues(t, 1, wrapped.locks.Load())
 }

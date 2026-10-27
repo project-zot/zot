@@ -3352,7 +3352,10 @@ func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 		audit := zlog.NewAuditLogger("debug", "")
 		metrics := monitoring.NewNopMetricServer()
 
-		existingDigest := godigest.FromString("existing-blob")
+		existingManifest, err := json.Marshal(ispec.Manifest{SchemaVersion: 2})
+		So(err, ShouldBeNil)
+
+		existingDigest := godigest.FromBytes(existingManifest)
 		missingDigest := godigest.FromString("missing-blob")
 
 		returnedIndex := ispec.Index{
@@ -3390,12 +3393,7 @@ func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 			},
 			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
 				if digest == existingDigest {
-					m := ispec.Manifest{
-						SchemaVersion: 2,
-					}
-					b, _ := json.Marshal(m)
-
-					return b, nil
+					return existingManifest, nil
 				}
 
 				return nil, zerr.ErrBlobNotFound
@@ -3439,7 +3437,10 @@ func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 		audit := zlog.NewAuditLogger("debug", "")
 		metrics := monitoring.NewNopMetricServer()
 
-		existingDigest := godigest.FromString("existing-blob")
+		existingManifest, err := json.Marshal(ispec.Manifest{SchemaVersion: 2})
+		So(err, ShouldBeNil)
+
+		existingDigest := godigest.FromBytes(existingManifest)
 
 		returnedIndex := ispec.Index{
 			Manifests: []ispec.Descriptor{
@@ -3475,10 +3476,7 @@ func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 				return 0, nil
 			},
 			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-				m := ispec.Manifest{SchemaVersion: 2}
-				b, _ := json.Marshal(m)
-
-				return b, nil
+				return existingManifest, nil
 			},
 			StatBlobFn: func(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
 				return true, 100, time.Now().Add(-time.Hour), nil
