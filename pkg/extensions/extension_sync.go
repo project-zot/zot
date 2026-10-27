@@ -60,6 +60,12 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 				}
 			}
 
+			if registryConfig.Push != nil && !registryConfig.IsPushEnabled() && len(registryConfig.URLs) == 0 {
+				log.Debug().Msg("sync registry entry has a disabled push block and no urls, skipping it")
+
+				continue
+			}
+
 			if len(registryConfig.URLs) > 1 {
 				if err := removeSelfURLs(httpAddress, httpPort, &registryConfig, log); err != nil {
 					return nil, err
@@ -174,6 +180,8 @@ func enablePushEntry(registryConfig syncconf.RegistryConfig, syncConfig *synccon
 		pullConfig.ManifestCheckInterval = 0
 		pullConfig.OnlySigned = nil
 	}
+
+	pullConfig.SetDockerCompat(config.IsDockerCompatEnabled())
 
 	service, err := sync.New(pullConfig, syncConfig.CredentialsFile, config.CopyClusterConfig(),
 		syncConfig.DownloadDir, storeController, nil, metaDB, log)

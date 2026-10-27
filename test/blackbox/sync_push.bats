@@ -56,6 +56,46 @@ function wait_for_digest() {
     return 1
 }
 
+
+# build_multiarch_index uploads two untagged child manifests and an index that references them,
+# the way a real multi-arch image looks. Echoes "<index> <amd64> <arm64>".
+function build_multiarch_index() {
+    local addr=$1 repo=$2 tag=$3
+    local child_digests=()
+    local arch cfg cfg_digest layer layer_digest child child_digest
+
+    for arch in amd64 arm64; do
+        cfg="{\"architecture\":\"${arch}\",\"os\":\"linux\"}"
+        cfg_digest="sha256:$(printf '%s' "${cfg}" | sha256sum | cut -d' ' -f1)"
+        layer="${arch}-layer"
+        layer_digest="sha256:$(printf '%s' "${layer}" | sha256sum | cut -d' ' -f1)"
+        upload_blob "${addr}" "${repo}" "${cfg_digest}" "${cfg}"
+        upload_blob "${addr}" "${repo}" "${layer_digest}" "${layer}"
+
+        child=$(printf '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"%s","size":%d},"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip","digest":"%s","size":%d}]}' \
+            "${cfg_digest}" "${#cfg}" "${layer_digest}" "${#layer}")
+        child_digest="sha256:$(printf '%s' "${child}" | sha256sum | cut -d' ' -f1)"
+
+        # digest-addressed, so the child has no tag of its own: only the index reaches it
+        put_manifest "${addr}" "${repo}" "${child_digest}" "${child}" > /dev/null
+        child_digests+=("${child_digest}")
+    done
+
+    local amd64_gz arm64_gz
+    amd64_gz=$(printf '%s' "amd64-layer" | wc -c)
+    arm64_gz=$(printf '%s' "arm64-layer" | wc -c)
+
+    local index
+    index=$(printf '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"%s","size":1,"platform":{"os":"linux","architecture":"amd64"}},{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"%s","size":1,"platform":{"os":"linux","architecture":"arm64"}}]}' \
+        "${child_digests[0]}" "${child_digests[1]}")
+
+    curl -fsS -X PUT "${addr}/v2/${repo}/manifests/${tag}" \
+        -H 'Content-Type: application/vnd.oci.image.index.v1+json' \
+        --data-binary "${index}" -o /dev/null
+
+    echo "sha256:$(printf '%s' "${index}" | sha256sum | cut -d' ' -f1) ${child_digests[0]} ${child_digests[1]}"
+}
+
 function setup_file() {
     if ! verify_prerequisites; then
         exit 1
@@ -63,8 +103,10 @@ function setup_file() {
 
     export SRC_PORT=$(get_free_port_for_service "zotsrc")
     export DST_PORT=$(get_free_port_for_service "zotdst")
+    export FILTERED_PORT=$(get_free_port_for_service "zotfiltered")
     export SRC_ADDR="http://127.0.0.1:${SRC_PORT}"
     export DST_ADDR="http://127.0.0.1:${DST_PORT}"
+    export FILTERED_ADDR="http://127.0.0.1:${FILTERED_PORT}"
 
     local src_root=${BATS_FILE_TMPDIR}/src
     local dst_root=${BATS_FILE_TMPDIR}/dst
@@ -105,13 +147,44 @@ EOF
 }
 EOF
 
+    cat >${BATS_FILE_TMPDIR}/filtered.json <<EOF
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {"rootDirectory": "${BATS_FILE_TMPDIR}/filtered"},
+    "http": {"address": "127.0.0.1", "port": "${FILTERED_PORT}"},
+    "log": {"level": "debug", "output": "${BATS_FILE_TMPDIR}/filtered-log.json"},
+    "extensions": {
+        "sync": {
+            "enable": true,
+            "registries": [
+                {
+                    "pollInterval": "1s",
+                    "content": [{"prefix": "library/filtered"}],
+                    "push": {
+                        "enabled": true,
+                        "urls": ["http://127.0.0.1:${DST_PORT}"],
+                        "tlsVerify": false,
+                        "platforms": ["linux/amd64"]
+                    }
+                }
+            ]
+        }
+    }
+}
+EOF
+
+    mkdir -p ${BATS_FILE_TMPDIR}/filtered
+
     ${ZOT_PATH} verify ${BATS_FILE_TMPDIR}/src.json
     ${ZOT_PATH} verify ${BATS_FILE_TMPDIR}/dst.json
+    ${ZOT_PATH} verify ${BATS_FILE_TMPDIR}/filtered.json
 
     zot_serve ${ZOT_PATH} ${BATS_FILE_TMPDIR}/dst.json
     zot_serve ${ZOT_PATH} ${BATS_FILE_TMPDIR}/src.json
+    zot_serve ${ZOT_PATH} ${BATS_FILE_TMPDIR}/filtered.json
     wait_zot_reachable ${DST_PORT}
     wait_zot_reachable ${SRC_PORT}
+    wait_zot_reachable ${FILTERED_PORT}
 
     export CONFIG_BODY='{"architecture":"amd64","os":"linux"}'
     export LAYER_BODY='the-layer-bytes'
@@ -211,47 +284,19 @@ EOF
 }
 
 @test "a multi-arch index is mirrored with all of its children" {
-    local arm64_body='{"architecture":"arm64","os":"linux"}'
-    local arm64_digest="sha256:$(printf '%s' "${arm64_body}" | sha256sum | cut -d' ' -f1)"
-    local arm64_layer='arm64-layer'
-    local arm64_layer_digest="sha256:$(printf '%s' "${arm64_layer}" | sha256sum | cut -d' ' -f1)"
-    upload_blob ${SRC_ADDR} ${REPO} ${arm64_digest} "${arm64_body}"
-    upload_blob ${SRC_ADDR} ${REPO} ${arm64_layer_digest} "${arm64_layer}"
+    local repo="library/multi"
 
-    local arm64_manifest=$(cat <<EOF
-{
-  "schemaVersion": 2,
-  "mediaType": "application/vnd.oci.image.manifest.v1+json",
-  "config": {"mediaType": "application/vnd.oci.image.config.v1+json", "digest": "${arm64_digest}", "size": ${#arm64_body}},
-  "layers": [{"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip", "digest": "${arm64_layer_digest}", "size": ${#arm64_layer}}]
-}
-EOF
-)
-    local arm64_manifest_digest="sha256:$(printf '%s' "${arm64_manifest}" | sha256sum | cut -d' ' -f1)"
-    put_manifest ${SRC_ADDR} ${REPO} "arm64-child" "${arm64_manifest}" > /dev/null
+    read -r index_digest amd64_digest arm64_digest < <(build_multiarch_index "${SRC_ADDR}" "${repo}" "1.0")
+    [ -n "${arm64_digest}" ]
 
-    local index=$(cat <<EOF
-{
-  "schemaVersion": 2,
-  "mediaType": "application/vnd.oci.image.index.v1+json",
-  "manifests": [
-    {"mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": "${IMAGE_DIGEST}", "size": ${IMAGE_SIZE}, "platform": {"os": "linux", "architecture": "amd64"}},
-    {"mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": "${arm64_manifest_digest}", "size": ${#arm64_manifest}, "platform": {"os": "linux", "architecture": "arm64"}}
-  ]
-}
-EOF
-)
-    local index_digest="sha256:$(printf '%s' "${index}" | sha256sum | cut -d' ' -f1)"
-    curl -fsS -X PUT "${SRC_ADDR}/v2/${REPO}/manifests/multiarch" \
-        -H 'Content-Type: application/vnd.oci.image.index.v1+json' \
-        --data-binary "${index}" -o /dev/null
-
-    run wait_for_digest ${DST_ADDR} ${REPO} multiarch ${index_digest}
+    run wait_for_digest ${DST_ADDR} ${repo} "1.0" "${index_digest}"
     [ "$status" -eq 0 ]
 
-    run curl -fsS "${DST_ADDR}/v2/${REPO}/manifests/${arm64_manifest_digest}" \
-        -H 'Accept: application/vnd.oci.image.manifest.v1+json'
-    [ "$status" -eq 0 ]
+    local digest
+    for digest in "${amd64_digest}" "${arm64_digest}"; do
+        run curl -fsS -o /dev/null "${DST_ADDR}/v2/${repo}/manifests/${digest}"
+        [ "$status" -eq 0 ]
+    done
 }
 
 @test "a push entry without a content allowlist is rejected at config load" {
@@ -277,4 +322,22 @@ EOF
     run ${ZOT_PATH} verify ${BATS_FILE_TMPDIR}/bad.json
     [ "$status" -ne 0 ]
     echo "$output" | grep -q "content is required for a push registry"
+}
+
+@test "a filtered mirror serves the selected platform and keeps the index digest" {
+    local repo="library/filtered"
+
+    read -r index_digest amd64_digest arm64_digest < <(build_multiarch_index "${FILTERED_ADDR}" "${repo}" "1.0")
+    [ -n "${arm64_digest}" ]
+
+    run wait_for_digest ${DST_ADDR} ${repo} "1.0" "${index_digest}"
+    [ "$status" -eq 0 ]
+
+    # the index is unchanged, so its digest and any signature over it survive
+    run curl -fsS -o /dev/null "${DST_ADDR}/v2/${repo}/blobs/${amd64_digest}"
+    [ "$status" -eq 0 ]
+
+    # the unselected platform is listed by the index but has no manifest here
+    run curl -fsS -o /dev/null "${DST_ADDR}/v2/${repo}/manifests/${arm64_digest}"
+    [ "$status" -ne 0 ]
 }

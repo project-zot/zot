@@ -14,7 +14,9 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/types/descriptor"
 	"github.com/regclient/regclient/types/errs"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -38,6 +40,7 @@ type pushDestination interface {
 	GetImageReference(repo, reference string) (ref.Ref, error)
 	CanSkipImage(ctx context.Context, repo, reference string, digest godigest.Digest) (bool, error)
 	CopyImage(ctx context.Context, sourceRef, targetRef ref.Ref) error
+	PutManifest(ctx context.Context, target ref.Ref, man manifest.Manifest) error
 	Close(ctx context.Context, imageRef ref.Ref)
 }
 
@@ -73,6 +76,9 @@ func NewPushDestination(rawURL string, push *syncconf.PushConfig, parent synccon
 		MaxRetries:    parent.MaxRetries,
 		RetryDelay:    parent.RetryDelay,
 		MaxRetryDelay: parent.MaxRetryDelay,
+		// Without this a destination that accepts the connection and then stalls holds a
+		// scheduler worker until SyncTimeout, which defaults to three hours.
+		ResponseHeaderTimeout: parent.ResponseHeaderTimeout,
 	}
 
 	client, _, err := newClient(opts, credentials, log)
@@ -166,6 +172,14 @@ func (destination *PushDestination) CanSkipImage(ctx context.Context, repo, refe
 // CopyImage copies one manifest tree from the staging layout to this destination.
 func (destination *PushDestination) CopyImage(ctx context.Context, sourceRef, targetRef ref.Ref) error {
 	return destination.rc.ImageCopy(ctx, sourceRef, targetRef)
+}
+
+// PutManifest writes one manifest without walking its children. A platform-filtered push needs
+// it for the index, whose unselected children are not in the staging layout.
+func (destination *PushDestination) PutManifest(ctx context.Context, target ref.Ref,
+	man manifest.Manifest,
+) error {
+	return destination.rc.ManifestPut(ctx, target, man)
 }
 
 // Close releases the per-reference resources regclient keeps for a copy.
@@ -314,6 +328,9 @@ func (service *BaseService) PushRepo(ctx context.Context, repo string) error {
 // pushTag copies one tag and its referrers. A destination that already holds the tag digest
 // still receives referrers it is missing: signatures and SBOMs usually arrive after the image
 // they describe, and a delta check on the tag alone would strand them.
+//
+// Destinations are independent: an unreachable one is collected and reported after every other
+// destination had its turn, so one broken edge cannot hold back the rest of a mirror.
 func (service *BaseService) pushTag(ctx context.Context, imageStore storageTypes.ImageStore, repo, tag string) error {
 	_, digest, mediaType, err := imageStore.GetImageManifest(repo, tag)
 	if err != nil {
@@ -324,15 +341,22 @@ func (service *BaseService) pushTag(ctx context.Context, imageStore storageTypes
 		return err
 	}
 
-	// Ask every destination before staging anything: a fully synced edge costs one HEAD per
-	// tag and no local copy.
+	platforms := service.contentManager.EffectiveLocalPlatforms(repo, service.pushPlatforms())
+
+	var errs []error
+
+	healthy := make([]pushDestination, 0, len(service.pushTargets))
 	targets := make([]pushDestination, 0, len(service.pushTargets))
 
 	for _, destination := range service.pushTargets {
 		skip, err := destination.CanSkipImage(ctx, repo, tag, digest)
 		if err != nil {
-			return fmt.Errorf("checking %s:%s on %s: %w", repo, tag, destination.URL(), err)
+			errs = append(errs, fmt.Errorf("checking %s:%s on %s: %w", repo, tag, destination.URL(), err))
+
+			continue
 		}
+
+		healthy = append(healthy, destination)
 
 		if skip {
 			service.log.Debug().Str("repo", repo).Str("tag", tag).Str("destination", destination.URL()).
@@ -350,54 +374,131 @@ func (service *BaseService) pushTag(ctx context.Context, imageStore storageTypes
 	}
 
 	if len(targets) == 0 && len(referrers.Manifests) == 0 {
-		return nil
+		return errors.Join(errs...)
 	}
 
 	stagingRef, tempStore, err := service.newPushStaging(repo, tag)
 	if err != nil {
-		return err
+		return errors.Join(append(errs, err)...)
 	}
 
 	defer service.destination.CleanupImage(stagingRef, repo) //nolint: errcheck
 
-	platforms := service.contentManager.EffectiveLocalPlatforms(repo, service.pushPlatforms())
-
 	if len(targets) > 0 {
 		if err := service.materializeTree(ctx, imageStore, tempStore, repo, digest, mediaType, platforms); err != nil {
-			return fmt.Errorf("staging %s:%s for push: %w", repo, tag, err)
+			errs = append(errs, fmt.Errorf("staging %s:%s for push: %w", repo, tag, err))
+
+			return errors.Join(errs...)
 		}
 	}
 
 	for _, destination := range targets {
-		// The destination carries the tag, not just the digest: a mirror that only stores
-		// untagged manifests is invisible to every consumer of the destination.
-		targetRef, err := destination.GetImageReference(repo, tag)
+		err := service.copyStagedImage(ctx, tempStore, stagingRef, destination, repo, tag, digest, mediaType, platforms)
 		if err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("pushing %s:%s to %s: %w", repo, tag, destination.URL(), err))
+
+			continue
 		}
-
-		sourceRef := stagingRef.SetDigest(digest.String())
-
-		if err := destination.CopyImage(ctx, sourceRef, targetRef); err != nil {
-			return fmt.Errorf("pushing %s:%s to %s: %w", repo, tag, destination.URL(), err)
-		}
-
-		destination.Close(ctx, targetRef)
 
 		service.log.Info().Str("repo", repo).Str("tag", tag).Str("destination", destination.URL()).
 			Msg("pushed image to destination")
 	}
 
-	// Every destination, not only the ones that just received the image: a referrer can be
-	// new on one destination and old on another.
-	for _, destination := range service.pushTargets {
+	// Every healthy destination, not only the ones that just received the image: a referrer can
+	// be new on one destination and old on another.
+	for _, destination := range healthy {
 		err := service.pushReferrers(ctx, imageStore, tempStore, stagingRef, repo, destination, digest, platforms)
 		if err != nil {
 			// A push without its signatures is worse than a failed push: the destination would
 			// serve an image whose signature chain silently stops at the last successful run.
-			return fmt.Errorf("pushing referrers of %s:%s to %s: %w", repo, tag, destination.URL(), err)
+			errs = append(errs, fmt.Errorf("pushing referrers of %s:%s to %s: %w", repo, tag, destination.URL(), err))
 		}
 	}
+
+	return errors.Join(errs...)
+}
+
+// copyStagedImage hands one staged tree to one destination. Without a platform allowlist the
+// whole tree travels in one ImageCopy.
+//
+// With an allowlist that call cannot be used: ImageCopy reads every child it finds in the index
+// from the source, and the unselected children were deliberately not staged. The selected
+// children are copied first, then the unchanged index is written on its own, so the index digest
+// - and any signature over it - stays the one the source had.
+func (service *BaseService) copyStagedImage(ctx context.Context, staging storageTypes.ImageStore, stagingRef ref.Ref,
+	destination pushDestination, repo, tag string, digest godigest.Digest, mediaType string, platforms []string,
+) error {
+	targetRef, err := destination.GetImageReference(repo, tag)
+	if err != nil {
+		return err
+	}
+
+	if len(platforms) == 0 {
+		if err := destination.CopyImage(ctx, stagingRef.SetDigest(digest.String()), targetRef); err != nil {
+			return err
+		}
+
+		destination.Close(ctx, targetRef)
+
+		return nil
+	}
+
+	raw, err := service.localManifestContent(staging, repo, digest)
+	if err != nil {
+		return err
+	}
+
+	man, err := manifest.New(manifest.WithRaw(raw),
+		manifest.WithDesc(descriptor.Descriptor{Digest: digest, MediaType: mediaType}))
+	if err != nil {
+		return err
+	}
+
+	index, isIndex := man.(manifest.Indexer)
+	if !isIndex {
+		// A single-platform manifest has no children to filter: the allowlist only ever
+		// decides which index entries travel, so the normal copy carries its blobs.
+		if err := destination.CopyImage(ctx, stagingRef.SetDigest(digest.String()), targetRef); err != nil {
+			return err
+		}
+
+		destination.Close(ctx, targetRef)
+
+		return nil
+	}
+
+	children, err := index.GetManifestList()
+	if err != nil {
+		return err
+	}
+
+	for _, child := range children {
+		include, _, err := includeChildForPlatformFilter(child, platforms)
+		if err != nil {
+			return err
+		}
+
+		if !include {
+			continue
+		}
+
+		childTarget, err := destination.GetImageReference(repo, child.Digest.String())
+		if err != nil {
+			return err
+		}
+
+		if err := destination.CopyImage(ctx, stagingRef.SetDigest(child.Digest.String()), childTarget); err != nil {
+			return err
+		}
+
+		destination.Close(ctx, childTarget)
+	}
+
+	if err := destination.PutManifest(ctx, targetRef, man); err != nil {
+		return err
+	}
+
+	destination.Close(ctx, targetRef)
 
 	return nil
 }

@@ -13,6 +13,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -238,6 +239,10 @@ func (fake *referrerRejectingDestination) CopyImage(_ context.Context, _ ref.Ref
 	return nil
 }
 
+func (fake *referrerRejectingDestination) PutManifest(context.Context, ref.Ref, manifest.Manifest) error {
+	return nil
+}
+
 func (fake *referrerRejectingDestination) Close(context.Context, ref.Ref) {}
 
 func TestPushFailsWhenReferrerFails(t *testing.T) {
@@ -374,6 +379,7 @@ type recordingDestination struct {
 	inner   *PushDestination
 	present map[godigest.Digest]bool
 	copies  []godigest.Digest
+	puts    []godigest.Digest
 }
 
 func newRecordingDestination() *recordingDestination {
@@ -404,6 +410,12 @@ func (fake *recordingDestination) CopyImage(_ context.Context, sourceRef, _ ref.
 	}
 
 	fake.copies = append(fake.copies, godigest.Digest(sourceRef.Digest))
+
+	return nil
+}
+
+func (fake *recordingDestination) PutManifest(_ context.Context, _ ref.Ref, man manifest.Manifest) error {
+	fake.puts = append(fake.puts, godigest.Digest(man.GetDescriptor().Digest))
 
 	return nil
 }

@@ -217,7 +217,7 @@ func New(
 		service.destination = NewDestinationRegistry(
 			storeController,
 			storage.StoreController{
-				DefaultStore: getImageStore(tmpDir, log),
+				DefaultStore: getImageStore(tmpDir, nil, log),
 			},
 			metadb,
 			log,
@@ -1078,7 +1078,7 @@ func (service *BaseService) seedRef(
 	remoteImageRef, localImageRef ref.Ref,
 	digest godigest.Digest,
 ) error {
-	tempStore, err := getImageStoreFromImageReference(localRepo, localImageRef, service.log)
+	tempStore, err := getImageStoreFromImageReference(localRepo, localImageRef, nil, service.log)
 	if err != nil {
 		return err
 	}

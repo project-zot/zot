@@ -4,17 +4,21 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -284,6 +288,10 @@ func (fake *failingDeltaDestination) CopyImage(context.Context, ref.Ref, ref.Ref
 	return nil
 }
 
+func (fake *failingDeltaDestination) PutManifest(context.Context, ref.Ref, manifest.Manifest) error {
+	return nil
+}
+
 func (fake *failingDeltaDestination) Close(context.Context, ref.Ref) {}
 
 func TestMaterializeFailures(t *testing.T) {
@@ -326,5 +334,175 @@ func TestPushPlatforms(t *testing.T) {
 
 		service.config = syncconf.RegistryConfig{Push: &syncconf.PushConfig{Platforms: []string{"linux/amd64"}}}
 		So(service.pushPlatforms(), ShouldResemble, []string{"linux/amd64"})
+	})
+}
+
+// seedIndex stores an index with two platform children and returns the index digest plus both
+// child digests.
+func seedIndex(t *testing.T, store storageTypes.ImageStore, repo string,
+) (godigest.Digest, godigest.Digest, godigest.Digest) {
+	t.Helper()
+
+	ctx := context.Background()
+
+	child := func(arch string) ispec.Descriptor {
+		configContent := []byte(`{"architecture":"` + arch + `","os":"linux"}`)
+		layerContent := []byte("layer-" + arch)
+
+		configDigest := uploadBlob(t, store, repo, configContent)
+		layerDigest := uploadBlob(t, store, repo, layerContent)
+
+		man := ispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageManifest,
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig, Digest: configDigest, Size: int64(len(configContent)),
+			},
+			Layers: []ispec.Descriptor{
+				{MediaType: ispec.MediaTypeImageLayerGzip, Digest: layerDigest, Size: int64(len(layerContent))},
+			},
+		}
+
+		body, err := json.Marshal(man)
+		So(err, ShouldBeNil)
+
+		digest, _, err := store.PutImageManifest(ctx, repo, "child-"+arch, ispec.MediaTypeImageManifest, body, nil)
+		So(err, ShouldBeNil)
+
+		return ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    digest,
+			Size:      int64(len(body)),
+			Platform:  &ispec.Platform{OS: "linux", Architecture: arch},
+		}
+	}
+
+	amd64 := child("amd64")
+	arm64 := child("arm64")
+
+	index := ispec.Index{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ispec.MediaTypeImageIndex,
+		Manifests: []ispec.Descriptor{amd64, arm64},
+	}
+
+	body, err := json.Marshal(index)
+	So(err, ShouldBeNil)
+
+	indexDigest, _, err := store.PutImageManifest(ctx, repo, "1.0", ispec.MediaTypeImageIndex, body, nil)
+	So(err, ShouldBeNil)
+
+	return indexDigest, amd64.Digest, arm64.Digest
+}
+
+func TestPushFilteredCopy(t *testing.T) {
+	Convey("A platform allowlist copies the selected children and the unchanged index", t, func() {
+		ctx := context.Background()
+		repo := "library/multi"
+
+		store := newTestImageStore(t, t.TempDir())
+		indexDigest, amd64Digest, arm64Digest := seedIndex(t, store, repo)
+
+		platforms := []string{"linux/amd64"}
+		fake := newRecordingDestination()
+		storeController := storage.StoreController{DefaultStore: store}
+
+		service := &BaseService{
+			log: log.NewTestLogger(),
+			contentManager: NewContentManager([]syncconf.Content{
+				{Prefix: "**", Platforms: &platforms},
+			}, log.NewTestLogger()),
+			storeController: storeController,
+			destination:     NewDestinationRegistry(storeController, storeController, nil, log.NewTestLogger()),
+			pushTargets:     []pushDestination{fake},
+		}
+
+		So(service.pushTag(ctx, store, repo, "1.0"), ShouldBeNil)
+
+		// The index goes through PutManifest, only the selected child through ImageCopy.
+		So(fake.copies, ShouldResemble, []godigest.Digest{amd64Digest})
+		So(fake.puts, ShouldResemble, []godigest.Digest{indexDigest})
+
+		Convey("Without a filter the whole tree travels in one copy", func() {
+			fake := newRecordingDestination()
+			service.contentManager = NewContentManager([]syncconf.Content{{Prefix: "**"}}, log.NewTestLogger())
+			service.pushTargets = []pushDestination{fake}
+
+			So(service.pushTag(ctx, store, repo, "1.0"), ShouldBeNil)
+			So(fake.copies, ShouldResemble, []godigest.Digest{indexDigest})
+			So(fake.puts, ShouldBeEmpty)
+			So(fake.copies, ShouldNotContain, arm64Digest)
+		})
+	})
+}
+
+func TestPushContinuesAfterDestinationFailure(t *testing.T) {
+	Convey("One unreachable destination does not starve the healthy ones", t, func() {
+		store := newTestImageStore(t, t.TempDir())
+		seedImage(t, store, "library/alpine", "3.20")
+
+		good := newRecordingDestination()
+		storeController := storage.StoreController{DefaultStore: store}
+
+		service := &BaseService{
+			log:             log.NewTestLogger(),
+			contentManager:  NewContentManager([]syncconf.Content{{Prefix: "**"}}, log.NewTestLogger()),
+			storeController: storeController,
+			destination:     NewDestinationRegistry(storeController, storeController, nil, log.NewTestLogger()),
+			pushTargets:     []pushDestination{&failingDeltaDestination{}, good},
+		}
+
+		err := service.pushTag(context.Background(), store, "library/alpine", "3.20")
+		So(err, ShouldNotBeNil)
+		So(good.copies, ShouldHaveLength, 1)
+	})
+}
+
+func TestStagingMediaCompat(t *testing.T) {
+	Convey("The staging store inherits the instance's docker media compatibility", t, func() {
+		service := &BaseService{}
+		So(service.stagingMediaCompat(), ShouldBeNil)
+
+		service.config.SetDockerCompat(true)
+		So(service.stagingMediaCompat(), ShouldResemble, []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2})
+	})
+}
+
+func TestMaterializeTraversesPlatformLessIndex(t *testing.T) {
+	Convey("A platform-less nested index is traversed so its allowlisted leaves are staged", t, func() {
+		ctx := context.Background()
+		repo := "library/nested"
+
+		source := newTestImageStore(t, t.TempDir())
+		staging := newTestImageStore(t, t.TempDir())
+
+		indexDigest, amd64Digest, _ := seedIndex(t, source, repo)
+
+		// Wrap the index in an index that carries no platform on the nested entry.
+		nested := ispec.Index{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageIndex, Digest: indexDigest, Size: 1,
+			}},
+		}
+
+		body, err := json.Marshal(nested)
+		So(err, ShouldBeNil)
+
+		outerDigest, _, err := source.PutImageManifest(ctx, repo, "outer", ispec.MediaTypeImageIndex, body, nil)
+		So(err, ShouldBeNil)
+
+		service := &BaseService{log: log.NewTestLogger()}
+
+		err = service.materializeTree(ctx, source, staging, repo, outerDigest, ispec.MediaTypeImageIndex,
+			[]string{"linux/amd64"})
+		So(err, ShouldBeNil)
+
+		for _, digest := range []godigest.Digest{outerDigest, indexDigest, amd64Digest} {
+			found, _, _, err := staging.StatBlob(repo, digest)
+			So(err, ShouldBeNil)
+			So(found, ShouldBeTrue)
+		}
 	})
 }

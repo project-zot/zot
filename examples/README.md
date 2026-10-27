@@ -1583,9 +1583,15 @@ repo matches more than one content entry, the first one in config order governs,
 
 The push loop is time driven: each `pollInterval` it walks the store and asks every destination
 for the digest it holds, so a tag that changed locally, including one that a pull-through
-refreshed, reaches the destinations on the next cycle. Deletions do not travel: a tag removed
-locally stays on the destination. Referrers travel with their subject; if a referrer cannot be
-pushed the tag is reported as failed rather than left behind unsigned.
+refreshed, reaches the destinations on the next cycle. Destinations are independent: an
+unreachable one is reported at the end of the cycle and does not hold back the others.
+Deletions do not travel: a tag removed locally stays on the destination. Referrers travel with
+their subject; if a referrer cannot be pushed the tag is reported as failed rather than left
+behind unsigned.
+
+Credentials for a destination come from `sync.credentialsFile`, keyed by host, exactly like the
+pull upstreams. A credential helper (`credentialHelper`) applies to the entry's upstreams, not to
+its destinations; a destination that needs one has to be handled by the credentials file for now.
 
 ### Sync's manifestCheckInterval option
 

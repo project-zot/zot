@@ -12,6 +12,7 @@ import (
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
@@ -29,12 +30,23 @@ func (service *BaseService) newPushStaging(repo, reference string) (ref.Ref, sto
 		return ref.Ref{}, nil, err
 	}
 
-	tempStore, err := getImageStoreFromImageReference(repo, stagingRef, service.log)
+	tempStore, err := getImageStoreFromImageReference(repo, stagingRef, service.stagingMediaCompat(), service.log)
 	if err != nil {
 		return ref.Ref{}, nil, err
 	}
 
 	return stagingRef, tempStore, nil
+}
+
+// stagingMediaCompat mirrors the instance's http.compat into the staging store. config.go's
+// dockerCompat flag is the same switch the pull service uses; without it PutImageManifest
+// rejects every Docker manifest the store is allowed to hold.
+func (service *BaseService) stagingMediaCompat() []compat.MediaCompatibility {
+	if !service.config.IsDockerCompatEnabled() {
+		return nil
+	}
+
+	return []compat.MediaCompatibility{compat.DockerManifestV2SchemaV2}
 }
 
 // materializeTree writes digest and everything it references into the staging layout, reading
@@ -105,12 +117,14 @@ func (service *BaseService) materializeChildren(ctx context.Context, source, sta
 
 		for _, child := range children {
 			if len(platforms) > 0 {
-				matches, err := descriptorMatchesPlatforms(child.Platform, platforms)
+				// The pull side makes the same decision: a platform-less nested index is always
+				// traversed, otherwise the allowlisted leaves beneath it would be pruned.
+				include, _, err := includeChildForPlatformFilter(child, platforms)
 				if err != nil {
 					return err
 				}
 
-				if !matches {
+				if !include {
 					continue
 				}
 			}
@@ -224,16 +238,18 @@ func (service *BaseService) pushReferrersFor(ctx context.Context, source, stagin
 
 		seen[desc.Digest] = struct{}{}
 
-		if err := service.materializeTree(ctx, source, staging, repo, desc.Digest, desc.MediaType, platforms); err != nil {
-			return err
-		}
-
 		skip, err := destination.CanSkipImage(ctx, repo, desc.Digest.String(), desc.Digest)
 		if err != nil {
 			return err
 		}
 
 		if !skip {
+			// Stage only what the destination is missing: a signature that never changes would
+			// otherwise be rewritten into the staging layout on every poll.
+			if err := service.materializeTree(ctx, source, staging, repo, desc.Digest, desc.MediaType, platforms); err != nil {
+				return err
+			}
+
 			targetRef, err := destination.GetImageReference(repo, desc.Digest.String())
 			if err != nil {
 				return err

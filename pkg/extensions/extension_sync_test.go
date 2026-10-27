@@ -454,6 +454,58 @@ func TestEnableSyncExtensionPushEntry(t *testing.T) {
 	})
 }
 
+// TestEnableSyncExtensionDisabledPushBlock: a push block that is not enabled is inert, even without
+// pull urls.
+func TestEnableSyncExtensionDisabledPushBlock(t *testing.T) {
+	Convey("A disabled push block with no pull urls does not abort startup", t, func() {
+		storeController, sch, logger := newTestSyncExtensionDeps(t)
+		disabled := false
+
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{
+				Registries: []syncconf.RegistryConfig{
+					{
+						PollInterval: time.Hour,
+						Content:      []syncconf.Content{{Prefix: "library/**"}},
+						Push: &syncconf.PushConfig{
+							Enabled: &disabled,
+							URLs:    []string{"https://push-destination.invalid:5000"},
+						},
+					},
+				},
+			},
+		}
+
+		onDemand, err := extensions.EnableSyncExtension(conf, nil, storeController, sch, nil, logger)
+		So(err, ShouldBeNil)
+		So(onDemand, ShouldNotBeNil)
+	})
+
+	Convey("A push block with enabled unset and no pull urls does not abort startup", t, func() {
+		storeController, sch, logger := newTestSyncExtensionDeps(t)
+
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{
+			Sync: &syncconf.Config{
+				Registries: []syncconf.RegistryConfig{
+					{
+						PollInterval: time.Hour,
+						Content:      []syncconf.Content{{Prefix: "library/**"}},
+						Push: &syncconf.PushConfig{
+							URLs: []string{"https://push-destination.invalid:5000"},
+						},
+					},
+				},
+			},
+		}
+
+		onDemand, err := extensions.EnableSyncExtension(conf, nil, storeController, sch, nil, logger)
+		So(err, ShouldBeNil)
+		So(onDemand, ShouldNotBeNil)
+	})
+}
+
 // TestEnableSyncExtensionPushWithPull: one entry may carry upstreams and destinations, and both
 // paths are wired from the same content list.
 func TestEnableSyncExtensionPushWithPull(t *testing.T) {

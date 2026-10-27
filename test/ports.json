@@ -561,6 +561,10 @@
     "zotdst": {
       "begin": 21100,
       "end": 21199
+    },
+    "zotfiltered": {
+      "begin": 21200,
+      "end": 21299
     }
   }
 }
