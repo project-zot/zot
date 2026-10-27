@@ -272,9 +272,11 @@ func (v *auditBufferView) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 func (v *auditBufferView) WithGroup(string) slog.Handler { return v }
 
-// readLockedStore takes the store read lock around each blob read. PutImageManifest rewrites a
-// missing or wrong-sized manifest blob in place under the write lock, so an unlocked read could
-// see a partially written document.
+// readLockedStore takes the store read lock around each blob read and stat, which the store
+// expects its callers to hold. PutImageManifest rewrites a missing or wrong-sized manifest blob
+// in place under the write lock, so an unlocked read could see a partially written document, and
+// StatBlob resolves dedupe placeholders through the cache and drops a record whose origin it
+// cannot find, which an unlocked stat could do to an origin that dedupe is moving.
 type readLockedStore struct {
 	types.ImageStore
 }
@@ -291,6 +293,34 @@ func (s readLockedStore) GetBlobContent(repo string, digest godigest.Digest) ([]
 	})
 
 	return content, err
+}
+
+func (s readLockedStore) StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+	return s.statLocked(repo, s.ImageStore.StatBlob, digest)
+}
+
+func (s readLockedStore) StatBlobEntry(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+	return s.statLocked(repo, s.ImageStore.StatBlobEntry, digest)
+}
+
+func (s readLockedStore) statLocked(repo string,
+	stat func(string, godigest.Digest) (bool, int64, time.Time, error), digest godigest.Digest,
+) (bool, int64, time.Time, error) {
+	var (
+		exists  bool
+		size    int64
+		modtime time.Time
+	)
+
+	err := s.ImageStore.WithRepoReadLock(repo, func() error {
+		var statErr error
+
+		exists, size, modtime, statErr = stat(repo, digest)
+
+		return statErr
+	})
+
+	return exists, size, modtime, err
 }
 
 func (s readLockedStore) ConcurrentReadSafe() bool {
@@ -454,7 +484,7 @@ func (gc GarbageCollect) planRepo(ctx context.Context, repo string) (*repoPlan, 
 			continue
 		}
 
-		canGC, err := isBlobOlderThan(gc.imgStore, repo, digest, gc.opts.Delay, gc.log)
+		canGC, err := isBlobOlderThan(planner.imgStore, repo, digest, gc.opts.Delay, gc.log)
 		if err != nil {
 			gc.log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
 				Str("digest", digest.String()).Msg("skipping orphan blob after StatBlobEntry failure, continuing GC")

@@ -1200,3 +1200,90 @@ func TestApplyMetaActionsDropsStatisticsWithLastTag(t *testing.T) {
 	require.Len(t, repoMeta.Tags, 3)
 	require.Len(t, repoMeta.Statistics, 2)
 }
+
+// lockAuditStore records whether each blob read and stat ran while a lock on the store was held.
+type lockAuditStore struct {
+	storageTypes.ImageStore
+	held     atomic.Int32
+	unlocked atomic.Int32
+	calls    atomic.Int32
+}
+
+func (s *lockAuditStore) WithRepoReadLock(repo string, wrappedFunc func() error) error {
+	return s.ImageStore.WithRepoReadLock(repo, s.track(wrappedFunc))
+}
+
+func (s *lockAuditStore) WithRepoCleanupLock(repo string, wrappedFunc func() error) error {
+	return s.ImageStore.WithRepoCleanupLock(repo, s.track(wrappedFunc))
+}
+
+func (s *lockAuditStore) track(wrappedFunc func() error) func() error {
+	return func() error {
+		s.held.Add(1)
+		defer s.held.Add(-1)
+
+		return wrappedFunc()
+	}
+}
+
+func (s *lockAuditStore) audit() {
+	s.calls.Add(1)
+
+	if s.held.Load() == 0 {
+		s.unlocked.Add(1)
+	}
+}
+
+func (s *lockAuditStore) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
+	s.audit()
+
+	return s.ImageStore.GetBlobContent(repo, digest)
+}
+
+func (s *lockAuditStore) StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+	s.audit()
+
+	return s.ImageStore.StatBlob(repo, digest)
+}
+
+func (s *lockAuditStore) StatBlobEntry(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+	s.audit()
+
+	return s.ImageStore.StatBlobEntry(repo, digest)
+}
+
+// Every blob read and stat the scan issues must run under a store lock: the store's stat
+// methods can rewrite the dedupe cache when they find a placeholder whose origin is missing.
+func TestGCScanStatsAndReadsBlobsUnderReadLock(t *testing.T) {
+	store := newScanTestStore(t)
+	controller := storage.StoreController{DefaultStore: store}
+
+	require.NoError(t, image.WriteImageToFileSystem(image.CreateRandomImage(), "repo", "v1", controller))
+
+	// An untagged row whose manifest blob is gone: the stale-prune path stats it.
+	stale := image.CreateRandomImage()
+	require.NoError(t, image.WriteImageToFileSystem(stale, "repo", stale.DigestStr(), controller))
+
+	_, staleDigest, _, err := store.GetImageManifest("repo", stale.DigestStr())
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(store.BlobPath("repo", staleDigest)))
+
+	orphan, _ := uploadRandomBlob(t, store, "repo")
+
+	wrapped := &lockAuditStore{ImageStore: store}
+
+	deleteUntagged := true
+	opts := Options{Delay: time.Hour, ImageRetention: config.ImageRetention{
+		Delay:    time.Hour,
+		Policies: []config.RetentionPolicy{{Repositories: []string{"**"}, DeleteUntagged: &deleteUntagged}},
+	}}
+
+	collector := NewGarbageCollect(wrapped, nil, opts, nil, zlog.NewTestLogger(), monitoring.NewNopMetricServer())
+	require.NoError(t, collector.CleanRepo(context.Background(), "repo"))
+
+	_, err = store.GetBlobContent("repo", orphan)
+	require.NoError(t, err)
+
+	require.Positive(t, wrapped.calls.Load())
+	require.Zero(t, wrapped.unlocked.Load(), "blob reads or stats issued without a store lock")
+}
