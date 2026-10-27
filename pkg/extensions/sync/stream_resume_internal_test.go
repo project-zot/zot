@@ -17,6 +17,7 @@ import (
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/types/blob"
 	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/errs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -46,13 +47,15 @@ func (r *failingReader) Read(p []byte) (int, error) {
 }
 
 // resumeFetcher is a BlobFetcher over content: its first len(failAfter) opens fail after the given
-// number of bytes (-1 for a clean EOF there instead of an error), and later opens serve the whole
-// blob. With corruptFirst, the first open serves a wrong byte before it is cut short.
+// number of bytes (-n for a body truncated to n bytes instead of an error), and later opens serve
+// the whole blob. With corruptFirst, the first open serves a wrong byte before it is cut short;
+// with oversized, every open serves an extra byte past the descriptor's size.
 type resumeFetcher struct {
 	content      []byte
 	desc         descriptor.Descriptor
 	failAfter    []int
 	corruptFirst bool
+	oversized    bool
 	opens        atomic.Int32
 	openErr      error
 }
@@ -64,10 +67,16 @@ func (f *resumeFetcher) fetch(_ context.Context, desc descriptor.Descriptor) (*b
 		return nil, f.openErr
 	}
 
+	if f.oversized {
+		body := append(bytes.Clone(f.content), 'x')
+
+		return blob.NewReader(blob.WithDesc(desc), blob.WithReader(bytes.NewReader(body))), nil
+	}
+
 	if open < len(f.failAfter) {
 		after := f.failAfter[open]
 		if after < 0 {
-			return blob.NewReader(blob.WithReader(bytes.NewReader(f.content[:-after]))), nil
+			return blob.NewReader(blob.WithDesc(desc), blob.WithReader(bytes.NewReader(f.content[:-after]))), nil
 		}
 
 		content := f.content
@@ -116,7 +125,8 @@ func TestChunkedBlobReaderFillResumable(t *testing.T) {
 		"error mid-chunk":                {fillChunkSize + fillChunkSize/2},
 		"error on a chunk boundary":      {2 * fillChunkSize},
 		"error before the first chunk":   {100},
-		"clean EOF short of the size":    {-(fillChunkSize + fillChunkSize/2)},
+		"truncated body mid-chunk":       {-(fillChunkSize + fillChunkSize/2)},
+		"truncated body on a boundary":   {-(2 * fillChunkSize)},
 		"two interruptions":              {fillChunkSize + 7, 3*fillChunkSize + 7},
 		"error in the final chunk":       {5*fillChunkSize + 100},
 		"error after the last byte only": {6 * fillChunkSize},
@@ -209,6 +219,17 @@ func TestChunkedBlobReaderFillResumableGivesUp(t *testing.T) {
 
 		require.ErrorIs(t, cbr.FillResumable(ctx, resumeOf(fetcher, 2)), errResumeUpstream)
 		assert.Equal(t, int32(1), fetcher.opens.Load())
+	})
+
+	t.Run("oversized body", func(t *testing.T) {
+		t.Parallel()
+
+		fetcher := &resumeFetcher{oversized: true}
+		cbr := newResumeTestBlob(t, fetcher)
+
+		require.ErrorIs(t, cbr.FillResumable(context.Background(), resumeOf(fetcher, 3)), errs.ErrSizeLimitExceeded)
+		require.ErrorIs(t, cbr.Err(), errs.ErrSizeLimitExceeded)
+		assert.Equal(t, int32(1), fetcher.opens.Load(), "a size check failure is not resumed")
 	})
 
 	t.Run("the cut-short response was corrupt", func(t *testing.T) {
