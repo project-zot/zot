@@ -21,17 +21,17 @@ type manifestCheckStore interface {
 	MarkChecked(ctx context.Context, repo, reference string)
 }
 
-// newManifestCheckStore returns the in-process tracker unless storeConfig selects a shared backend.
-func newManifestCheckStore(interval time.Duration, storeConfig *syncconf.ManifestCheckStoreConfig,
-	log log.Logger,
-) (manifestCheckStore, error) {
+// newManifestCheckStore returns the in-process tracker unless config.ManifestCheckStore selects a
+// shared backend.
+func newManifestCheckStore(config syncconf.RegistryConfig, log log.Logger) (manifestCheckStore, error) {
+	storeConfig := config.ManifestCheckStore
 	if storeConfig == nil {
-		return newManifestCheckTracker(interval), nil
+		return newManifestCheckTracker(config.ManifestCheckInterval), nil
 	}
 
 	switch storeConfig.Name {
 	case manifestCheckStoreDynamoDB:
-		return newDynamoManifestCheckTracker(interval, storeConfig, log)
+		return newDynamoManifestCheckTracker(config, log)
 	default:
 		return nil, fmt.Errorf("%w: unsupported manifestCheckStore name %q", zerr.ErrBadConfig, storeConfig.Name)
 	}
