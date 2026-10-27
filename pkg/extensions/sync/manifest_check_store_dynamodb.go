@@ -82,6 +82,11 @@ func manifestCheckNamespace(config syncconf.RegistryConfig) string {
 	return hex.EncodeToString(hash.Sum(nil))[:manifestCheckNamespaceLen]
 }
 
+// syncLeaseStore returns a lease store on the same table and client, namespaced like the tracker.
+func (t *dynamoManifestCheckTracker) syncLeaseStore(urls []string) *dynamoSyncLeaseStore {
+	return newDynamoSyncLeaseStore(t.client, t.tableName, manifestCheckNamespace(urls))
+}
+
 func (t *dynamoManifestCheckTracker) key(repo, reference string) string {
 	return t.keyPrefix + trackerKey(repo, reference)
 }

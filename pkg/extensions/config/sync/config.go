@@ -149,6 +149,10 @@ type ManifestCheckStoreConfig struct {
 	Name      string
 	TableName string
 	Region    string
+	// CoordinateOnDemand also keeps a lease per image in the same table, so that when several
+	// replicas are asked for an image none of them has, one syncs it from upstream and the
+	// others wait for it. Streaming and periodic syncs are not coordinated.
+	CoordinateOnDemand bool
 }
 
 // SetDockerCompat records whether http.compat includes docker2s2 for this registry's sync path.
