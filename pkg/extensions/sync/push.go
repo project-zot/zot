@@ -377,6 +377,15 @@ func (service *BaseService) pushTag(ctx context.Context, imageStore storageTypes
 		return errors.Join(errs...)
 	}
 
+	return service.deliverTag(ctx, imageStore, repo, tag, digest, mediaType, platforms, targets, healthy, errs)
+}
+
+// deliverTag stages the tree once and hands it to each destination that asked for it, then walks
+// the referrers of every staged manifest.
+func (service *BaseService) deliverTag(ctx context.Context, imageStore storageTypes.ImageStore, repo, tag string,
+	digest godigest.Digest, mediaType string, platforms []string, targets, healthy []pushDestination,
+	errs []error,
+) error {
 	stagingRef, tempStore, err := service.newPushStaging(repo, tag)
 	if err != nil {
 		return errors.Join(append(errs, err)...)
@@ -384,12 +393,17 @@ func (service *BaseService) pushTag(ctx context.Context, imageStore storageTypes
 
 	defer service.destination.CleanupImage(stagingRef, repo) //nolint: errcheck
 
+	subjects := []godigest.Digest{digest}
+
 	if len(targets) > 0 {
-		if err := service.materializeTree(ctx, imageStore, tempStore, repo, digest, mediaType, platforms); err != nil {
+		staged, err := service.materializeTree(ctx, imageStore, tempStore, repo, digest, mediaType, platforms)
+		if err != nil {
 			errs = append(errs, fmt.Errorf("staging %s:%s for push: %w", repo, tag, err))
 
 			return errors.Join(errs...)
 		}
+
+		subjects = staged
 	}
 
 	for _, destination := range targets {
@@ -407,7 +421,7 @@ func (service *BaseService) pushTag(ctx context.Context, imageStore storageTypes
 	// Every healthy destination, not only the ones that just received the image: a referrer can
 	// be new on one destination and old on another.
 	for _, destination := range healthy {
-		err := service.pushReferrers(ctx, imageStore, tempStore, stagingRef, repo, destination, digest, platforms)
+		err := service.pushReferrers(ctx, imageStore, tempStore, stagingRef, repo, destination, subjects, platforms)
 		if err != nil {
 			// A push without its signatures is worse than a failed push: the destination would
 			// serve an image whose signature chain silently stops at the last successful run.

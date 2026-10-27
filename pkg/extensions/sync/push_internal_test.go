@@ -116,7 +116,7 @@ func TestMaterializeTree(t *testing.T) {
 
 		service := &BaseService{log: log.NewTestLogger()}
 
-		err = service.materializeTree(ctx, source, staging, repo, manifestDigest, ispec.MediaTypeImageManifest, nil)
+		_, err = service.materializeTree(ctx, source, staging, repo, manifestDigest, ispec.MediaTypeImageManifest, nil)
 		So(err, ShouldBeNil)
 
 		for _, digest := range []godigest.Digest{manifestDigest, configDigest, layerDigest} {
@@ -126,7 +126,7 @@ func TestMaterializeTree(t *testing.T) {
 		}
 
 		Convey("A second pass is a no-op", func() {
-			err = service.materializeTree(ctx, source, staging, repo, manifestDigest, ispec.MediaTypeImageManifest, nil)
+			_, err = service.materializeTree(ctx, source, staging, repo, manifestDigest, ispec.MediaTypeImageManifest, nil)
 			So(err, ShouldBeNil)
 		})
 	})
@@ -189,7 +189,7 @@ func TestMaterializeIndex(t *testing.T) {
 
 		service := &BaseService{log: log.NewTestLogger()}
 
-		err = service.materializeTree(ctx, source, staging, repo, indexDigest, ispec.MediaTypeImageIndex,
+		_, err = service.materializeTree(ctx, source, staging, repo, indexDigest, ispec.MediaTypeImageIndex,
 			[]string{"linux/amd64"})
 		So(err, ShouldBeNil)
 

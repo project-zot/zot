@@ -57,9 +57,13 @@ func (service *BaseService) stagingMediaCompat() []compat.MediaCompatibility {
 // path makes (see README_sparse_multiarch_sync.md).
 func (service *BaseService) materializeTree(ctx context.Context, source, staging storageTypes.ImageStore,
 	repo string, digest godigest.Digest, mediaType string, platforms []string,
-) error {
-	return service.materializeInto(ctx, source, staging, repo, digest, mediaType, platforms,
-		map[godigest.Digest]struct{}{})
+) ([]godigest.Digest, error) {
+	staged := make([]godigest.Digest, 0, 4)
+
+	err := service.materializeInto(ctx, source, staging, repo, digest, mediaType, platforms,
+		map[godigest.Digest]struct{}{}, &staged)
+
+	return staged, err
 }
 
 // materializeInto is materializeTree with the set of manifests this walk already handled. Digest
@@ -67,13 +71,17 @@ func (service *BaseService) materializeTree(ctx context.Context, source, staging
 // per path, and nothing stops a repository from containing a deeply nested chain of indexes.
 func (service *BaseService) materializeInto(ctx context.Context, source, staging storageTypes.ImageStore,
 	repo string, digest godigest.Digest, mediaType string, platforms []string,
-	seen map[godigest.Digest]struct{},
+	seen map[godigest.Digest]struct{}, staged *[]godigest.Digest,
 ) error {
 	if _, handled := seen[digest]; handled {
 		return nil
 	}
 
 	seen[digest] = struct{}{}
+
+	// Every manifest of the tree, including ones the staging layout already held: referrers hang
+	// off the subject digest, and a signature of an index child needs the child in this list.
+	*staged = append(*staged, digest)
 
 	if present, _, _, err := staging.StatBlob(repo, digest); err == nil && present {
 		return nil
@@ -92,7 +100,7 @@ func (service *BaseService) materializeInto(ctx context.Context, source, staging
 
 	// Children and blobs go first: PutImageManifest validates the tree it is handed, so a
 	// manifest written before its content would be rejected by the store itself.
-	if err := service.materializeChildren(ctx, source, staging, repo, man, platforms, seen); err != nil {
+	if err := service.materializeChildren(ctx, source, staging, repo, man, platforms, seen, staged); err != nil {
 		return err
 	}
 
@@ -106,6 +114,7 @@ func (service *BaseService) materializeInto(ctx context.Context, source, staging
 // materializeChildren walks one parsed manifest and materializes everything it references.
 func (service *BaseService) materializeChildren(ctx context.Context, source, staging storageTypes.ImageStore,
 	repo string, man manifest.Manifest, platforms []string, seen map[godigest.Digest]struct{},
+	staged *[]godigest.Digest,
 ) error {
 	// Every regclient manifest type implements exactly one of Indexer and Imager.
 	switch typed := man.(type) {
@@ -129,7 +138,8 @@ func (service *BaseService) materializeChildren(ctx context.Context, source, sta
 				}
 			}
 
-			err := service.materializeInto(ctx, source, staging, repo, child.Digest, child.MediaType, platforms, seen)
+			err := service.materializeInto(ctx, source, staging, repo, child.Digest, child.MediaType, platforms,
+				seen, staged)
 			if err != nil {
 				return err
 			}
@@ -215,11 +225,26 @@ func (service *BaseService) localManifestContent(imageStore storageTypes.ImageSt
 // Signatures are referrers, so this is the step that keeps the dhi/secureblue signature chain
 // intact: an error here fails the push instead of leaving an unsigned image behind.
 func (service *BaseService) pushReferrers(ctx context.Context, source, staging storageTypes.ImageStore,
-	stagingRef ref.Ref, repo string, destination pushDestination, subject godigest.Digest, platforms []string,
+	stagingRef ref.Ref, repo string, destination pushDestination, subjects []godigest.Digest, platforms []string,
 ) error {
-	seen := map[godigest.Digest]struct{}{subject: {}}
+	seen := make(map[godigest.Digest]struct{}, len(subjects))
 
-	return service.pushReferrersFor(ctx, source, staging, stagingRef, repo, destination, subject, platforms, seen)
+	// A signature usually hangs off the index, but an attestation can belong to one platform's
+	// manifest. Every manifest of the tree is a subject, not only the tag's root.
+	for _, subject := range subjects {
+		if _, done := seen[subject]; done {
+			continue
+		}
+
+		seen[subject] = struct{}{}
+
+		if err := service.pushReferrersFor(ctx, source, staging, stagingRef, repo, destination, subject,
+			platforms, seen); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (service *BaseService) pushReferrersFor(ctx context.Context, source, staging storageTypes.ImageStore,
@@ -246,7 +271,8 @@ func (service *BaseService) pushReferrersFor(ctx context.Context, source, stagin
 		if !skip {
 			// Stage only what the destination is missing: a signature that never changes would
 			// otherwise be rewritten into the staging layout on every poll.
-			if err := service.materializeTree(ctx, source, staging, repo, desc.Digest, desc.MediaType, platforms); err != nil {
+			if _, err := service.materializeTree(ctx, source, staging, repo, desc.Digest, desc.MediaType,
+				platforms); err != nil {
 				return err
 			}
 

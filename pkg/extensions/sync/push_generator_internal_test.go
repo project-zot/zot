@@ -300,7 +300,7 @@ func TestMaterializeFailures(t *testing.T) {
 		staging := newTestImageStore(t, t.TempDir())
 		service := &BaseService{log: log.NewTestLogger()}
 
-		err := service.materializeTree(context.Background(), source, staging, "library/missing",
+		_, err := service.materializeTree(context.Background(), source, staging, "library/missing",
 			godigest.FromString("absent"), ispec.MediaTypeImageManifest, nil)
 		So(err, ShouldNotBeNil)
 	})
@@ -495,7 +495,7 @@ func TestMaterializeTraversesPlatformLessIndex(t *testing.T) {
 
 		service := &BaseService{log: log.NewTestLogger()}
 
-		err = service.materializeTree(ctx, source, staging, repo, outerDigest, ispec.MediaTypeImageIndex,
+		_, err = service.materializeTree(ctx, source, staging, repo, outerDigest, ispec.MediaTypeImageIndex,
 			[]string{"linux/amd64"})
 		So(err, ShouldBeNil)
 
@@ -504,5 +504,56 @@ func TestMaterializeTraversesPlatformLessIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(found, ShouldBeTrue)
 		}
+	})
+}
+
+func TestPushReferrersOfIndexChildren(t *testing.T) {
+	Convey("A referrer attached to an index child is pushed with the tree", t, func() {
+		ctx := context.Background()
+		repo := "library/attested"
+
+		store := newTestImageStore(t, t.TempDir())
+		_, amd64Digest, _ := seedIndex(t, store, repo)
+
+		// One signature whose subject is the amd64 child, not the index.
+		emptyConfig := []byte("{}")
+		emptyDigest := uploadBlob(t, store, repo, emptyConfig)
+		sigContent := []byte("child-signature")
+		sigDigest := uploadBlob(t, store, repo, sigContent)
+
+		signature := ispec.Manifest{
+			Versioned:    specs.Versioned{SchemaVersion: 2},
+			MediaType:    ispec.MediaTypeImageManifest,
+			ArtifactType: "application/vnd.example.signature",
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeEmptyJSON, Digest: emptyDigest, Size: int64(len(emptyConfig)),
+			},
+			Layers: []ispec.Descriptor{
+				{MediaType: "application/vnd.example.signature", Digest: sigDigest, Size: int64(len(sigContent))},
+			},
+			Subject: &ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest, Digest: amd64Digest, Size: 1,
+			},
+		}
+
+		body, err := json.Marshal(signature)
+		So(err, ShouldBeNil)
+
+		sigManifestDigest, _, err := store.PutImageManifest(ctx, repo, "signature", ispec.MediaTypeImageManifest, body, nil)
+		So(err, ShouldBeNil)
+
+		fake := newRecordingDestination()
+		storeController := storage.StoreController{DefaultStore: store}
+
+		service := &BaseService{
+			log:             log.NewTestLogger(),
+			contentManager:  NewContentManager([]syncconf.Content{{Prefix: "**"}}, log.NewTestLogger()),
+			storeController: storeController,
+			destination:     NewDestinationRegistry(storeController, storeController, nil, log.NewTestLogger()),
+			pushTargets:     []pushDestination{fake},
+		}
+
+		So(service.pushTag(ctx, store, repo, "1.0"), ShouldBeNil)
+		So(fake.copies, ShouldContain, sigManifestDigest)
 	})
 }
