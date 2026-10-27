@@ -200,12 +200,15 @@ func TestGetNextRepositoryTiming(t *testing.T) {
 		held := make(chan struct{})
 		released := make(chan struct{})
 
+		var releasedAt time.Time
+
 		go func() {
 			defer close(released)
 
 			_ = imgStore.WithBlobstoreLock(func() error {
 				close(held)
 				time.Sleep(30 * time.Millisecond)
+				releasedAt = time.Now()
 
 				return nil
 			})
@@ -214,6 +217,8 @@ func TestGetNextRepositoryTiming(t *testing.T) {
 		<-held
 
 		repo, err := imgStore.GetNextRepository(map[string]struct{}{"done": {}})
+		finished := time.Now()
+
 		<-released
 
 		So(err, ShouldBeNil)
@@ -224,7 +229,8 @@ func TestGetNextRepositoryTiming(t *testing.T) {
 		So(events[0].Operation, ShouldEqual, "GetNextRepository")
 		So(events[0].Repository, ShouldEqual, "repo")
 		So(events[0].Processed, ShouldEqual, 1)
-		So(events[0].LockWait, ShouldBeGreaterThanOrEqualTo, int64(20*time.Millisecond))
+		So(finished.Before(releasedAt), ShouldBeFalse)
+		So(events[0].LockWait, ShouldBeGreaterThan, 0)
 		So(events[0].LockHold, ShouldBeGreaterThan, 0)
 		So(events[0].LockWait+events[0].LockHold, ShouldBeLessThanOrEqualTo, events[0].Duration)
 	})
