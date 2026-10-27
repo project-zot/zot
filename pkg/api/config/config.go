@@ -371,6 +371,7 @@ type OpenIDProviderConfig struct {
 	ClientSecret    string
 	KeyPath         string
 	Issuer          string
+	DiscoveryURL    string
 	AuthURL         string
 	TokenURL        string
 	Scopes          []string
@@ -1084,6 +1085,7 @@ func (c *Config) Sanitize() *Config {
 					ClientSecret: "******",
 					KeyPath:      config.KeyPath,
 					Issuer:       config.Issuer,
+					DiscoveryURL: config.DiscoveryURL,
 					AuthURL:      config.AuthURL,
 					TokenURL:     config.TokenURL,
 					Scopes:       config.Scopes,

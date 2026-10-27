@@ -886,6 +886,12 @@ func getRelyingPartyArgs(cfg *config.Config, provider string, hashKey, encryptKe
 		options = append(options, rp.WithJWTProfile(rp.SignerFromKeyPath(keyPath)))
 	}
 
+	// The discovery document is fetched from this URL instead of <issuer>/.well-known/openid-configuration.
+	// Its issuer must still match the configured one.
+	if providerConfig.DiscoveryURL != "" {
+		options = append(options, rp.WithCustomDiscoveryUrl(providerConfig.DiscoveryURL))
+	}
+
 	return issuer, clientID, clientSecret, redirectURI, scopes, options
 }
 
