@@ -74,6 +74,10 @@ type syncImageOptions struct {
 	// SyncImageForStream sets it: any other sync (periodic, another registry, a moved tag) could
 	// feed bytes of a different manifest than the one served.
 	FeedStreams bool
+	// Coordinate runs the sync under the cross-replica lease when one is configured. Only
+	// SyncImage sets it: periodic sync runs on every replica by design, and a streaming sync
+	// feeds this replica's own clients, so neither can wait for another replica.
+	Coordinate bool
 }
 
 type BaseService struct {
@@ -95,6 +99,7 @@ type BaseService struct {
 	// localRepo+remoteRepo+reference+opts (shared by on-demand SyncImage and periodic
 	// SyncRepo index/child ensures).
 	imageFlight   singleflight.Group
+	syncLease     *syncLeaseCoordinator
 	streamManager StreamManager
 
 	clientLock sync.RWMutex
@@ -582,7 +587,8 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 		WithReferrers: false,
 		// Always sparse for on-demand (any tag/digest): indexes copy root only;
 		// image manifests still get config+layers via full ImageCopy.
-		Strategy: copySparseIndex,
+		Strategy:   copySparseIndex,
+		Coordinate: true,
 	}
 
 	// Multi-arch signatures cover the index, not each platform child. Digest pulls skip
@@ -1257,10 +1263,33 @@ func (service *BaseService) ensureImage(ctx context.Context, localRepo, remoteRe
 	key := imageFlightKey(localRepo, remoteRepo, reference, opts)
 
 	_, err, _ := service.imageFlight.Do(key, func() (any, error) {
-		return nil, service.syncImage(ctx, localRepo, remoteRepo, reference, repoTags, opts)
+		sync := func(ctx context.Context) error {
+			return service.syncImage(ctx, localRepo, remoteRepo, reference, repoTags, opts)
+		}
+
+		if opts.Coordinate && service.syncLease != nil {
+			return nil, service.syncLease.run(ctx, localRepo, reference, sync)
+		}
+
+		return nil, sync(ctx)
 	})
 
 	return err
+}
+
+// localManifestDigest returns the digest of repo:reference in local storage, or "" when absent.
+func (service *BaseService) localManifestDigest(repo, reference string) godigest.Digest {
+	imgStore := service.storeController.GetImageStore(repo)
+	if imgStore == nil {
+		return ""
+	}
+
+	_, digest, _, err := imgStore.GetImageManifest(repo, reference)
+	if err != nil {
+		return ""
+	}
+
+	return digest
 }
 
 // imageFlightKey is ensureImage's singleflight key. It includes FeedStreams, or a streaming sync
