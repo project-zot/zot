@@ -3,6 +3,7 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -16,8 +17,8 @@ const manifestCheckStoreDynamoDB = "dynamodb"
 
 // manifestCheckStore records when an upstream manifest check last succeeded for a repo:reference.
 type manifestCheckStore interface {
-	ShouldCheckUpstream(repo, reference string) bool
-	MarkChecked(repo, reference string)
+	ShouldCheckUpstream(ctx context.Context, repo, reference string) bool
+	MarkChecked(ctx context.Context, repo, reference string)
 }
 
 // newManifestCheckStore returns the in-process tracker unless storeConfig selects a shared backend.
@@ -71,7 +72,7 @@ func trackerKey(repo, reference string) string {
 // ShouldCheckUpstream reports whether an upstream check is due for repo:reference.
 // An expired entry is dropped on the way out, which is the common path for references
 // that are requested once per interval.
-func (t *manifestCheckTracker) ShouldCheckUpstream(repo, reference string) bool {
+func (t *manifestCheckTracker) ShouldCheckUpstream(_ context.Context, repo, reference string) bool {
 	key := trackerKey(repo, reference)
 
 	t.mu.Lock()
@@ -92,7 +93,7 @@ func (t *manifestCheckTracker) ShouldCheckUpstream(repo, reference string) bool 
 }
 
 // MarkChecked records that an upstream check just succeeded for repo:reference.
-func (t *manifestCheckTracker) MarkChecked(repo, reference string) {
+func (t *manifestCheckTracker) MarkChecked(_ context.Context, repo, reference string) {
 	now := time.Now()
 
 	t.mu.Lock()
