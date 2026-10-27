@@ -1109,7 +1109,7 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 	if gc.metaDB == nil {
 		retainTags = gc.policyMgr.GetRetainedTagsFromIndex(ctx, repo, *index)
 	} else {
-		repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
+		repoMeta, err := gc.repoMeta(ctx, repo)
 		if err != nil {
 			if !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 				gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).
@@ -1131,7 +1131,7 @@ func (gc GarbageCollect) removeTagsPerRetentionPolicy(ctx context.Context, repo 
 
 		if gc.scan != nil {
 			gc.scan.retention.tags = append(gc.scan.retention.tags, retainedSet{
-				retained: retainTags, index: cloneIndex(*index),
+				retained: retainTags, index: cloneIndex(*index), applied: gc.deferredWrites(),
 			})
 		}
 	}
@@ -1279,7 +1279,7 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 	retainUntagged := make(map[string]bool)
 	if gc.policyMgr.HasUntaggedRetention(repo) {
 		if gc.metaDB != nil {
-			repoMeta, getErr := gc.metaDB.GetRepoMeta(ctx, repo)
+			repoMeta, getErr := gc.repoMeta(ctx, repo)
 			if getErr != nil {
 				if !errors.Is(getErr, zerr.ErrRepoMetaNotFound) {
 					gc.log.Error().Err(getErr).Str("module", "gc").Str("repository", repo).
@@ -1301,7 +1301,7 @@ func (gc GarbageCollect) removeUntaggedManifests(ctx context.Context, repo strin
 
 			if gc.scan != nil {
 				gc.scan.retention.untagged = append(gc.scan.retention.untagged, retainedSet{
-					retained: retained, index: cloneIndex(*index),
+					retained: retained, index: cloneIndex(*index), applied: gc.deferredWrites(),
 				})
 			}
 

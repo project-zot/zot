@@ -69,6 +69,75 @@ func (gc GarbageCollect) deleteSignature(repo string, subject godigest.Digest, s
 	return gc.metaDB.DeleteSignature(repo, subject, sigMeta)
 }
 
+// repoMeta returns the repository metadata as the locked pass would see it at this point: the
+// metaDB writes the scan has deferred so far are applied to a copy of the stored record.
+func (gc GarbageCollect) repoMeta(ctx context.Context, repo string) (mTypes.RepoMeta, error) {
+	repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
+	if err != nil || gc.recorder == nil {
+		return repoMeta, err
+	}
+
+	return applyMetaActions(repoMeta, gc.recorder.actions), nil
+}
+
+// applyMetaActions mirrors on a copy of repoMeta what RemoveRepoReference does to the fields
+// retention reads: the reference's tag rows go, and once no tag points to the digest its
+// statistics, signatures and referrers go with them.
+func applyMetaActions(repoMeta mTypes.RepoMeta, actions []metaAction) mTypes.RepoMeta {
+	if len(actions) == 0 {
+		return repoMeta
+	}
+
+	repoMeta.Tags = maps.Clone(repoMeta.Tags)
+	repoMeta.Statistics = maps.Clone(repoMeta.Statistics)
+	repoMeta.Signatures = maps.Clone(repoMeta.Signatures)
+	repoMeta.Referrers = maps.Clone(repoMeta.Referrers)
+
+	for _, action := range actions {
+		if action.signature {
+			continue
+		}
+
+		digest := action.digest.String()
+
+		if action.reference == digest {
+			maps.DeleteFunc(repoMeta.Tags, func(_ mTypes.Tag, desc mTypes.Descriptor) bool {
+				return desc.Digest == digest
+			})
+		} else {
+			delete(repoMeta.Tags, action.reference)
+		}
+
+		referenced := false
+
+		for _, desc := range repoMeta.Tags {
+			if desc.Digest == digest {
+				referenced = true
+
+				break
+			}
+		}
+
+		if !referenced {
+			delete(repoMeta.Statistics, digest)
+			delete(repoMeta.Signatures, digest)
+			delete(repoMeta.Referrers, digest)
+		}
+	}
+
+	return repoMeta
+}
+
+// deferredWrites reports how many metaDB writes the scan has recorded so far, so a retention
+// snapshot can be rechecked against the same metadata view it was computed from.
+func (gc GarbageCollect) deferredWrites() int {
+	if gc.recorder == nil {
+		return 0
+	}
+
+	return len(gc.recorder.actions)
+}
+
 // applyMetaAction replays a recorded metaDB write with the error handling its call site would
 // have applied had it written directly.
 func (gc GarbageCollect) applyMetaAction(action metaAction) error {
@@ -111,10 +180,12 @@ type ageDecision struct {
 	delay  time.Duration
 }
 
-// retainedSet is one metaDB-derived keep set the scan used, with the index it was computed from.
+// retainedSet is one metaDB-derived keep set the scan used, with the index it was computed from
+// and the number of deferred metaDB writes applied to the metadata it saw.
 type retainedSet struct {
 	retained []string
 	index    ispec.Index
+	applied  int
 }
 
 // retentionSnapshot holds every keep set the scan used, one per retention pass. A pull during
@@ -534,7 +605,7 @@ func (gc GarbageCollect) planHolds(ctx context.Context, repo string, plan *repoP
 		return true, nil
 	}
 
-	return gc.retentionDecisionsHold(ctx, repo, plan.retention)
+	return gc.retentionDecisionsHold(ctx, repo, plan)
 }
 
 // ageDecisionHolds re-checks that a manifest the scan removed for being older than its retention
@@ -580,11 +651,13 @@ func (gc GarbageCollect) staleDecisionHolds(repo string, desc ispec.Descriptor) 
 }
 
 // retentionDecisionsHold recomputes the metaDB-driven keep sets the scan used against fresh repo
-// metadata. A recomputed set that only lost entries is accepted: the day-based rules evaluate
-// against the current clock, so an entry aging out between scan and commit is expected, and the
-// plan keeping it is the conservative outcome. Any entry the scan did not keep is a conflict.
-func (gc GarbageCollect) retentionDecisionsHold(ctx context.Context, repo string, snapshot retentionSnapshot,
-) (bool, error) {
+// metadata, with the same deferred writes applied that the scan had applied when it computed each
+// set. A recomputed set that only lost entries is accepted: the day-based rules evaluate against
+// the current clock, so an entry aging out between scan and commit is expected, and the plan
+// keeping it is the conservative outcome. Any entry the scan did not keep is a conflict.
+func (gc GarbageCollect) retentionDecisionsHold(ctx context.Context, repo string, plan *repoPlan) (bool, error) {
+	snapshot := plan.retention
+
 	repoMeta, err := gc.metaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
@@ -599,13 +672,17 @@ func (gc GarbageCollect) retentionDecisionsHold(ctx context.Context, repo string
 	quiet := retention.NewPolicyManager(gc.opts.ImageRetention, zlog.Logger{Logger: slog.New(slog.DiscardHandler)}, nil)
 
 	for _, set := range snapshot.tags {
-		if !containsAll(set.retained, quiet.GetRetainedTagsFromMetaDB(ctx, repoMeta, set.index)) {
+		view := applyMetaActions(repoMeta, plan.metaActions[:set.applied])
+
+		if !containsAll(set.retained, quiet.GetRetainedTagsFromMetaDB(ctx, view, set.index)) {
 			return false, nil
 		}
 	}
 
 	for _, set := range snapshot.untagged {
-		if !containsAll(set.retained, quiet.GetRetainedUntaggedFromMetaDB(ctx, repoMeta, set.index)) {
+		view := applyMetaActions(repoMeta, plan.metaActions[:set.applied])
+
+		if !containsAll(set.retained, quiet.GetRetainedUntaggedFromMetaDB(ctx, view, set.index)) {
 			return false, nil
 		}
 	}
