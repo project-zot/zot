@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -77,4 +78,62 @@ func TestInFlightBlobCopierFlushesHTTPResponse(t *testing.T) {
 
 	assert.True(t, response.Flushed)
 	assert.Equal(t, content, response.Body.Bytes())
+}
+
+// gatedResponse is a response whose first Write signals entered and then waits for release, so a
+// test can hold the copy loop inside a write while more bytes are announced.
+type gatedResponse struct {
+	*httptest.ResponseRecorder
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (w *gatedResponse) Write(p []byte) (int, error) {
+	w.once.Do(func() {
+		close(w.entered)
+		<-w.release
+	})
+
+	return w.ResponseRecorder.Write(p)
+}
+
+// TestInFlightBlobCopierFlushesFinalDrain: bytes announced while the copy loop is writing, after
+// which the announcer exits, are copied and flushed on the way out. Whether the loop then sees
+// the wake-up or the announcer's exit first is select's random choice, so the copy is repeated.
+func TestInFlightBlobCopierFlushesFinalDrain(t *testing.T) {
+	t.Parallel()
+
+	content := bytes.Repeat([]byte("stream-me "), 100)
+	cbr := newTestChunkedBlobReader(t, content, godigest.FromBytes(content))
+	require.ErrorIs(t, readAllChunks(cbr), io.EOF)
+
+	for range 32 {
+		announce := make(chan int64, 1)
+		response := &gatedResponse{
+			ResponseRecorder: httptest.NewRecorder(),
+			entered:          make(chan struct{}),
+			release:          make(chan struct{}),
+		}
+
+		copier := NewInFlightBlobCopier(cbr, cbr.OnDiskPath(), response, announce, -1, log.NewTestLogger())
+
+		copyDone := make(chan error, 1)
+		go func() { copyDone <- copier.Copy(context.Background()) }()
+
+		announce <- 10
+		<-response.entered
+
+		announce <- int64(len(content))
+
+		require.Eventually(t, func() bool { return copier.latestOffset.Load() == int64(len(content)) },
+			5*time.Second, time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
+
+		close(response.release)
+
+		require.NoError(t, <-copyDone)
+		assert.True(t, response.Flushed)
+		assert.Equal(t, content, response.Body.Bytes())
+	}
 }
