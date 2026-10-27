@@ -17,10 +17,10 @@ import (
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/types/blob"
 	"github.com/regclient/regclient/types/descriptor"
-	"github.com/regclient/regclient/types/errs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -47,13 +47,14 @@ func (r *failingReader) Read(p []byte) (int, error) {
 
 // resumeFetcher is a BlobFetcher over content: its first len(failAfter) opens fail after the given
 // number of bytes (-1 for a clean EOF there instead of an error), and later opens serve the whole
-// blob.
+// blob. With corruptFirst, the first open serves a wrong byte before it is cut short.
 type resumeFetcher struct {
-	content   []byte
-	desc      descriptor.Descriptor
-	failAfter []int
-	opens     atomic.Int32
-	openErr   error
+	content      []byte
+	desc         descriptor.Descriptor
+	failAfter    []int
+	corruptFirst bool
+	opens        atomic.Int32
+	openErr      error
 }
 
 func (f *resumeFetcher) fetch(_ context.Context, desc descriptor.Descriptor) (*blob.BReader, error) {
@@ -69,8 +70,15 @@ func (f *resumeFetcher) fetch(_ context.Context, desc descriptor.Descriptor) (*b
 			return blob.NewReader(blob.WithReader(bytes.NewReader(f.content[:-after]))), nil
 		}
 
+		content := f.content
+
+		if open == 0 && f.corruptFirst {
+			content = bytes.Clone(content)
+			content[10] ^= 0xff
+		}
+
 		return blob.NewReader(blob.WithDesc(desc), blob.WithReader(
-			&failingReader{content: f.content, failAfter: after, err: errResumeUpstream})), nil
+			&failingReader{content: content, failAfter: after, err: errResumeUpstream})), nil
 	}
 
 	return blob.NewReader(blob.WithDesc(desc), blob.WithReader(bytes.NewReader(f.content))), nil
@@ -203,6 +211,25 @@ func TestChunkedBlobReaderFillResumableGivesUp(t *testing.T) {
 		assert.Equal(t, int32(1), fetcher.opens.Load())
 	})
 
+	t.Run("the cut-short response was corrupt", func(t *testing.T) {
+		t.Parallel()
+
+		fetcher := &resumeFetcher{failAfter: []int{fillChunkSize + 7}, corruptFirst: true}
+		cbr := newResumeTestBlob(t, fetcher)
+
+		announce, _ := cbr.Subscribe()
+
+		// The retry serves the correct blob, which passes its own digest check; the bytes clients
+		// already received don't match it.
+		require.ErrorIs(t, cbr.FillResumable(context.Background(), resumeOf(fetcher, 3)), zerr.ErrStreamCorruptPrefix)
+		require.ErrorIs(t, cbr.Err(), zerr.ErrStreamCorruptPrefix)
+		require.ErrorIs(t, cbr.Wait(context.Background()), zerr.ErrStreamCorruptPrefix)
+		assert.Equal(t, int32(2), fetcher.opens.Load(), "a corrupt prefix is not retried")
+
+		for range announce {
+		}
+	})
+
 	t.Run("the reopened blob differs", func(t *testing.T) {
 		t.Parallel()
 
@@ -216,8 +243,9 @@ func TestChunkedBlobReaderFillResumableGivesUp(t *testing.T) {
 
 		resume := &fillResume{fetch: reopen, maxAttempts: 3, delay: time.Millisecond}
 
-		require.ErrorIs(t, cbr.FillResumable(context.Background(), resume), errs.ErrDigestMismatch)
-		require.ErrorIs(t, cbr.Err(), errs.ErrDigestMismatch)
+		// Caught at the first differing byte of the replayed prefix, before its digest check.
+		require.ErrorIs(t, cbr.FillResumable(context.Background(), resume), zerr.ErrStreamCorruptPrefix)
+		require.ErrorIs(t, cbr.Err(), zerr.ErrStreamCorruptPrefix)
 	})
 }
 

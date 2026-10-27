@@ -3,6 +3,7 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -408,6 +409,13 @@ func (cbr *ChunkedBlobReader) FillResumable(ctx context.Context, resume *fillRes
 
 		next, reopenErr := cbr.reopen(ctx, resume.fetch)
 		if reopenErr != nil {
+			if errors.Is(reopenErr, zerr.ErrStreamCorruptPrefix) {
+				cbr.logIntegrityOrUpstreamError(reopenErr)
+				cbr.fail(reopenErr)
+
+				return reopenErr
+			}
+
 			err = &interruptedError{err: reopenErr}
 
 			continue
@@ -423,7 +431,8 @@ func (cbr *ChunkedBlobReader) FillResumable(ctx context.Context, resume *fillRes
 }
 
 // reopen replaces the producer with a fresh reader of the blob, positioned after the bytes already
-// on disk. The skipped bytes still pass through the reader's digest check.
+// on disk. The skipped bytes still pass through the reader's digest check, and are compared with
+// the bytes on disk (ErrStreamCorruptPrefix if they differ).
 func (cbr *ChunkedBlobReader) reopen(ctx context.Context, fetch BlobFetcher) (*blob.BReader, error) {
 	cbr.readMu.Lock()
 	defer cbr.readMu.Unlock()
@@ -437,7 +446,7 @@ func (cbr *ChunkedBlobReader) reopen(ctx context.Context, fetch BlobFetcher) (*b
 		return nil, err
 	}
 
-	if _, err := io.CopyN(io.Discard, next, cbr.numBytesWritten); err != nil {
+	if err := cbr.verifyPrefix(next); err != nil {
 		_ = next.Close()
 
 		return nil, err
@@ -448,6 +457,40 @@ func (cbr *ChunkedBlobReader) reopen(ctx context.Context, fetch BlobFetcher) (*b
 	cbr.bytesMu.Unlock()
 
 	return next, nil
+}
+
+// verifyPrefix reads the bytes already on disk from next, which replays the blob from its start,
+// and checks they are the bytes clients were sent. The cut-short response may have carried corrupt
+// bytes before it ended: next's own digest check covers what it serves, not what was retained.
+// Must be called with readMu held.
+func (cbr *ChunkedBlobReader) verifyPrefix(next io.Reader) error {
+	onDisk, err := os.Open(cbr.onDiskPath)
+	if err != nil {
+		return err
+	}
+	defer onDisk.Close()
+
+	retained := make([]byte, fillChunkSize)
+	replayed := make([]byte, fillChunkSize)
+
+	for remaining := cbr.numBytesWritten; remaining > 0; {
+		n, err := io.ReadFull(onDisk, retained[:min(remaining, int64(fillChunkSize))])
+		if err != nil {
+			return err
+		}
+
+		if _, err := io.ReadFull(next, replayed[:n]); err != nil {
+			return err
+		}
+
+		if !bytes.Equal(retained[:n], replayed[:n]) {
+			return zerr.ErrStreamCorruptPrefix
+		}
+
+		remaining -= int64(n)
+	}
+
+	return nil
 }
 
 // fillOnce reads the current producer to its end. It returns an interruptedError if the producer
@@ -605,9 +648,11 @@ func (cbr *ChunkedBlobReader) logIntegrityOrUpstreamError(err error) {
 	cbr.logger.Error().Err(err).Msg("failed to read from in flight reader")
 }
 
-// isIntegrityErr reports whether err is regclient's digest or size check failing.
+// isIntegrityErr reports whether err is regclient's digest or size check failing, or a resumed
+// download finding the retained bytes corrupt.
 func isIntegrityErr(err error) bool {
 	return errors.Is(err, errs.ErrDigestMismatch) ||
+		errors.Is(err, zerr.ErrStreamCorruptPrefix) ||
 		errors.Is(err, errs.ErrShortRead) ||
 		errors.Is(err, errs.ErrSizeLimitExceeded)
 }
