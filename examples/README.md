@@ -1575,7 +1575,11 @@ local. Notes:
 #### Sharing check state across replicas
 
 `manifestCheckStore` keeps the last check time in a store shared by all replicas, so a check made by
-one replica is honored by the others and survives restarts:
+one replica is honored by the others and survives restarts. The replicas must also share one storage
+backend (the same S3 bucket, or the same mounted filesystem): the store records that a check
+succeeded, not which manifest was stored, so a replica with its own storage would keep serving its
+old manifest until the interval elapses. With a local `rootDirectory` and no `storageDriver`, zot
+logs a warning at startup.
 
 ```
 			"registries": [{

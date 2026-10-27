@@ -1968,6 +1968,12 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 		return intervalValidationErr
 	}
 
+	if regCfg.ManifestCheckStore != nil && config.Storage.StorageDriver == nil {
+		logger.Warn().Int("id", regID).Msg("manifestCheckStore shares check state across replicas but " +
+			"storage is a local directory; every replica must mount the same storage, or a replica " +
+			"may serve a manifest another replica already refreshed")
+	}
+
 	if streamValidationErr := validateRegistryStreamingSyncConfig(regCfg); streamValidationErr != nil {
 		logger.Error().Err(streamValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
 			regCfg).Msg("invalid config for stream")

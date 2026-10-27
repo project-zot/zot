@@ -69,6 +69,12 @@ type RegistryConfig struct {
 	// ManifestCheckStore keeps the state behind ManifestCheckInterval in a backend shared by all
 	// replicas instead of in process memory. Requires ManifestCheckInterval. When unset each
 	// replica tracks its own checks.
+	//
+	// The store records that a check succeeded, not which manifest it stored. Replicas must
+	// therefore share one storage backend (an S3 bucket, a shared filesystem), so that the
+	// manifest a replica serves without checking is the one another replica just refreshed.
+	// With a separate store per replica, a replica keeps serving its old manifest until the
+	// interval elapses.
 	ManifestCheckStore *ManifestCheckStoreConfig
 	CertDir            string
 	MaxRetries         *int
