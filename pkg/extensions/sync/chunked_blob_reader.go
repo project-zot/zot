@@ -653,7 +653,6 @@ func (cbr *ChunkedBlobReader) logIntegrityOrUpstreamError(err error) {
 func isIntegrityErr(err error) bool {
 	return errors.Is(err, errs.ErrDigestMismatch) ||
 		errors.Is(err, zerr.ErrStreamCorruptPrefix) ||
-		errors.Is(err, errs.ErrShortRead) ||
 		errors.Is(err, errs.ErrSizeLimitExceeded)
 }
 
@@ -666,7 +665,8 @@ const (
 	readErrEOF
 	// readErrIntegrityFailure is a failed digest/size check (also matches io.EOF: check first).
 	readErrIntegrityFailure
-	// readErrUpstream is any other (network/upstream) error.
+	// readErrUpstream is any other (network/upstream) error, including a body that ended short of
+	// the descriptor's size: a resumed download can finish it.
 	readErrUpstream
 )
 
@@ -674,6 +674,10 @@ func classifyReadErr(err error) readErrClass {
 	switch {
 	case err == nil:
 		return readErrNone
+	case errors.Is(err, errs.ErrShortRead):
+		// A truncated body's digest can't match either, so this comes before the integrity check.
+		// The reopened reader verifies the whole blob.
+		return readErrUpstream
 	case isIntegrityErr(err):
 		return readErrIntegrityFailure
 	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
