@@ -20,6 +20,10 @@ import (
 // both share a table: a digest never contains "#".
 const manifestCheckKeyPrefix = "manifestcheck#"
 
+// manifestCheckStoreTimeout bounds each store call. A read that exceeds it counts as due and a
+// write that exceeds it is dropped, so a slow store delays a pull by at most this much.
+const manifestCheckStoreTimeout = 5 * time.Second
+
 type manifestCheckItem struct {
 	Digest      string `dynamodbav:"Digest,string"`
 	LastChecked int64  `dynamodbav:"LastChecked,number"`
@@ -55,8 +59,11 @@ func manifestCheckDigestKey(repo, reference string) string {
 
 // ShouldCheckUpstream reports whether an upstream check is due for repo:reference. A read or
 // decode failure counts as due, so a store outage costs an upstream check rather than a stale tag.
-func (t *dynamoManifestCheckTracker) ShouldCheckUpstream(repo, reference string) bool {
-	resp, err := t.client.GetItem(context.Background(), &dynamodb.GetItemInput{
+func (t *dynamoManifestCheckTracker) ShouldCheckUpstream(ctx context.Context, repo, reference string) bool {
+	ctx, cancel := context.WithTimeout(ctx, manifestCheckStoreTimeout)
+	defer cancel()
+
+	resp, err := t.client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(t.tableName),
 		Key: map[string]types.AttributeValue{
 			"Digest": &types.AttributeValueMemberS{Value: manifestCheckDigestKey(repo, reference)},
@@ -88,7 +95,7 @@ func (t *dynamoManifestCheckTracker) ShouldCheckUpstream(repo, reference string)
 
 // MarkChecked records a successful upstream check. A failed write is logged and not returned;
 // the next request for this reference checks upstream again.
-func (t *dynamoManifestCheckTracker) MarkChecked(repo, reference string) {
+func (t *dynamoManifestCheckTracker) MarkChecked(ctx context.Context, repo, reference string) {
 	item, err := attributevalue.MarshalMap(manifestCheckItem{
 		Digest:      manifestCheckDigestKey(repo, reference),
 		LastChecked: time.Now().UnixNano(),
@@ -100,7 +107,10 @@ func (t *dynamoManifestCheckTracker) MarkChecked(repo, reference string) {
 		return
 	}
 
-	if _, err := t.client.PutItem(context.Background(), &dynamodb.PutItemInput{
+	ctx, cancel := context.WithTimeout(ctx, manifestCheckStoreTimeout)
+	defer cancel()
+
+	if _, err := t.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(t.tableName),
 		Item:      item,
 	}); err != nil {
