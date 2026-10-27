@@ -1500,7 +1500,8 @@ Configure each registry sync:
 				"manifestCheckStore": {             # optional; share manifestCheckInterval state across replicas instead of keeping it in memory; requires manifestCheckInterval. See "Sync's manifestCheckInterval option" below
 					"name": "dynamodb",             # only "dynamodb" is supported
 					"tableName": "zot-dedupe-cache",
-					"region": "us-east-2"
+					"region": "us-east-2",
+					"coordinateOnDemand": false     # optional; let one replica sync an on-demand image while the others wait for it, see "Coordinating on-demand syncs across replicas" below
 				},
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
@@ -1636,6 +1637,34 @@ A locally present tag is then served without contacting upstream, also when it w
 storage instead of synced, and also after a restart. A tag that is not present locally is still
 synced on demand. A tag repushed upstream is not updated. With `content` rules, this applies only
 to the repositories they match.
+
+#### Coordinating on-demand syncs across replicas
+
+When clients pull an image that no replica has yet from several replicas at once, each replica syncs
+it from upstream. With `"coordinateOnDemand": true` under `manifestCheckStore`, a replica takes a
+lease on the image in the same table before syncing. The others wait, polling local storage, and
+serve the image once the holder has committed it; if the holder fails or stops renewing its lease
+(30s), a waiting replica takes the lease over and syncs the image itself.
+
+```
+			"registries": [{
+				"urls": ["https://registry-1.docker.io"],
+				"onDemand": true,
+				"manifestCheckInterval": "10m",
+				"manifestCheckStore": {
+					"name": "dynamodb",
+					"tableName": "zot-dedupe-cache",
+					"region": "us-east-2",
+					"coordinateOnDemand": true
+				}
+			}]
+```
+
+ - the replicas must share one storage backend, as for `manifestCheckStore` itself: a waiting replica serves the image the holder committed to that storage
+ - it applies to blocking on-demand syncs and to `onDemandInBackground`; a streaming sync (`stream`) always runs on the replica that serves the stream, and periodic sync runs on every replica
+ - the lease is in-process only within one replica: concurrent requests on the same replica were already merged before this option
+ - zot also needs `dynamodb:UpdateItem` and `dynamodb:DeleteItem` on the table
+ - if the lease store cannot be reached, the replica syncs the image itself as it would without this option
 
 ### On-demand sync in the background
 
