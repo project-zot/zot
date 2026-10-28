@@ -51,7 +51,7 @@ func TestScrubExtension(t *testing.T) {
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
 			Enable:   &trueValue,
-			Interval: 2,
+			Interval: 2 * time.Second,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Scrub: scrubConfig,
@@ -90,7 +90,7 @@ func TestScrubExtension(t *testing.T) {
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
 			Enable:   &trueValue,
-			Interval: 2,
+			Interval: 2 * time.Second,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Scrub: scrubConfig,
@@ -136,7 +136,7 @@ func TestScrubExtension(t *testing.T) {
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
 			Enable:   &trueValue,
-			Interval: 2,
+			Interval: 2 * time.Second,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Scrub: scrubConfig,
