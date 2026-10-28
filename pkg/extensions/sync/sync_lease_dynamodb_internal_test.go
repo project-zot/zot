@@ -8,10 +8,13 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
 )
 
 func newFakeDynamoSyncLeaseStore(transport *fakeDynamoTransport, urls ...string) *dynamoSyncLeaseStore {
-	return newDynamoSyncLeaseStore(newFakeDynamoClient(transport), testManifestCheckTable, manifestCheckNamespace(urls))
+	return newDynamoSyncLeaseStore(newFakeDynamoClient(transport), testManifestCheckTable,
+		manifestCheckNamespace(syncconf.RegistryConfig{URLs: urls}))
 }
 
 func TestDynamoDBSyncLeaseStore(t *testing.T) {

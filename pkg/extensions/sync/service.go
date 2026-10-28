@@ -135,7 +135,7 @@ func New(
 		service.checkTracker = checkTracker
 
 		if tracker, ok := checkTracker.(*dynamoManifestCheckTracker); ok && config.ManifestCheckStore.CoordinateOnDemand {
-			service.syncLease, err = newSyncLeaseCoordinator(tracker.syncLeaseStore(config.URLs),
+			service.syncLease, err = newSyncLeaseCoordinator(tracker.syncLeaseStore(config),
 				service.localManifestDigest, log)
 			if err != nil {
 				return nil, err

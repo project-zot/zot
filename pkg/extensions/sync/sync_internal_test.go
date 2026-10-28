@@ -3555,7 +3555,7 @@ func TestNewManifestCheckStore(t *testing.T) {
 		So(ok, ShouldBeTrue)
 		So(leaseStore.tableName, ShouldEqual, "test-table")
 		So(leaseStore.keyPrefix, ShouldEqual,
-			syncLeaseKeyPrefix+manifestCheckNamespace([]string{"localhost:9999"})+"#")
+			syncLeaseKeyPrefix+manifestCheckNamespace(syncconf.RegistryConfig{URLs: []string{"localhost:9999"}})+"#")
 	})
 }
 
