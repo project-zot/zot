@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -42,7 +43,14 @@ import (
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
+	"zotregistry.dev/zot/v2/pkg/test/trivycache"
 )
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	trivycache.Cleanup()
+	os.Exit(code)
+}
 
 type fakeArtifactRunner struct {
 	reportFn    func(ctx context.Context, opts flag.Options, report trivyTypes.Report) error
@@ -196,6 +204,33 @@ func TestRunTrivySBOMGenerationFailureIsNonFatal(t *testing.T) {
 	})
 }
 
+// dbSource downloads the vulnerability and Java databases through Scanner.UpdateDB.
+type dbSource struct{}
+
+func (dbSource) Download(cacheRoot string) error {
+	logger := log.NewTestLogger()
+	imageStore := local.NewImageStore(cacheRoot, false, false,
+		logger, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+
+	scanner := NewScanner(storage.StoreController{DefaultStore: imageStore}, nil, &extconf.CVEConfig{
+		Trivy: &extconf.TrivyConfig{
+			DBRepository:     "ghcr.io/project-zot/trivy-db",
+			JavaDBRepository: "ghcr.io/project-zot/trivy-java-db",
+		},
+	}, logger)
+
+	if err := scanner.UpdateDB(context.Background()); err != nil {
+		return fmt.Errorf("update trivy test databases: %w", err)
+	}
+
+	return nil
+}
+
+func installCachedDB(t *testing.T, storeRoot string) {
+	t.Helper()
+	trivycache.Install(t, storeRoot, false, dbSource{})
+}
+
 func TestMultipleStoragePath(t *testing.T) {
 	Convey("Test multiple storage path", t, func() {
 		// Create temporary directory
@@ -278,9 +313,40 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		ctx = context.Background()
 
-		// Download DB since DB download on scan is disabled
-		err = scanner.UpdateDB(ctx)
+		// Each store keeps its own database. Copy the shared download instead of
+		// pulling once per store.
+		installCachedDB(t, firstRootDir)
+		installCachedDB(t, secondRootDir)
+		installCachedDB(t, thirdRootDir)
+
+		// One UpdateDB must finish the default store and every substore. The
+		// copies are fresh, so this stays a metadata read.
+		dbFiles := []string{
+			path.Join(firstRootDir, "_trivy", "db", "trivy.db"),
+			path.Join(secondRootDir, "_trivy", "db", "trivy.db"),
+			path.Join(thirdRootDir, "_trivy", "db", "trivy.db"),
+		}
+		beforeInfo := make([]os.FileInfo, len(dbFiles))
+
+		for i, dbFile := range dbFiles {
+			info, statErr := os.Stat(dbFile)
+			So(statErr, ShouldBeNil)
+
+			beforeInfo[i] = info
+		}
+
+		updateCtx, updateCancel := context.WithTimeout(context.Background(), trivycache.FreshUpdateLimit)
+		defer updateCancel()
+
+		err = scanner.UpdateDB(updateCtx)
 		So(err, ShouldBeNil)
+
+		for i, dbFile := range dbFiles {
+			info, statErr := os.Stat(dbFile)
+			So(statErr, ShouldBeNil)
+			So(info.Size(), ShouldEqual, beforeInfo[i].Size())
+			So(info.ModTime().Equal(beforeInfo[i].ModTime()), ShouldBeTrue)
+		}
 
 		// Scanning image in default store
 		scanResult, err := scanner.ScanImage(ctx, img0)
@@ -307,10 +373,8 @@ func TestMultipleStoragePath(t *testing.T) {
 		err = scanner.UpdateDB(ctx)
 		So(err, ShouldNotBeNil)
 
-		// Check the download works correctly when permissions allow
+		// Restore permissions so the substore check can read the default store.
 		err = os.Chmod(firstRootDir, 0o777)
-		So(err, ShouldBeNil)
-		err = scanner.UpdateDB(ctx)
 		So(err, ShouldBeNil)
 
 		// Download the DB to a substore location without permissions
@@ -374,7 +438,8 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err, ShouldWrap, zerr.ErrCVEDBNotFound)
 
-		// Download DB fails for invalid Java DB
+		// Download DB fails for invalid Java DB. The vulnerability repository is
+		// valid, so this call downloads that database and then fails on the Java one.
 		scanner = NewScanner(storeController, metaDB, &extconf.CVEConfig{
 			Trivy: &extconf.TrivyConfig{
 				DBRepository:     "ghcr.io/project-zot/trivy-db",
@@ -385,15 +450,13 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		err = scanner.UpdateDB(ctx)
 		So(err, ShouldNotBeNil)
 
-		// Download DB passes for valid Trivy DB url, and missing Trivy Java DB url
-		// Download DB is necessary since DB download on scan is disabled
+		// Download DB passes for a valid Trivy DB url when no Java DB url is set.
 		scanner = NewScanner(storeController, metaDB, &extconf.CVEConfig{
 			Trivy: &extconf.TrivyConfig{
 				DBRepository: "ghcr.io/project-zot/trivy-db",
 			},
 		}, log)
 
-		// UpdateDB with good ctx
 		err = scanner.UpdateDB(ctx)
 		So(err, ShouldBeNil)
 
@@ -580,6 +643,10 @@ func TestTrivyDBUrl(t *testing.T) {
 		err = meta.ParseStorage(metaDB, storeController, log)
 		So(err, ShouldBeNil)
 
+		// This test is the live download: a cancelled context must fail, then a
+		// successful UpdateDB of both databases must be able to scan. Other tests
+		// copy the database from trivycache.Install.
+		//
 		// Ideally we would want to also test the default urls
 		// But we are getting `response status code 429: toomanyrequests` from
 		// `ghcr.io/aquasecurity/trivy-db` and `ghcr.io/aquasecurity/trivy-java-db`
