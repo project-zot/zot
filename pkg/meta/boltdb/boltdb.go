@@ -1510,8 +1510,10 @@ func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest go
 			}
 		}
 
-		/* try to find at least one tag pointing to manifestDigest
-		if not found then we can also remove everything related to this digest */
+		// No remaining tag points at this digest. Signatures and referrers are
+		// deleted either way. Statistics stay when reference is a tag, because that
+		// caller left the manifest in the index. They are deleted when reference is
+		// a digest, because the manifest itself is gone.
 		var foundTag bool
 
 		for _, desc := range protoRepoMeta.Tags {
@@ -1521,10 +1523,6 @@ func (bdw *BoltDB) RemoveRepoReference(repo, reference string, manifestDigest go
 		}
 
 		if !foundTag {
-			// Removing the last tag leaves an untagged descriptor in index.json
-			// (storage.RemoveManifestDescByReference), so the manifest still exists and
-			// untagged retention needs its push and pull timestamps. Statistics go
-			// only when the manifest itself is removed by digest.
 			if common.ReferenceIsDigest(reference) {
 				delete(protoRepoMeta.Statistics, manifestDigest.String())
 			}
