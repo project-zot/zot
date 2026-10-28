@@ -201,7 +201,7 @@ func newFakeDynamoManifestCheckTracker(interval time.Duration, transport *fakeDy
 	return &dynamoManifestCheckTracker{
 		client:    client,
 		tableName: testManifestCheckTable,
-		keyPrefix: manifestCheckKeyPrefix + manifestCheckNamespace(urls) + "#",
+		keyPrefix: manifestCheckKeyPrefix + manifestCheckNamespace(syncconf.RegistryConfig{URLs: urls}) + "#",
 		interval:  interval,
 		log:       log.NewTestLogger(),
 	}
@@ -330,6 +330,7 @@ func TestDynamoDBManifestCheckStore(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(tracker.tableName, ShouldEqual, testManifestCheckTable)
 		So(tracker.interval, ShouldEqual, time.Hour)
-		So(tracker.keyPrefix, ShouldEqual, manifestCheckKeyPrefix+manifestCheckNamespace(urls)+"#")
+		So(tracker.keyPrefix, ShouldEqual,
+			manifestCheckKeyPrefix+manifestCheckNamespace(syncconf.RegistryConfig{URLs: urls})+"#")
 	})
 }
