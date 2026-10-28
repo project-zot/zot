@@ -81,12 +81,15 @@ func TestInFlightBlobCopierFlushesHTTPResponse(t *testing.T) {
 }
 
 // gatedResponse is a response whose first Write signals entered and then waits for release, so a
-// test can hold the copy loop inside a write while more bytes are announced.
+// test can hold the copy loop inside a write while more bytes are announced. It also records
+// whether the latest write has been flushed since.
 type gatedResponse struct {
 	*httptest.ResponseRecorder
 	entered chan struct{}
 	release chan struct{}
 	once    sync.Once
+
+	flushedAfterLastWrite bool
 }
 
 func (w *gatedResponse) Write(p []byte) (int, error) {
@@ -95,7 +98,14 @@ func (w *gatedResponse) Write(p []byte) (int, error) {
 		<-w.release
 	})
 
+	w.flushedAfterLastWrite = false
+
 	return w.ResponseRecorder.Write(p)
+}
+
+func (w *gatedResponse) Flush() {
+	w.flushedAfterLastWrite = true
+	w.ResponseRecorder.Flush()
 }
 
 // TestInFlightBlobCopierFlushesFinalDrain: bytes announced while the copy loop is writing, after
@@ -133,7 +143,7 @@ func TestInFlightBlobCopierFlushesFinalDrain(t *testing.T) {
 		close(response.release)
 
 		require.NoError(t, <-copyDone)
-		assert.True(t, response.Flushed)
 		assert.Equal(t, content, response.Body.Bytes())
+		assert.True(t, response.flushedAfterLastWrite, "the last bytes written must be flushed")
 	}
 }
