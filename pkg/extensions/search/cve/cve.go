@@ -103,13 +103,25 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(ctx context.Context, repo, cveID s
 			}
 
 			if _, hasCVE := scanResult.CVEMap[cveID]; hasCVE {
-				imgList = append(imgList, cvemodel.TagInfo{
+				tagInfo := cvemodel.TagInfo{
 					Tag: tag,
 					Descriptor: cvemodel.Descriptor{
 						Digest:    manifestDigest,
 						MediaType: descriptor.MediaType,
 					},
-				})
+				}
+
+				// images are matched by manifest digest, so for an index we also need
+				// to know which of its manifests are affected by the CVE
+				if compat.IsImageIndexMediaType(descriptor.MediaType) {
+					tagInfo.Manifests, err = cveinfo.getIndexManifestsAffectedByCVE(ctx, repo, tag,
+						manifestDigestStr, cveID)
+					if err != nil {
+						return imgList, err
+					}
+				}
+
+				imgList = append(imgList, tagInfo)
 			}
 		} else {
 			cveinfo.Log.Debug().Str("image", repo+":"+tag).Str("mediaType", descriptor.MediaType).
@@ -118,6 +130,57 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(ctx context.Context, repo, cveID s
 	}
 
 	return imgList, nil
+}
+
+// getIndexManifestsAffectedByCVE returns the image manifests of the index which are affected by the CVE.
+// Manifests which can not be scanned are not considered affected.
+func (cveinfo BaseCveInfo) getIndexManifestsAffectedByCVE(ctx context.Context, repo, tag, indexDigestStr,
+	cveID string,
+) ([]cvemodel.DescriptorInfo, error) {
+	affectedManifests := []cvemodel.DescriptorInfo{}
+
+	indexContent, err := getIndexContent(cveinfo.MetaDB, indexDigestStr)
+	if err != nil {
+		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("tag", tag).Str("cve-id", cveID).
+			Msg("failed to retrieve index content")
+
+		return affectedManifests, nil
+	}
+
+	for _, manifest := range indexContent.Manifests {
+		if !compat.IsImageManifestMediaType(manifest.MediaType) {
+			continue
+		}
+
+		manifestDigestStr := manifest.Digest.String()
+		image := zcommon.GetFullImageName(repo, manifestDigestStr)
+
+		isScanableImage, err := cveinfo.Scanner.IsImageMediaScannable(repo, manifestDigestStr, manifest.MediaType)
+		if !isScanableImage || err != nil {
+			cveinfo.Log.Debug().Str("image", image).Err(err).Msg("image is not scanable")
+
+			continue
+		}
+
+		scanResult, err := cveinfo.Scanner.ScanImage(ctx, image)
+		if err != nil {
+			if zcommon.IsContextDone(ctx) {
+				return affectedManifests, err
+			}
+
+			cveinfo.Log.Info().Str("image", image).Err(err).Msg("image scan failed")
+
+			continue
+		}
+
+		if _, hasCVE := scanResult.CVEMap[cveID]; hasCVE {
+			affectedManifests = append(affectedManifests, cvemodel.DescriptorInfo{
+				Digest: manifest.Digest, MediaType: manifest.MediaType,
+			})
+		}
+	}
+
+	return affectedManifests, nil
 }
 
 func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(ctx context.Context, repo, cveID string,

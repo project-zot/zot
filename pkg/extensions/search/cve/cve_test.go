@@ -1578,6 +1578,15 @@ func TestCVEStruct(t *testing.T) { //nolint:gocyclo
 		So(err, ShouldBeNil)
 		So(len(tagList), ShouldEqual, 0)
 
+		// Index is affected through one of its manifests
+		tagList, err = cveInfo.GetImageListForCVE(ctx, repoMultiarch, "CVE1")
+		So(err, ShouldBeNil)
+		So(len(tagList), ShouldEqual, 1)
+		So(tagList[0].Tag, ShouldEqual, "tagIndex")
+		So(tagList[0].Descriptor.Digest.String(), ShouldEqual, indexDigest)
+		So(len(tagList[0].Manifests), ShouldEqual, 1)
+		So(tagList[0].Manifests[0].Digest.String(), ShouldEqual, indexM1Digest)
+
 		// Image is not scannable
 		tagList, err = cveInfo.GetImageListForCVE(ctx, repo2, "CVE100")
 		// Image is not considered affected with CVE as scan is not possible
@@ -1853,6 +1862,47 @@ func TestFixedTagsWithIndex(t *testing.T) {
 		So(len(responseStruct.Results[0].Manifests), ShouldEqual, 1)
 		fixedManifestResp := responseStruct.Results[0].Manifests[0]
 		So(fixedManifestResp.Digest, ShouldResemble, fixedSingleArchImage.ManifestDescriptor.Digest.String())
+
+		// the index is affected through its vulnerable manifest only
+		tagsInfo, err = cveInfo.GetImageListForCVE(context.Background(), "repo", Vulnerability1ID)
+		So(err, ShouldBeNil)
+		So(len(tagsInfo), ShouldEqual, 2)
+
+		const affectedQuery = `
+		{
+			ImageListForCVE(id:"%s"){
+				Results{
+					RepoName
+					Tag
+					Manifests {Digest}
+				}
+			}
+		}`
+
+		resp, _ = resty.R().Get(baseURL + constants.FullSearchPrefix + "?query=" +
+			url.QueryEscape(fmt.Sprintf(affectedQuery, Vulnerability1ID)))
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		affectedResponseStruct := &zcommon.ImagesForCve{}
+		err = json.Unmarshal(resp.Body(), &affectedResponseStruct)
+		So(err, ShouldBeNil)
+		So(len(affectedResponseStruct.Results), ShouldEqual, 2)
+
+		affectedManifests := map[string][]string{}
+
+		for _, image := range affectedResponseStruct.Results {
+			So(image.RepoName, ShouldEqual, "repo")
+
+			for _, manifest := range image.Manifests {
+				affectedManifests[image.Tag] = append(affectedManifests[image.Tag], manifest.Digest)
+			}
+		}
+
+		So(affectedManifests, ShouldResemble, map[string][]string{
+			"multi-arch-tag": {vulnSingleArchImage.ManifestDescriptor.Digest.String()},
+			"vuln-img":       {simpleVulnImage.ManifestDescriptor.Digest.String()},
+		})
 	})
 }
 
