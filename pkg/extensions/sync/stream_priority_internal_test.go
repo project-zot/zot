@@ -30,6 +30,8 @@ type gatedFetcher struct {
 	*storeBlobFetcher
 	gated   godigest.Digest
 	release chan struct{}
+	// gatedCtxs receives the context of each gated fetch.
+	gatedCtxs chan context.Context
 }
 
 func newGatedFetcher(storeCtrl stypes.StoreController, repo string, gated godigest.Digest) *gatedFetcher {
@@ -37,11 +39,14 @@ func newGatedFetcher(storeCtrl stypes.StoreController, repo string, gated godige
 		storeBlobFetcher: newStoreBlobFetcher(storeCtrl, repo),
 		gated:            gated,
 		release:          make(chan struct{}),
+		gatedCtxs:        make(chan context.Context, 8),
 	}
 }
 
 func (g *gatedFetcher) fetch(ctx context.Context, desc descriptor.Descriptor) (*blob.BReader, error) {
 	if desc.Digest == g.gated {
+		g.gatedCtxs <- ctx
+
 		select {
 		case <-g.release:
 		case <-ctx.Done():
@@ -186,6 +191,57 @@ func TestChunkingStreamManagerPriorityDownloadEarlyClient(t *testing.T) {
 	sm.RemoveStreamingImage("repo-a", predictTestTag, true)
 }
 
+// TestChunkingStreamManagerPriorityDownloadCancelledWhenBulkWins: a priority download still queued
+// at its throttle when the sync's download starts the blob is cancelled, rather than left holding
+// upstream capacity, and losing that way does not fail the blob or its client.
+func TestChunkingStreamManagerPriorityDownloadCancelledWhenBulkWins(t *testing.T) {
+	t.Parallel()
+
+	root, storeCtrl := newTestStore(t)
+	regClient := regclient.New()
+
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
+
+	sm := newTestStreamManager(t, storeCtrl, 0)
+
+	streamable, layer := priorityTestImage(t, sm, regClient, root)
+
+	var clientBuf bytes.Buffer
+
+	copier, err := sm.ConnectClient("repo-a", layer.Digest.String(), &clientBuf)
+	require.NoError(t, err)
+
+	clientDone := make(chan error, 1)
+
+	go func() { clientDone <- copier.Copy() }()
+
+	bulk := newStoreBlobFetcher(storeCtrl, "repo-a")
+	// Never released: the priority download stays queued until it is cancelled.
+	priority := newGatedFetcher(storeCtrl, "repo-a", layer.Digest)
+
+	downloaded := startPriorityDownload(t, sm, streamable, bulk.fetch, priority.fetch)
+
+	var priorityCtx context.Context
+
+	select {
+	case priorityCtx = <-priority.gatedCtxs:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no priority download was started for the waiting client")
+	}
+
+	require.NoError(t, <-clientDone)
+	assert.Equal(t, layer.Digest, godigest.FromBytes(clientBuf.Bytes()))
+
+	files := <-downloaded
+	require.Contains(t, files, layer.Digest)
+	assert.Equal(t, 1, bulk.counts()[layer.Digest])
+
+	require.ErrorIs(t, priorityCtx.Err(), context.Canceled, "the losing priority download must be cancelled")
+	require.NoError(t, activeStream(t, sm, streamable.source, layer.Digest.String()).Err())
+
+	sm.RemoveStreamingImage("repo-a", predictTestTag, true)
+}
+
 // TestChunkingStreamManagerPriorityDownloadOpenFails: a priority download that can't open the blob
 // leaves it to the sync's download, which then feeds the waiting client.
 func TestChunkingStreamManagerPriorityDownloadOpenFails(t *testing.T) {
@@ -315,8 +371,8 @@ func TestChunkedBlobReaderFailStartWithPendingOpen(t *testing.T) {
 	require.NoError(t, err)
 
 	require.True(t, cbr.Claim())
-	require.True(t, cbr.ClaimPriority())
-	assert.False(t, cbr.ClaimPriority())
+	require.True(t, cbr.ClaimPriority(func() {}))
+	assert.False(t, cbr.ClaimPriority(func() {}))
 
 	assert.False(t, cbr.FailStart(zerr.ErrSyncUpstreamDownloadFailed))
 	assert.False(t, cbr.Started())
@@ -325,5 +381,5 @@ func TestChunkedBlobReaderFailStartWithPendingOpen(t *testing.T) {
 	assert.True(t, cbr.FailStart(zerr.ErrSyncUpstreamDownloadFailed))
 	assert.True(t, cbr.Started())
 	require.ErrorIs(t, cbr.Err(), zerr.ErrSyncUpstreamDownloadFailed)
-	assert.False(t, cbr.ClaimPriority())
+	assert.False(t, cbr.ClaimPriority(func() {}))
 }
