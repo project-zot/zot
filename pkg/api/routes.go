@@ -93,14 +93,8 @@ func (rh *RouteHandler) SetupRoutes() {
 		rh.c.Router.HandleFunc(constants.LoginPath, rh.AuthURLHandler())
 
 		// callback path for openID
-		for provider, relyingParty := range rh.c.RelyingParties {
-			if config.IsOauth2Supported(provider) {
-				rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider,
-					rp.CodeExchangeHandler(rh.GithubCodeExchangeCallback(), relyingParty))
-			} else if config.IsOpenIDSupported(provider) {
-				rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider,
-					rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallbackWithProvider(provider)), relyingParty))
-			}
+		for provider := range rh.c.RelyingParties {
+			rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider, rh.openIDCallbackHandler(provider))
 		}
 	}
 
@@ -2994,7 +2988,7 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 	}
 
 	zcommon.WriteJSON(response, http.StatusOK, LogoutResponse{
-		EndSessionURL: rh.buildEndSessionURL(provider),
+		EndSessionURL: rh.buildEndSessionURL(request.Context(), provider),
 	})
 }
 
@@ -3005,13 +2999,18 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 // `post_logout_redirect_uri` is resolved by postLogoutRedirectURI and must be pre-
 // registered with the IdP client, otherwise the IdP will ignore the parameter and keep
 // the user on its own "logged out" page.
-func (rh *RouteHandler) buildEndSessionURL(provider string) string {
+func (rh *RouteHandler) buildEndSessionURL(ctx context.Context, provider string) string {
 	if provider == "" || !config.IsOpenIDSupported(provider) {
 		return ""
 	}
 
-	relyingParty, ok := rh.c.RelyingParties[provider]
+	lazyRelyingParty, ok := rh.c.RelyingParties[provider]
 	if !ok {
+		return ""
+	}
+
+	relyingParty, err := lazyRelyingParty.Get(ctx)
+	if err != nil {
 		return ""
 	}
 
@@ -3071,6 +3070,25 @@ func composeEndSessionURL(endpoint, clientID, redirectURI string) (string, error
 // "logged out" page.
 func postLogoutRedirectURI(cfg *config.Config) string {
 	return originFromConfig(cfg) + "/login"
+}
+
+// openIDCallbackHandler handles the openid/oauth2 callback of the given provider.
+// The relying party is resolved per request, so it can be lazily initialized.
+func (rh *RouteHandler) openIDCallbackHandler(provider string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		relyingParty, ok := rh.getRelyingParty(w, r, provider)
+		if !ok {
+			return
+		}
+
+		if config.IsOauth2Supported(provider) {
+			rp.CodeExchangeHandler(rh.GithubCodeExchangeCallback(), relyingParty)(w, r)
+
+			return
+		}
+
+		rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallbackWithProvider(provider)), relyingParty)(w, r)
+	}
 }
 
 // GithubCodeExchangeCallback is a github Oauth2 CodeExchange callback.

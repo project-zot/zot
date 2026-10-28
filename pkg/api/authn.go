@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -417,17 +418,18 @@ func (amw *AuthnMiddleware) tryAuthnHandlers(ctlr *Controller) mux.MiddlewareFun
 
 	// openid based authN
 	if authConfig.IsOpenIDAuthEnabled() {
-		ctlr.RelyingParties = make(map[string]rp.RelyingParty)
+		ctlr.RelyingParties = make(map[string]*LazyRelyingParty)
 
 		for provider := range authConfig.OpenID.Providers {
 			if config.IsOpenIDSupported(provider) {
-				rp := NewRelyingPartyOIDC(context.TODO(), ctlr.Config, provider, authConfig.SessionHashKey,
-					authConfig.SessionEncryptKey, ctlr.Log)
-				ctlr.RelyingParties[provider] = rp
+				// OIDC relying parties perform discovery against the issuer, so they are initialized
+				// on first use to avoid making zot startup depend on the identity provider availability.
+				ctlr.RelyingParties[provider] = NewLazyRelyingParty(newRelyingPartyOIDCFunc(ctlr.Config, provider,
+					authConfig.SessionHashKey, authConfig.SessionEncryptKey, ctlr.Log))
 			} else if config.IsOauth2Supported(provider) {
 				rp := NewRelyingPartyGithub(ctlr.Config, provider, authConfig.SessionHashKey,
 					authConfig.SessionEncryptKey, ctlr.Log)
-				ctlr.RelyingParties[provider] = rp
+				ctlr.RelyingParties[provider] = NewInitializedRelyingParty(rp)
 			}
 		}
 	}
@@ -734,12 +736,8 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 
 		provider := query.Get("provider")
 
-		client, ok := rh.c.RelyingParties[provider]
+		client, ok := rh.getRelyingParty(w, r, provider)
 		if !ok {
-			rh.c.Log.Error().Msg("failed to authenticate due to unrecognized openid provider")
-
-			w.WriteHeader(http.StatusBadRequest)
-
 			return
 		}
 
@@ -775,9 +773,73 @@ func (rh *RouteHandler) AuthURLHandler() http.HandlerFunc {
 	}
 }
 
-func NewRelyingPartyOIDC(ctx context.Context, config *config.Config, provider string,
+// getRelyingParty returns the relying party of the given provider, initializing it if needed.
+// If the provider is unknown or currently unavailable, it writes the error response and returns false.
+func (rh *RouteHandler) getRelyingParty(w http.ResponseWriter, r *http.Request, provider string,
+) (rp.RelyingParty, bool) {
+	lazyRelyingParty, ok := rh.c.RelyingParties[provider]
+	if !ok {
+		rh.c.Log.Error().Msg("failed to authenticate due to unrecognized openid provider")
+
+		w.WriteHeader(http.StatusBadRequest)
+
+		return nil, false
+	}
+
+	relyingParty, err := lazyRelyingParty.Get(r.Context())
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("provider", provider).
+			Msg("failed to authenticate due to unavailable openid provider")
+
+		w.WriteHeader(http.StatusServiceUnavailable)
+
+		return nil, false
+	}
+
+	return relyingParty, true
+}
+
+// LazyRelyingParty defers the creation of a relying party until it is first needed.
+// A failed initialization is not cached, so it is retried on the next call.
+type LazyRelyingParty struct {
+	mu           sync.Mutex
+	relyingParty rp.RelyingParty
+	newFn        func(ctx context.Context) (rp.RelyingParty, error)
+}
+
+func NewLazyRelyingParty(newFn func(ctx context.Context) (rp.RelyingParty, error)) *LazyRelyingParty {
+	return &LazyRelyingParty{newFn: newFn}
+}
+
+// NewInitializedRelyingParty wraps an already initialized relying party.
+func NewInitializedRelyingParty(relyingParty rp.RelyingParty) *LazyRelyingParty {
+	return &LazyRelyingParty{relyingParty: relyingParty}
+}
+
+// Get returns the relying party, initializing it if this was not successfully done before.
+func (l *LazyRelyingParty) Get(ctx context.Context) (rp.RelyingParty, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.relyingParty != nil {
+		return l.relyingParty, nil
+	}
+
+	relyingParty, err := l.newFn(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	l.relyingParty = relyingParty
+
+	return relyingParty, nil
+}
+
+// newRelyingPartyOIDCFunc validates the provider configuration and returns a function
+// which initializes the relying party, performing the OIDC discovery against the issuer.
+func newRelyingPartyOIDCFunc(config *config.Config, provider string,
 	hashKey, encryptKey []byte, log log.Logger,
-) rp.RelyingParty {
+) func(ctx context.Context) (rp.RelyingParty, error) {
 	issuer, clientID, clientSecret, redirectURI, scopes, options := getRelyingPartyArgs(config,
 		provider, hashKey, encryptKey, log)
 
@@ -786,10 +848,25 @@ func NewRelyingPartyOIDC(ctx context.Context, config *config.Config, provider st
 	// If the issuer does not advertise any, the library default is kept.
 	options = append(options, rp.WithSigningAlgsFromDiscovery())
 
-	relyingParty, err := rp.NewRelyingPartyOIDC(ctx, issuer, clientID, clientSecret, redirectURI, scopes, options...)
+	return func(ctx context.Context) (rp.RelyingParty, error) {
+		relyingParty, err := rp.NewRelyingPartyOIDC(ctx, issuer, clientID, clientSecret, redirectURI, scopes, options...)
+		if err != nil {
+			log.Error().Err(err).Str("provider", provider).Str("issuer", issuer).Str("redirectURI", redirectURI).
+				Strs("scopes", scopes).Msg("failed to initialize new relying party oidc")
+
+			return nil, err
+		}
+
+		return relyingParty, nil
+	}
+}
+
+func NewRelyingPartyOIDC(ctx context.Context, config *config.Config, provider string,
+	hashKey, encryptKey []byte, log log.Logger,
+) rp.RelyingParty {
+	relyingParty, err := newRelyingPartyOIDCFunc(config, provider, hashKey, encryptKey, log)(ctx)
 	if err != nil {
-		log.Panic().Err(err).Str("issuer", issuer).Str("redirectURI", redirectURI).Strs("scopes", scopes).
-			Msg("failed to initialize new relying party oidc")
+		log.Panic().Err(err).Str("provider", provider).Msg("failed to initialize new relying party oidc")
 	}
 
 	return relyingParty

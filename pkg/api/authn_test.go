@@ -14,6 +14,7 @@ import (
 	"errors"
 	"io/fs"
 	"maps"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -2964,5 +2965,106 @@ func TestOpenIDSigningAlgsFromDiscovery(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			So(resp.Cookies(), ShouldNotBeEmpty)
 		})
+	})
+}
+
+func TestOpenIDProviderUnreachableAtStartup(t *testing.T) {
+	Convey("zot starts and serves other auth methods while the OpenID issuer is unreachable", t, func() {
+		username, seedUser := test.GenerateRandomString()
+		password, seedPass := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
+
+		// reserve an address for the issuer, nothing is listening on it yet
+		issuerPort := test.GetFreePort()
+		issuerAddr := "127.0.0.1:" + issuerPort
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"oidc": {
+						ClientID:     "zot-client",
+						ClientSecret: "zot-secret",
+						Issuer:       "http://" + issuerAddr + "/oidc",
+						Scopes:       []string{"openid", "email"},
+					},
+				},
+			},
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		ctlr.Log.Info().Int64("seedUser", seedUser).Int64("seedPass", seedPass).Msg("random seed for username & password")
+
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		// basic auth keeps working
+		resp, err := resty.R().SetBasicAuth(username, password).Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		client := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		login := func() (int, string) {
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+				baseURL+constants.LoginPath+"?provider=oidc", nil)
+			So(err, ShouldBeNil)
+
+			resp, err := client.Do(req)
+			So(err, ShouldBeNil)
+
+			defer resp.Body.Close()
+
+			return resp.StatusCode, resp.Header.Get("Location")
+		}
+
+		// openid login fails while the issuer is unreachable
+		statusCode, _ := login()
+		So(statusCode, ShouldEqual, http.StatusServiceUnavailable)
+
+		resp, err = resty.R().Get(baseURL + constants.CallbackBasePath + "/oidc")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
+
+		// unknown providers are still rejected
+		resp, err = resty.R().SetQueryParam("provider", "unknown").Get(baseURL + constants.LoginPath)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		// once the issuer becomes reachable, openid login is initialized on the next attempt
+		rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		So(err, ShouldBeNil)
+
+		mockOIDCServer, err := mockoidc.NewServer(rsaKey)
+		So(err, ShouldBeNil)
+
+		listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", issuerAddr)
+		So(err, ShouldBeNil)
+
+		err = mockOIDCServer.Start(listener, nil)
+		So(err, ShouldBeNil)
+
+		defer func() {
+			_ = mockOIDCServer.Shutdown()
+		}()
+
+		statusCode, location := login()
+		So(statusCode, ShouldEqual, http.StatusFound)
+		So(location, ShouldStartWith, mockOIDCServer.AuthorizationEndpoint())
 	})
 }
