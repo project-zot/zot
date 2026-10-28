@@ -42,16 +42,16 @@ const (
 )
 
 type Controller struct {
-	Config          *config.Config
-	Router          *mux.Router
-	MetaDB          mTypes.MetaDB
-	StoreController storage.StoreController
-	repoByteLocks   repoQuotaLockSet
-	Log             log.Logger
-	Audit           *log.Logger
-	Server          *http.Server
-	Metrics         monitoring.MetricServer
-	EventRecorder   events.Recorder
+	Config            *config.Config
+	Router            *mux.Router
+	MetaDB            mTypes.MetaDB
+	StoreController   storage.StoreController
+	repoMutationLocks repoMutationLockSet
+	Log               log.Logger
+	Audit             *log.Logger
+	Server            *http.Server
+	Metrics           monitoring.MetricServer
+	EventRecorder     events.Recorder
 	// EventRecorder, typed so a reload can replace what it points at
 	eventReloader *events.ReloadableRecorder
 	// events config the installed recorder was built from

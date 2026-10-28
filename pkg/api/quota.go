@@ -25,26 +25,26 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 )
 
-type repoQuotaLock struct {
+type repoMutationLock struct {
 	mu         sync.Mutex
 	references int
 }
 
-type repoQuotaLockSet struct {
+type repoMutationLockSet struct {
 	mu    sync.Mutex
-	locks map[string]*repoQuotaLock
+	locks map[string]*repoMutationLock
 }
 
-func (locks *repoQuotaLockSet) acquire(repo string) func() {
+func (locks *repoMutationLockSet) acquire(repo string) func() {
 	locks.mu.Lock()
 
 	if locks.locks == nil {
-		locks.locks = map[string]*repoQuotaLock{}
+		locks.locks = map[string]*repoMutationLock{}
 	}
 
 	lock := locks.locks[repo]
 	if lock == nil {
-		lock = &repoQuotaLock{}
+		lock = &repoMutationLock{}
 		locks.locks[repo] = lock
 	}
 
@@ -65,8 +65,8 @@ func (locks *repoQuotaLockSet) acquire(repo string) func() {
 	}
 }
 
-// repoQuotaMiddleware serializes new-repository checks for maxRepos. Byte quota locking runs in
-// UpdateManifest after the request body has been read.
+// repoQuotaMiddleware serializes new-repository checks for maxRepos. Repository mutation locking runs in
+// UpdateManifest after the request body has been read, and in DeleteManifest before the manifest lookup.
 func repoQuotaMiddleware(conf *config.Config, metaDB mTypes.MetaDB, log log.Logger) mux.MiddlewareFunc {
 	var repoCountMu sync.Mutex
 
@@ -456,15 +456,12 @@ func setupQuotaMiddleware(
 	}
 }
 
-func (rh *RouteHandler) acquireRepoByteQuotaLock(repo string) func() {
-	if rh == nil || rh.c == nil || rh.c.Config == nil || rh.c.MetaDB == nil {
+// acquireRepoMutationLock keeps storage mutations and their MetaDB hooks (including
+// rollback) ordered for the whole repository, even when byte quotas are disabled.
+func (rh *RouteHandler) acquireRepoMutationLock(repo string) func() {
+	if rh == nil || rh.c == nil || rh.c.MetaDB == nil {
 		return func() {}
 	}
 
-	storePath := rh.c.StoreController.GetStorePath(repo)
-	if rh.c.Config.MaxRepoBytesForStore(storePath) <= 0 {
-		return func() {}
-	}
-
-	return rh.c.repoByteLocks.acquire(repo)
+	return rh.c.repoMutationLocks.acquire(repo)
 }
