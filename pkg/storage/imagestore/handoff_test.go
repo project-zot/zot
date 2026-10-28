@@ -10,6 +10,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -493,5 +494,209 @@ func TestDeleteDedupeOrigin(t *testing.T) {
 
 		_, err = os.Stat(other)
 		So(err, ShouldBeNil)
+	})
+}
+
+// hookedMoveDriver runs onMove right before the first Move, while the hand-off has decided on its
+// destination, as another node acting on that destination would.
+type hookedMoveDriver struct {
+	storageTypes.Driver
+
+	onMove func(sourcePath, destPath string)
+}
+
+func (d *hookedMoveDriver) Move(sourcePath, destPath string) error {
+	if d.onMove != nil {
+		hook := d.onMove
+		d.onMove = nil
+
+		hook(sourcePath, destPath)
+	}
+
+	return d.Driver.Move(sourcePath, destPath)
+}
+
+// recordDroppingCache drops newPath from the record right before the first ReplaceBlob, as a
+// delete of that copy on another node would.
+type recordDroppingCache struct {
+	storageTypes.Cache
+
+	drop bool
+}
+
+func (c *recordDroppingCache) ReplaceBlob(digest godigest.Digest, oldPath, newPath string) error {
+	if c.drop {
+		c.drop = false
+
+		if err := c.Cache.DeleteBlob(digest, newPath); err != nil {
+			return err
+		}
+	}
+
+	return c.Cache.ReplaceBlob(digest, oldPath, newPath)
+}
+
+func TestDeleteDedupeOriginWhileNextCopyIsDeleted(t *testing.T) {
+	content := []byte("handoff-race-content")
+	digest := godigest.FromBytes(content)
+
+	type fixture struct {
+		imgStore storageTypes.ImageStore
+		cache    storageTypes.Cache
+		dir      string
+		relPaths bool
+	}
+
+	setup := func(driver storageTypes.Driver, cacheWrap func(storageTypes.Cache) storageTypes.Cache,
+		relPaths bool,
+	) fixture {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: relPaths,
+		}, log)
+		So(err, ShouldBeNil)
+
+		storeCache := cacheDriver
+		if cacheWrap != nil {
+			storeCache = cacheWrap(cacheDriver)
+		}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			driver, storeCache, nil, nil)
+
+		return fixture{imgStore: imgStore, cache: cacheDriver, dir: dir, relPaths: relPaths}
+	}
+
+	plant := func(fix fixture, repo string, body []byte) string {
+		So(fix.imgStore.InitRepo(context.Background(), repo), ShouldBeNil)
+
+		blobPath := fix.imgStore.BlobPath(repo, digest)
+		So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+		So(fix.cache.PutBlob(digest, blobPath), ShouldBeNil)
+
+		return blobPath
+	}
+
+	origin := func(fix fixture) string {
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+
+		if fix.relPaths {
+			record = path.Join(fix.dir, record)
+		}
+
+		return record
+	}
+
+	// another node deletes the copy the hand-off is about to fill, record and file
+	deleteNext := func(fix fixture) func(string, string) {
+		return func(_, destPath string) {
+			So(fix.cache.DeleteBlob(digest, destPath), ShouldBeNil)
+			So(os.Remove(destPath), ShouldBeNil)
+		}
+	}
+
+	Convey("The copy that received the content becomes the origin", t, func() {
+		for _, testCase := range []struct {
+			name     string
+			driver   *hookedMoveDriver
+			relPaths bool
+		}{
+			{
+				"remote, next copy is a placeholder",
+				&hookedMoveDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}}, false,
+			},
+			{"local, next copy is a corrupt zero-size copy", &hookedMoveDriver{Driver: local.New(true)}, true},
+		} {
+			Convey(testCase.name, func() {
+				fix := setup(testCase.driver, nil, testCase.relPaths)
+				testCase.driver.onMove = deleteNext(fix)
+
+				first := plant(fix, "repo-a", content)
+				second := plant(fix, "repo-b", []byte{})
+
+				So(fix.imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+				_, err := os.Stat(first)
+				So(os.IsNotExist(err), ShouldBeTrue)
+
+				data, err := os.ReadFile(second)
+				So(err, ShouldBeNil)
+				So(data, ShouldResemble, content)
+
+				So(origin(fix), ShouldEqual, second)
+				So(fix.cache.HasBlob(digest, second), ShouldBeTrue)
+				So(fix.cache.HasBlob(digest, first), ShouldBeFalse)
+
+				ok, size, err := fix.imgStore.CheckBlob(context.Background(), "repo-b", digest)
+				So(err, ShouldBeNil)
+				So(ok, ShouldBeTrue)
+				So(size, ShouldEqual, len(content))
+			})
+		}
+	})
+
+	Convey("The copy that received the content is recorded under an origin another node named", t, func() {
+		driver := &hookedMoveDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}}
+		fix := setup(driver, nil, false)
+
+		first := plant(fix, "repo-a", content)
+		second := plant(fix, "repo-b", []byte{})
+		third := plant(fix, "repo-c", content)
+
+		driver.onMove = func(_, destPath string) {
+			So(fix.cache.DeleteBlob(digest, destPath), ShouldBeNil)
+			So(os.Remove(destPath), ShouldBeNil)
+			So(fix.cache.SetOrigin(digest, third), ShouldBeNil)
+		}
+
+		So(fix.imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+		_, err := os.Stat(first)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		So(origin(fix), ShouldEqual, third)
+		So(fix.cache.HasBlob(digest, second), ShouldBeTrue)
+
+		data, err := os.ReadFile(second)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+
+	Convey("A hand-off that moved nothing leaves the origin in place on a conflict", t, func() {
+		fix := setup(&remoteNamedDriver{Driver: local.New(true)}, func(c storageTypes.Cache) storageTypes.Cache {
+			return &recordDroppingCache{Cache: c, drop: true}
+		}, false)
+
+		first := plant(fix, "repo-a", content)
+		plant(fix, "repo-b", content)
+
+		So(fix.imgStore.DeleteBlob("repo-a", digest), ShouldEqual, zerr.ErrCacheConflict)
+
+		data, err := os.ReadFile(first)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		So(origin(fix), ShouldEqual, first)
+		So(fix.cache.HasBlob(digest, first), ShouldBeTrue)
+	})
+
+	Convey("Deleting a copy that has gone drops it as the origin", t, func() {
+		fix := setup(&remoteNamedDriver{Driver: local.New(true)}, nil, false)
+
+		first := plant(fix, "repo-a", content)
+		second := plant(fix, "repo-b", content)
+
+		So(os.Remove(first), ShouldBeNil)
+
+		So(errors.Is(fix.imgStore.DeleteBlob("repo-a", digest), zerr.ErrBlobNotFound), ShouldBeTrue)
+
+		So(origin(fix), ShouldEqual, second)
+		So(fix.cache.HasBlob(digest, first), ShouldBeFalse)
 	})
 }

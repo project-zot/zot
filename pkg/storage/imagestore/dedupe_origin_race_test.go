@@ -128,7 +128,7 @@ func (c *originChangingCache) ReplaceBlob(digest godigest.Digest, oldPath, newPa
 }
 
 func TestDeleteDedupeOriginConflict(t *testing.T) {
-	Convey("A hand-off does not overwrite an origin another node changed", t, func() {
+	Convey("A hand-off names the copy holding the content when another node named one without", t, func() {
 		content := []byte("handoff-conflict-content")
 		digest := godigest.FromBytes(content)
 
@@ -166,11 +166,12 @@ func TestDeleteDedupeOriginConflict(t *testing.T) {
 
 		changing.moveTo = third
 
-		So(imgStore.DeleteBlob("repo-a", digest), ShouldEqual, zerr.ErrCacheConflict)
+		So(imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
 
 		record, err := cacheDriver.GetBlob(digest)
 		So(err, ShouldBeNil)
-		So(record, ShouldEqual, third)
+		So(record, ShouldEqual, second)
+		So(cacheDriver.HasBlob(digest, third), ShouldBeTrue)
 
 		data, err := os.ReadFile(second)
 		So(err, ShouldBeNil)
