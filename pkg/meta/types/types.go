@@ -143,14 +143,16 @@ type MetaDB interface { //nolint:interfacebloat
 	// FilterImageMeta returns the image data for the given digests
 	FilterImageMeta(ctx context.Context, digests []string) (map[ImageDigest]ImageMeta, error)
 
-	/*
-	   	RemoveRepoReference removes the tag from RepoMetadata if the reference is a tag,
-
-	   it also removes its corresponding digest from Statistics, Signatures and Referrers if there are no tags
-	   pointing to it.
-	   If the reference is a digest then it will remove the digest from Statistics, Signatures and Referrers only
-	   if there are no tags pointing to the digest, otherwise it's noop
-	*/
+	// RemoveRepoReference drops one reference from a repository's metadata.
+	//
+	// Pass a tag only when the manifest remains in the index. Deleting the last tag
+	// leaves an untagged descriptor, and untagged retention still needs Statistics
+	// for that digest, so a tag reference does not delete them. Signatures and
+	// referrers for the digest are deleted once no tag points at it.
+	//
+	// Pass the digest when no descriptor for that digest remains in the index.
+	// That deletes every tag pointing at the digest, then Statistics, Signatures,
+	// and Referrers. Passing a tag in that case leaves Statistics behind.
 	RemoveRepoReference(repo, reference string, manifestDigest godigest.Digest) error
 
 	// ResetRepoReferences resets layout specific data (tags, signatures, referrers, etc.) but keep user and image

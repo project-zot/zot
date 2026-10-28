@@ -327,6 +327,10 @@ func (gc GarbageCollect) removeUnknownMediaTypeManifestEntries(repo string, inde
 		}
 	}
 
+	// A tag reference keeps statistics. Descriptors dropped here are gone, so any
+	// digest with no remaining row must be removed by digest or its statistics stay.
+	gc.clearStatisticsForPrunedDigests(repo, index.Manifests, kept)
+
 	if removed := len(index.Manifests) - len(kept); removed > 0 {
 		gc.log.Info().Str("module", "gc").Str("repository", repo).
 			Int("removed", removed).Int("kept", len(kept)).
@@ -404,6 +408,10 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 		kept = append(kept, desc)
 	}
 
+	// A tag reference keeps statistics. Descriptors dropped here are gone, so any
+	// digest with no remaining row must be removed by digest or its statistics stay.
+	gc.clearStatisticsForPrunedDigests(repo, index.Manifests, kept)
+
 	if removed := len(index.Manifests) - len(kept); removed > 0 {
 		gc.log.Info().Str("module", "gc").Str("repository", repo).
 			Int("removed", removed).Int("kept", len(kept)).
@@ -413,6 +421,64 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 	index.Manifests = kept
 
 	return nil
+}
+
+// clearStatisticsForPrunedDigests removes statistics for digests whose descriptors were
+// all dropped from the index. syncManifestRemoval passes a tag when the descriptor has
+// one, and a tag reference keeps statistics because ordinary tag deletion leaves an
+// untagged row. That row is not left here. A valid cosign tag is omitted: its metadata
+// is removed by DeleteSignature, not RemoveRepoReference. Untagged descriptors already
+// passed the digest.
+func (gc GarbageCollect) clearStatisticsForPrunedDigests(repo string, original, kept []ispec.Descriptor) {
+	if gc.metaDB == nil {
+		return
+	}
+
+	keptDigests := make(map[godigest.Digest]struct{}, len(kept))
+	for _, desc := range kept {
+		keptDigests[desc.Digest] = struct{}{}
+	}
+
+	seen := make(map[godigest.Digest]struct{})
+
+	for _, desc := range original {
+		if _, stillKept := keptDigests[desc.Digest]; stillKept {
+			continue
+		}
+
+		if _, done := seen[desc.Digest]; done {
+			continue
+		}
+
+		if !tagReferenceKeepsStatistics(desc) {
+			continue
+		}
+
+		seen[desc.Digest] = struct{}{}
+
+		if err := gc.metaDB.RemoveRepoReference(repo, desc.Digest.String(), desc.Digest); err != nil {
+			gc.log.Error().Err(err).Str("module", "gc").Str("component", "metadb").
+				Str("repository", repo).Str("digest", desc.Digest.String()).
+				Msg("failed to drop statistics for a pruned manifest, continuing")
+		}
+	}
+}
+
+// tagReferenceKeepsStatistics reports whether syncManifestRemoval would remove this
+// descriptor by tag. RemoveRepoReference keeps statistics for a tag reference.
+func tagReferenceKeepsStatistics(desc ispec.Descriptor) bool {
+	tag, ok := getDescriptorTag(desc)
+	if !ok || tag == "" {
+		return false
+	}
+
+	if zcommon.IsCosignSignature(tag) {
+		if err := getSubjectFromCosignTag(tag).Validate(); err == nil {
+			return false
+		}
+	}
+
+	return true
 }
 
 // syncManifestRemoval best-effort syncs metaDB before a descriptor is removed from index.Manifests
