@@ -1065,6 +1065,93 @@ func TestOpenIDAPIKeyTokenExchangeWithBearerOIDC(t *testing.T) {
 	})
 }
 
+func TestOpenIDGroupsFromAccessControlConfig(t *testing.T) {
+	Convey("OpenID users get the permissions of the accessControl groups listing them", t, func() {
+		mockOIDCServer, err := authutils.MockOIDCRun()
+		So(err, ShouldBeNil)
+
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+		port := test.GetFreePort()
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"oidc": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
+				},
+			},
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		email := mockoidc.DefaultUser().Email
+		So(email, ShouldNotBeEmpty)
+
+		loginAndGetTags := func(groupUsers []string) int {
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Groups: config.Groups{
+					"readers": {
+						Users: groupUsers,
+					},
+				},
+				Repositories: config.Repositories{
+					"team/**": config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Groups:  []string{"readers"},
+								Actions: []string{constants.ReadPermission},
+							},
+						},
+						DefaultPolicy: []string{},
+					},
+				},
+			}
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+
+			defer cm.StopServer()
+
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+			client.SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue)
+
+			loginResp, err := client.R().
+				SetQueryParam("provider", "oidc").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(loginResp.StatusCode(), ShouldEqual, http.StatusCreated)
+			client.SetCookies(loginResp.Cookies())
+
+			resp, err := client.R().Get(baseURL + "/v2/team/app/tags/list")
+			So(err, ShouldBeNil)
+
+			return resp.StatusCode()
+		}
+
+		Convey("user listed in the group can read the repository", func() {
+			So(loginAndGetTags([]string{"robot-user", email}), ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("user not listed in the group can not read the repository", func() {
+			So(loginAndGetTags([]string{"robot-user"}), ShouldEqual, http.StatusForbidden)
+		})
+	})
+}
+
 func TestMultipleAuthorizationHeaders(t *testing.T) {
 	Convey("Test rejection of multiple Authorization headers", t, func() {
 		Convey("Test multiple and single Authorization headers in basic auth handler", func() {
@@ -1753,6 +1840,67 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			defer resp.Body.Close()
 
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("OIDC authentication with groups from accessControl config", func() {
+			conf := config.New()
+			conf.HTTP.Port = "0"
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Groups: config.Groups{
+					"workloads": {
+						// default username mapping is "claims.iss + '/' + claims.sub"
+						Users: []string{issuer + "/" + testSubject},
+					},
+				},
+				Repositories: config.Repositories{
+					"team/**": config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Groups:  []string{"workloads"},
+								Actions: []string{constants.ReadPermission},
+							},
+						},
+						DefaultPolicy: []string{},
+					},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+
+			baseURL := cm.StartAndWait()
+			defer cm.StopServer()
+
+			// the token subject is listed in the group
+			token, err := createWorkloadOIDCToken(privKey, issuer, audience, nil)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				Get(baseURL + "/v2/team/app/tags/list")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// the token subject is not listed in the group
+			token, err = createWorkloadOIDCToken(privKey, issuer, audience, map[string]any{
+				"sub": "other-user",
+			})
+			So(err, ShouldBeNil)
+
+			resp, err = resty.R().
+				SetHeader("Authorization", "Bearer "+token).
+				Get(baseURL + "/v2/team/app/tags/list")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 		})
 
 		Convey("OIDC authentication fails with MetaDB error", func() {

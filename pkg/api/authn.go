@@ -1343,6 +1343,14 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 		return "", zerr.ErrInvalidStateCookie
 	}
 
+	// besides the groups received from the provider, the user is also a member of the
+	// accessControl groups listing it, same as for htpasswd, LDAP and mTLS users
+	accessControl := ctlr.Config.CopyAccessControlConfig()
+	if accessControl != nil {
+		ac := NewAccessController(ctlr.Config)
+		groups = append(ac.getUserGroups(identity), groups...)
+	}
+
 	userAc := reqCtx.NewUserAccessControl()
 	userAc.SetUsername(identity)
 	userAc.AddGroups(groups)

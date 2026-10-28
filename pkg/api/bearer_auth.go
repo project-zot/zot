@@ -219,6 +219,14 @@ func (b *BearerAuth) Authenticate(
 			identity := res.Username
 			groups := res.Groups
 
+			// besides the groups mapped from the token claims, the identity is also a member of
+			// the accessControl groups listing it, same as for the other authentication methods
+			accessControl := ctlr.Config.CopyAccessControlConfig()
+			if accessControl != nil {
+				ac := NewAccessController(ctlr.Config)
+				groups = append(ac.getUserGroups(identity), groups...)
+			}
+
 			ctlr.Log.Debug().Str("identity", identity).Msg("the OIDC bearer authentication was successful")
 
 			userAc.SetUsername(identity)
