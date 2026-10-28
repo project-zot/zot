@@ -39,6 +39,9 @@ type ChunkedBlobReader struct {
 	// priorityClaimed is set by the first ClaimPriority: a client is waiting on this blob, so a second
 	// producer opens it out of band, racing the claimed sync's download.
 	priorityClaimed bool
+	// cancelPriority stops the priority download while it is still opening the blob. Set by
+	// ClaimPriority, called by CancelPriority once another producer started the blob.
+	cancelPriority context.CancelFunc
 	// pendingOpens counts producers that claimed the blob and have neither started nor given up.
 	pendingOpens int
 	// done is closed with the temp file: on completion, failure, or Abort before a start.
@@ -163,8 +166,9 @@ func (cbr *ChunkedBlobReader) Claim() bool {
 // whose download has not started, for a client waiting on it. It races the download Claim granted:
 // whichever producer's InitReader comes first feeds the blob, and the other must drop its reader.
 // The caller must then call InitReader or FailStart. It is granted once, so a failed out-of-band
-// download is not retried for every client.
-func (cbr *ChunkedBlobReader) ClaimPriority() bool {
+// download is not retried for every client. cancel stops the download's open if the other producer
+// starts the blob first (see CancelPriority).
+func (cbr *ChunkedBlobReader) ClaimPriority(cancel context.CancelFunc) bool {
 	cbr.bytesMu.Lock()
 	defer cbr.bytesMu.Unlock()
 
@@ -173,9 +177,24 @@ func (cbr *ChunkedBlobReader) ClaimPriority() bool {
 	}
 
 	cbr.priorityClaimed = true
+	cbr.cancelPriority = cancel
 	cbr.pendingOpens++
 
 	return true
+}
+
+// CancelPriority stops a priority download still opening the blob. The caller's InitReader has
+// been accepted, so the priority download has lost and its FailStart is a no-op; a priority
+// download that started the blob itself is never cancelled here, since the caller's InitReader
+// would have been refused.
+func (cbr *ChunkedBlobReader) CancelPriority() {
+	cbr.bytesMu.RLock()
+	cancel := cbr.cancelPriority
+	cbr.bytesMu.RUnlock()
+
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // Started reports whether a producer was accepted, or the blob will never be fed.
