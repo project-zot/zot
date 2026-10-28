@@ -44,9 +44,11 @@ type MockedImageStore struct {
 	DeleteBlobUploadIfIdleFn func(repo string, uuid string) (bool, error)
 	BlobPathFn               func(repo string, digest godigest.Digest) string
 	CheckBlobFn              func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error)
-	StatBlobFn               func(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
-	StatBlobEntryFn          func(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
-	GetBlobPartialFn         func(repo string, digest godigest.Digest, mediaType string, from, to int64,
+	CheckBlobWithSizeFn      func(ctx context.Context, repo string, digest godigest.Digest,
+		size int64) (bool, int64, error)
+	StatBlobFn       func(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
+	StatBlobEntryFn  func(repo string, digest godigest.Digest) (bool, int64, time.Time, error)
+	GetBlobPartialFn func(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
 	GetBlobFn            func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
 	DeleteBlobFn         func(repo string, digest godigest.Digest) error
@@ -340,6 +342,15 @@ func (is MockedImageStore) BlobPath(repo string, digest godigest.Digest) string 
 func (is MockedImageStore) CheckBlob(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
 	if is.CheckBlobFn != nil {
 		return is.CheckBlobFn(ctx, repo, digest)
+	}
+
+	return true, 0, nil
+}
+
+func (is MockedImageStore) CheckBlobWithSize(ctx context.Context, repo string, digest godigest.Digest, size int64,
+) (bool, int64, error) {
+	if is.CheckBlobWithSizeFn != nil {
+		return is.CheckBlobWithSizeFn(ctx, repo, digest, size)
 	}
 
 	return true, 0, nil
