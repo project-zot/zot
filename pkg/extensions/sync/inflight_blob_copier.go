@@ -198,8 +198,6 @@ func (ifbc *InFlightBlobCopier) CopyRange(ctx context.Context, start, end int64)
 			// These bytes are already on disk, so CopyN shouldn't short-read.
 			written, err := io.CopyN(ifbc.dest, onDiskFile, latest-numBytesCopied)
 			if err != nil {
-				ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
-
 				close(shutdown)
 				<-done
 
@@ -225,8 +223,6 @@ func (ifbc *InFlightBlobCopier) CopyRange(ctx context.Context, start, end int64)
 	if latest > numBytesCopied {
 		_, err := io.CopyN(ifbc.dest, onDiskFile, latest-numBytesCopied)
 		if err != nil {
-			ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
-
 			return err
 		}
 
