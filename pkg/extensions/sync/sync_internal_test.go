@@ -3264,7 +3264,54 @@ func TestManifestCheckTracker(t *testing.T) {
 	})
 }
 
+// countingCheckStore is a manifestCheckStore that reports every reference as recently checked
+// and counts how often it is read.
+type countingCheckStore struct {
+	reads atomic.Int32
+}
+
+func (s *countingCheckStore) ShouldCheckUpstream(context.Context, string, string) bool {
+	s.reads.Add(1)
+
+	return false
+}
+
+func (s *countingCheckStore) MarkChecked(context.Context, string, string) {}
+
 func TestBaseServiceShouldCheckUpstream(t *testing.T) {
+	Convey("A repository excluded by the content rules never reads the store", t, func() {
+		logger := log.NewTestLogger()
+		excludedStore := &countingCheckStore{}
+		matchingStore := &countingCheckStore{}
+
+		excludedContent := []syncconf.Content{{Prefix: "other/**"}}
+		excluded := &BaseService{
+			config:         syncconf.RegistryConfig{Content: excludedContent},
+			contentManager: NewContentManager(excludedContent, logger),
+			checkTracker:   excludedStore,
+			log:            logger,
+		}
+
+		matchingContent := []syncconf.Content{{Prefix: "repo"}}
+		matching := &BaseService{
+			config:         syncconf.RegistryConfig{Content: matchingContent},
+			contentManager: NewContentManager(matchingContent, logger),
+			checkTracker:   matchingStore,
+			log:            logger,
+		}
+
+		So(excluded.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+		So(excludedStore.reads.Load(), ShouldEqual, 0)
+
+		onDemand := NewOnDemand(logger)
+		onDemand.Add(excluded)
+		onDemand.Add(matching)
+
+		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeFalse)
+		So(excludedStore.reads.Load(), ShouldEqual, 0)
+		So(matchingStore.reads.Load(), ShouldEqual, 1)
+	})
+
 	Convey("Without manifestCheckInterval every request checks upstream", t, func() {
 		service := &BaseService{config: syncconf.RegistryConfig{}}
 

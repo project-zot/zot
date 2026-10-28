@@ -377,6 +377,10 @@ func (service *BaseService) ShouldCheckUpstream(repo, reference string) bool {
 		return true
 	}
 
+	if len(service.config.Content) > 0 && service.contentManager.GetRepoSource(repo) == "" {
+		return true
+	}
+
 	return service.checkTracker.ShouldCheckUpstream(context.Background(), repo, reference)
 }
 
