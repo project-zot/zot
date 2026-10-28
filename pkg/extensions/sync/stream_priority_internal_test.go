@@ -215,8 +215,9 @@ func TestChunkingStreamManagerPriorityDownloadCancelledWhenBulkWins(t *testing.T
 
 	go func() { clientDone <- copier.Copy() }()
 
-	bulk := newStoreBlobFetcher(storeCtrl, "repo-a")
-	// Never released: the priority download stays queued until it is cancelled.
+	// Both gated: the bulk download must not finish, and clear the priority fetch, before the
+	// priority download has been seen queued. The priority gate is never released.
+	bulk := newGatedFetcher(storeCtrl, "repo-a", layer.Digest)
 	priority := newGatedFetcher(storeCtrl, "repo-a", layer.Digest)
 
 	downloaded := startPriorityDownload(t, sm, streamable, bulk.fetch, priority.fetch)
@@ -228,6 +229,8 @@ func TestChunkingStreamManagerPriorityDownloadCancelledWhenBulkWins(t *testing.T
 	case <-time.After(5 * time.Second):
 		t.Fatal("no priority download was started for the waiting client")
 	}
+
+	close(bulk.release)
 
 	require.NoError(t, <-clientDone)
 	assert.Equal(t, layer.Digest, godigest.FromBytes(clientBuf.Bytes()))
