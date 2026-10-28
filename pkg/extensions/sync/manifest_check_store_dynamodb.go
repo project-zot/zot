@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -55,19 +56,29 @@ func newDynamoManifestCheckTracker(config syncconf.RegistryConfig, log log.Logge
 	return &dynamoManifestCheckTracker{
 		client:    dynamodb.NewFromConfig(awsCfg),
 		tableName: config.ManifestCheckStore.TableName,
-		keyPrefix: manifestCheckKeyPrefix + manifestCheckNamespace(config.URLs) + "#",
+		keyPrefix: manifestCheckKeyPrefix + manifestCheckNamespace(config) + "#",
 		interval:  config.ManifestCheckInterval,
 		log:       log,
 	}, nil
 }
 
-// manifestCheckNamespace derives a key namespace from a registry's URLs, so that replicas with
-// the same registry configuration share check state while other registries in the same table,
-// a fallback mirror for instance, do not.
-func manifestCheckNamespace(urls []string) string {
-	sum := sha256.Sum256([]byte(strings.Join(urls, "\n")))
+// manifestCheckNamespace derives a key namespace from a registry's URLs and content rules, so
+// that replicas with the same registry configuration share check state while other registries in
+// the same table, a fallback mirror for instance, do not. The content rules are part of it because
+// they decide which upstream repository a local name maps to: after a remapping, a check recorded
+// for the old mapping must not vouch for the new one.
+func manifestCheckNamespace(config syncconf.RegistryConfig) string {
+	hash := sha256.New()
+	hash.Write([]byte(strings.Join(config.URLs, "\n")))
 
-	return hex.EncodeToString(sum[:])[:manifestCheckNamespaceLen]
+	if len(config.Content) > 0 {
+		if content, err := json.Marshal(config.Content); err == nil {
+			hash.Write([]byte("\n"))
+			hash.Write(content)
+		}
+	}
+
+	return hex.EncodeToString(hash.Sum(nil))[:manifestCheckNamespaceLen]
 }
 
 // syncLeaseStore returns a lease store on the same table and client, namespaced like the tracker.

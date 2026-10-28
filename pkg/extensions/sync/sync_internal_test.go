@@ -3453,7 +3453,9 @@ func TestNewManifestCheckStore(t *testing.T) {
 		So(tracker.tableName, ShouldEqual, "test-table")
 		So(tracker.interval, ShouldEqual, time.Hour)
 		So(tracker.keyPrefix, ShouldEqual,
-			manifestCheckKeyPrefix+manifestCheckNamespace([]string{"https://registry-1.docker.io"})+"#")
+			manifestCheckKeyPrefix+manifestCheckNamespace(syncconf.RegistryConfig{
+				URLs: []string{"https://registry-1.docker.io"},
+			})+"#")
 	})
 
 	Convey("A service built with a store config uses that store", t, func() {
@@ -3501,8 +3503,14 @@ func TestNewManifestCheckStore(t *testing.T) {
 }
 
 func TestManifestCheckDigestKey(t *testing.T) {
+	newContentTracker := func(content []syncconf.Content, urls ...string) *dynamoManifestCheckTracker {
+		namespace := manifestCheckNamespace(syncconf.RegistryConfig{URLs: urls, Content: content})
+
+		return &dynamoManifestCheckTracker{keyPrefix: manifestCheckKeyPrefix + namespace + "#"}
+	}
+
 	newTracker := func(urls ...string) *dynamoManifestCheckTracker {
-		return &dynamoManifestCheckTracker{keyPrefix: manifestCheckKeyPrefix + manifestCheckNamespace(urls) + "#"}
+		return newContentTracker(nil, urls...)
 	}
 
 	Convey("Distinct repo:reference pairs get distinct keys that cannot match a digest", t, func() {
@@ -3522,7 +3530,22 @@ func TestManifestCheckDigestKey(t *testing.T) {
 
 		So(primary.key("repo", "latest"), ShouldEqual, replica.key("repo", "latest"))
 		So(primary.key("repo", "latest"), ShouldNotEqual, fallback.key("repo", "latest"))
-		So(len(manifestCheckNamespace(nil)), ShouldEqual, manifestCheckNamespaceLen)
+		So(len(manifestCheckNamespace(syncconf.RegistryConfig{})), ShouldEqual, manifestCheckNamespaceLen)
+	})
+
+	Convey("Remapping the content rules changes the keys, restarting with the same rules does not", t, func() {
+		upstream := "https://registry-1.docker.io"
+		oldRules := []syncconf.Content{{Prefix: "old/**", Destination: "/mirror", StripPrefix: true}}
+		newRules := []syncconf.Content{{Prefix: "new/**", Destination: "/mirror", StripPrefix: true}}
+		sameRules := []syncconf.Content{{Prefix: "old/**", Destination: "/mirror", StripPrefix: true}}
+
+		before := newContentTracker(oldRules, upstream)
+		remapped := newContentTracker(newRules, upstream)
+		restarted := newContentTracker(sameRules, upstream)
+
+		So(before.key("mirror/app", "latest"), ShouldNotEqual, remapped.key("mirror/app", "latest"))
+		So(before.key("mirror/app", "latest"), ShouldEqual, restarted.key("mirror/app", "latest"))
+		So(before.key("mirror/app", "latest"), ShouldNotEqual, newTracker(upstream).key("mirror/app", "latest"))
 	})
 }
 
