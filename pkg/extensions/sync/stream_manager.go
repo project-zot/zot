@@ -261,7 +261,12 @@ func (sm *ChunkingStreamManager) DownloadStreamedBlobs(ctx context.Context, repo
 	}
 
 	if priority != nil {
-		sm.setPriorityFetch(repo, reference, &priorityFetch{ctx: ctx, fetch: priority})
+		// Cancelled on return: a priority download still queued at its throttle, for a blob this
+		// download got to first, must not hold upstream capacity after the sync moved on.
+		priorityCtx, cancelPriority := context.WithCancel(ctx)
+		defer cancelPriority()
+
+		sm.setPriorityFetch(repo, reference, &priorityFetch{ctx: priorityCtx, fetch: priority})
 		defer sm.setPriorityFetch(repo, reference, nil)
 	}
 
@@ -350,6 +355,9 @@ func (sm *ChunkingStreamManager) downloadStream(ctx context.Context, streamed st
 
 	defer upstream.Close()
 
+	// A priority download still opening this blob has lost; don't let it wait out the throttle.
+	streamed.stream.CancelPriority()
+
 	sm.logger.Debug().Str("blob", streamed.desc.Digest.String()).Msg("downloading streamed blob")
 
 	return streamed.stream.FillResumable(ctx, sm.resumeWith(fetch))
@@ -397,27 +405,40 @@ func (sm *ChunkingStreamManager) prioritizeStream(repo, key string, stream *Chun
 // startPriorityDownload downloads stream with priority, unless its download has started or a
 // priority download was already claimed. Must be called with streamLock held.
 func (sm *ChunkingStreamManager) startPriorityDownload(priority *priorityFetch, key string, stream *ChunkedBlobReader) {
-	if stream.Started() || !stream.ClaimPriority() {
+	if stream.Started() {
+		return
+	}
+
+	// Per blob, so the sync's download can cancel just this one once it has started the blob.
+	ctx, cancel := context.WithCancel(priority.ctx)
+
+	if !stream.ClaimPriority(cancel) {
+		cancel()
+
 		return
 	}
 
 	streamed := streamedBlob{desc: sm.blobInfoMap[key], stream: stream}
 
 	go func() {
+		defer cancel()
+
 		sm.logger.Debug().Str("blob", streamed.desc.Digest.String()).
 			Msg("a client is waiting on the blob, downloading it with priority")
 
-		if err := sm.downloadPriorityStream(priority, streamed); err != nil {
+		if err := sm.downloadPriorityStream(ctx, priority.fetch, streamed); err != nil {
 			sm.logger.Warn().Err(err).Str("blob", streamed.desc.Digest.String()).
 				Msg("priority download of streamed blob failed")
 		}
 	}()
 }
 
-// downloadPriorityStream fills streamed's stream from priority's fetch, unless the sync's download
-// started it first. The caller has claimed it with ClaimPriority.
-func (sm *ChunkingStreamManager) downloadPriorityStream(priority *priorityFetch, streamed streamedBlob) error {
-	upstream, err := priority.fetch(priority.ctx, streamed.desc)
+// downloadPriorityStream fills streamed's stream from fetch, unless the sync's download started it
+// first. The caller has claimed it with ClaimPriority.
+func (sm *ChunkingStreamManager) downloadPriorityStream(ctx context.Context, fetch BlobFetcher,
+	streamed streamedBlob,
+) error {
+	upstream, err := fetch(ctx, streamed.desc)
 	if err != nil {
 		streamed.stream.FailStart(err)
 
@@ -430,7 +451,7 @@ func (sm *ChunkingStreamManager) downloadPriorityStream(priority *priorityFetch,
 		return nil
 	}
 
-	return streamed.stream.FillResumable(priority.ctx, sm.resumeWith(priority.fetch))
+	return streamed.stream.FillResumable(ctx, sm.resumeWith(fetch))
 }
 
 // resumeWith is how a download using fetch continues a blob upstream cut short.
