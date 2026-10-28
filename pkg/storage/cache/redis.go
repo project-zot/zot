@@ -208,7 +208,7 @@ func (d *RedisDriver) PutDuplicate(digest godigest.Digest, path string) error {
 
 	pathSet := d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())
 	if err := d.db.SAdd(ctx, pathSet, path).Err(); err != nil {
-		d.log.Error().Err(err).Str("sadd", pathSet).Str("value", path).Msg("unable to put record")
+		d.log.Error().Err(err).Str("sadd", pathSet).Str("value", path).Msg("failed to put record")
 
 		return err
 	}
@@ -284,7 +284,7 @@ func (d *RedisDriver) ReplaceBlob(digest godigest.Digest, oldPath, newPath strin
 	}
 
 	if err := d.db.HSet(ctx, originKey, digest.String(), newPath).Err(); err != nil {
-		d.log.Error().Err(err).Str("hset", originKey).Str("value", newPath).Msg("unable to put record")
+		d.log.Error().Err(err).Str("hset", originKey).Str("value", newPath).Msg("failed to put record")
 
 		return err
 	}
