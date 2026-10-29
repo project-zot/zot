@@ -189,8 +189,8 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 
 	gc.log.Debug().Str("module", "gc").Str("operation", "CleanRepo").
 		Str("storage", gc.imgStore.RootDir()).Str("repository", repo).
-		Bool("lock_acquired", !acquired.IsZero()).Err(err).
-		Dur("lock_wait", wait).Dur("lock_hold", hold).
+		Bool("lockAcquired", !acquired.IsZero()).Err(err).
+		Dur("lockWait", wait).Dur("lockHold", hold).
 		Dur("duration", time.Since(started)).Msg("gc repository operation completed")
 
 	return err

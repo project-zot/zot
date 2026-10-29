@@ -29,9 +29,9 @@ type timingEvent struct {
 	Repository string                `json:"repository"`
 	Found      bool                  `json:"found"`
 	Size       int64                 `json:"size"`
-	Processed  int                   `json:"processed_repositories"`
-	LockWait   int64                 `json:"lock_wait"`
-	LockHold   int64                 `json:"lock_hold"`
+	Processed  int                   `json:"processedRepositories"`
+	LockWait   int64                 `json:"lockWait"`
+	LockHold   int64                 `json:"lockHold"`
 	Duration   int64                 `json:"duration"`
 	Steps      map[string]timingStep `json:"steps"`
 }
@@ -41,7 +41,7 @@ func timingEvents(t *testing.T, output *bytes.Buffer, message string) []timingEv
 
 	events := []timingEvent{}
 
-	for _, line := range bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
 		if len(line) == 0 {
 			continue
 		}
@@ -89,12 +89,12 @@ func TestCheckBlobTiming(t *testing.T) {
 			So(events[0].Size, ShouldEqual, len(content))
 			So(events[0].Duration, ShouldBeGreaterThan, 0)
 
-			for _, step := range []string{"read_lock_wait", "read_lock_hold", "stat", "descriptor_lookup"} {
+			for _, step := range []string{"readLockWait", "readLockHold", "stat", "descriptorLookup"} {
 				So(events[0].Steps[step].Calls, ShouldEqual, 1)
 			}
 
-			So(events[0].Steps, ShouldNotContainKey, "write_lock_wait")
-			So(events[0].Steps, ShouldNotContainKey, "cache_lookup")
+			So(events[0].Steps, ShouldNotContainKey, "writeLockWait")
+			So(events[0].Steps, ShouldNotContainKey, "cacheLookup")
 		})
 
 		Convey("a missing blob is logged with its error", func() {
@@ -112,7 +112,7 @@ func TestCheckBlobTiming(t *testing.T) {
 			So(events, ShouldHaveLength, 1)
 			So(events[0].Found, ShouldBeFalse)
 			So(events[0].Steps["stat"].Calls, ShouldEqual, 1)
-			So(events[0].Steps["read_lock_hold"].Calls, ShouldEqual, 1)
+			So(events[0].Steps["readLockHold"].Calls, ShouldEqual, 1)
 		})
 
 		Convey("with dedupe the write lock and the cache copy are timed", func() {
@@ -144,12 +144,12 @@ func TestCheckBlobTiming(t *testing.T) {
 			So(events, ShouldHaveLength, 1)
 
 			for _, step := range []string{
-				"write_lock_wait", "write_lock_hold", "stat", "cache_lookup", "copy_blob", "cache_put",
+				"writeLockWait", "writeLockHold", "stat", "cacheLookup", "copyBlob", "cachePut",
 			} {
 				So(events[0].Steps[step].Calls, ShouldEqual, 1)
 			}
 
-			So(events[0].Steps, ShouldNotContainKey, "read_lock_wait")
+			So(events[0].Steps, ShouldNotContainKey, "readLockWait")
 		})
 
 		Convey("nothing is logged when debug logging is disabled", func() {

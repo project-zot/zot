@@ -21,9 +21,9 @@ type gcTimingEvent struct {
 	Operation  string `json:"operation"`
 	Storage    string `json:"storage"`
 	Repository string `json:"repository"`
-	Acquired   bool   `json:"lock_acquired"`
-	Wait       int64  `json:"lock_wait"`
-	Hold       int64  `json:"lock_hold"`
+	Acquired   bool   `json:"lockAcquired"`
+	Wait       int64  `json:"lockWait"`
+	Hold       int64  `json:"lockHold"`
 	Duration   int64  `json:"duration"`
 	Error      string `json:"error"`
 }
@@ -47,7 +47,7 @@ func (s gcTimingStore) WithRepoCleanupLock(_ string, wrappedFunc func() error) e
 func gcTimingEvents(output *bytes.Buffer) []gcTimingEvent {
 	events := []gcTimingEvent{}
 
-	for _, line := range bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
 		var event gcTimingEvent
 
 		So(json.Unmarshal(line, &event), ShouldBeNil)
