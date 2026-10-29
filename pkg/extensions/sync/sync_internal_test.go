@@ -3505,6 +3505,16 @@ func TestNewManifestCheckStore(t *testing.T) {
 			})+"#")
 	})
 
+	Convey("New fails when the store cannot be built", t, func() {
+		_, err := New(syncconf.RegistryConfig{
+			URLs:                  []string{"localhost:9999"},
+			OnDemand:              true,
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore:    &syncconf.ManifestCheckStoreConfig{Name: "not-a-backend"},
+		}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+	})
+
 	Convey("A service built with a store config uses that store", t, func() {
 		service, err := New(syncconf.RegistryConfig{
 			URLs:                  []string{"localhost:9999"},
@@ -3546,6 +3556,25 @@ func TestNewManifestCheckStore(t *testing.T) {
 		So(leaseStore.tableName, ShouldEqual, "test-table")
 		So(leaseStore.keyPrefix, ShouldEqual,
 			syncLeaseKeyPrefix+manifestCheckNamespace(syncconf.RegistryConfig{URLs: []string{"localhost:9999"}})+"#")
+	})
+}
+
+func TestNewManifestCheckStoreAWSConfigError(t *testing.T) {
+	t.Setenv("AWS_PROFILE", "zot-no-such-profile")
+	t.Setenv("AWS_CONFIG_FILE", "/nonexistent/config")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent/credentials")
+
+	Convey("dynamodb is rejected when the AWS configuration cannot be loaded", t, func() {
+		_, err := newManifestCheckStore(syncconf.RegistryConfig{
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore: &syncconf.ManifestCheckStoreConfig{
+				Name:      "dynamodb",
+				TableName: "test-table",
+				Region:    "us-west-2",
+			},
+		}, log.NewTestLogger())
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "zot-no-such-profile")
 	})
 }
 
