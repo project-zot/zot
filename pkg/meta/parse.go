@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -21,6 +22,11 @@ import (
 const (
 	CosignType   = "cosign"
 	NotationType = "notation"
+
+	// parseStorageWorkers bounds how many repos the storage walk parses at once. Parsing a repo
+	// is a chain of storage round trips, which a remote storage driver serves slowly but
+	// independently, so parsing repos in parallel keeps the walk from paying them one at a time.
+	parseStorageWorkers = 8
 )
 
 // parseStats tracks per-repo outcomes of a storage walk.
@@ -43,6 +49,7 @@ func ParseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 }
 
 // parseStorage runs the storage walk, returning per-repo outcomes in parseStats.
+// Repos are parsed in parallel, at most parseStorageWorkers at a time.
 // Per-repo failures are logged and skipped. Only enumeration or deletion errors
 // abort the walk and return a non-nil error.
 func parseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger) (parseStats, error) {
@@ -74,47 +81,73 @@ func parseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 		}
 	}
 
+	var (
+		statsMu sync.Mutex
+		wg      sync.WaitGroup
+	)
+
+	// Take a slot before spawning, so that at most parseStorageWorkers goroutines exist at a time.
+	sem := make(chan struct{}, parseStorageWorkers)
+
 	for i, repo := range allStorageRepos {
-		log.Info().Int("total", len(allStorageRepos)).Int("progress", i).Str("current-repo", repo).
-			Msgf("parsing next repo '%s'", repo)
+		sem <- struct{}{}
 
-		imgStore := storeController.GetImageStore(repo)
+		wg.Go(func() {
+			defer func() { <-sem }()
 
-		_, _, storageLastUpdated, err := imgStore.StatIndex(repo)
-		if err != nil {
-			log.Error().Err(err).Str("rootDir", imgStore.RootDir()).
-				Str("repo", repo).Msg("failed to sync repo")
+			log.Info().Int("total", len(allStorageRepos)).Int("progress", i).Str("current-repo", repo).
+				Msgf("parsing next repo '%s'", repo)
 
-			stats.failedRepos++
+			partial, err := parseStorageRepo(repo, metaDB, storeController, log)
 
-			continue
-		}
+			statsMu.Lock()
+			defer statsMu.Unlock()
 
-		metaLastUpdated := metaDB.GetRepoLastUpdated(repo)
-
-		// If repo metadata doesn't exist (zero time), always parse it
-		// Otherwise, only parse if storage is newer than metadata
-		if !metaLastUpdated.IsZero() && storageLastUpdated.Before(metaLastUpdated) {
-			continue
-		}
-
-		partial, err := parseRepo(repo, metaDB, storeController, log)
-		if err != nil {
-			log.Error().Err(err).Str("repo", repo).Str("rootDir", imgStore.RootDir()).Msg("failed to sync repo")
-
-			stats.failedRepos++
-
-			continue
-		}
-
-		if partial {
-			stats.partialRepos++
-		}
+			if err != nil {
+				stats.failedRepos++
+			} else if partial {
+				stats.partialRepos++
+			}
+		})
 	}
+
+	wg.Wait()
 
 	log.Info().Str("component", "metadb").Msg("successfully initialized")
 
 	return stats, nil
+}
+
+// parseStorageRepo parses repo into the metaDB unless the metaDB is already newer than its
+// index.json. Errors are logged here, and partial is reported the same way parseRepo does.
+func parseStorageRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger,
+) (bool, error) {
+	imgStore := storeController.GetImageStore(repo)
+
+	_, _, storageLastUpdated, err := imgStore.StatIndex(repo)
+	if err != nil {
+		log.Error().Err(err).Str("rootDir", imgStore.RootDir()).
+			Str("repo", repo).Msg("failed to sync repo")
+
+		return false, err
+	}
+
+	metaLastUpdated := metaDB.GetRepoLastUpdated(repo)
+
+	// If repo metadata doesn't exist (zero time), always parse it
+	// Otherwise, only parse if storage is newer than metadata
+	if !metaLastUpdated.IsZero() && storageLastUpdated.Before(metaLastUpdated) {
+		return false, nil
+	}
+
+	partial, err := parseRepo(repo, metaDB, storeController, log)
+	if err != nil {
+		log.Error().Err(err).Str("repo", repo).Str("rootDir", imgStore.RootDir()).Msg("failed to sync repo")
+
+		return false, err
+	}
+
+	return partial, nil
 }
 
 // FastRestartStamp combines this binary's identity (binaryVersion, from version.CurrentBinaryVersion)
