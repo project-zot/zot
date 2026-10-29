@@ -123,8 +123,7 @@ func leaseWriteResult(err error) (bool, error) {
 		return true, nil
 	}
 
-	var conditionFailed *types.ConditionalCheckFailedException
-	if errors.As(err, &conditionFailed) {
+	if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
 		return false, nil
 	}
 
