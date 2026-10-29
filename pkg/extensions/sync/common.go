@@ -75,7 +75,7 @@ type BlobFetcher func(ctx context.Context, desc descriptor.Descriptor) (*blob.BR
 // priorityFetch is the out-of-band download of a staged image's blobs, set while its sync downloads
 // them (see StreamManager.DownloadStreamedBlobs). ctx is derived from the sync's and cancelled when
 // that download returns, so no priority download outlives it.
-type priorityFetch struct {
+type priorityFetch struct { //nolint:unused // only used by sync-tagged files
 	ctx   context.Context //nolint:containedctx,unused // only used by sync-tagged files
 	fetch BlobFetcher     //nolint:unused // only used by sync-tagged files
 }
