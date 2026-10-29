@@ -791,3 +791,30 @@ func TestDynamoDBItemSizeLimit(t *testing.T) {
 		So(errors.Is(err, zerr.ErrCacheFull), ShouldBeFalse)
 	})
 }
+
+// A write that fails for any reason other than its condition is returned as it is, and not
+// read as a miss or a conflict.
+func TestDynamoDBPutDuplicateAndReplaceBlobErrors(t *testing.T) {
+	digest := godigest.FromString("write-failure")
+
+	serverError := scriptedDynamoResponse{http.StatusInternalServerError,
+		`{"__type":"com.amazonaws.dynamodb.v20120810#InternalServerError","message":"internal"}`}
+
+	Convey("PutDuplicate returns a failed write", t, func() {
+		driver, transport := newScriptedDynamoDriver(serverError)
+
+		err := driver.PutDuplicate(digest, "/repo/copy")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrCacheMiss), ShouldBeFalse)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem"})
+	})
+
+	Convey("ReplaceBlob returns a failed write", t, func() {
+		driver, transport := newScriptedDynamoDriver(serverError)
+
+		err := driver.ReplaceBlob(digest, "/repo/origin", "/repo/copy")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrCacheConflict), ShouldBeFalse)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem"})
+	})
+}

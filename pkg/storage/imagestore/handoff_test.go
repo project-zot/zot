@@ -7,6 +7,7 @@ import (
 	"path"
 	"testing"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -16,6 +17,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
@@ -698,5 +700,185 @@ func TestDeleteDedupeOriginWhileNextCopyIsDeleted(t *testing.T) {
 
 		So(origin(fix), ShouldEqual, second)
 		So(fix.cache.HasBlob(digest, first), ShouldBeFalse)
+	})
+}
+
+var errHandOffCache = errors.New("hand-off cache failure") //nolint: gochecknoglobals
+
+// faultyCache makes ReplaceBlob report a conflict while conflict is set, and, once armed, lets
+// allow more GetBlob calls through before failing the rest.
+type faultyCache struct {
+	storageTypes.Cache
+
+	conflict bool
+	armed    bool
+	allow    int
+}
+
+func (c *faultyCache) GetBlob(digest godigest.Digest) (string, error) {
+	if c.armed {
+		if c.allow == 0 {
+			return "", errHandOffCache
+		}
+
+		c.allow--
+	}
+
+	return c.Cache.GetBlob(digest)
+}
+
+func (c *faultyCache) ReplaceBlob(digest godigest.Digest, oldPath, newPath string) error {
+	if c.conflict {
+		return zerr.ErrCacheConflict
+	}
+
+	return c.Cache.ReplaceBlob(digest, oldPath, newPath)
+}
+
+// statFailingDriver fails Stat for one path with a transient error.
+type statFailingDriver struct {
+	storageTypes.Driver
+
+	failPath string
+}
+
+func (d *statFailingDriver) Stat(path string) (driver.FileInfo, error) {
+	if path == d.failPath {
+		return nil, errclass.MarkTransient(errHandOffCache)
+	}
+
+	return d.Driver.Stat(path)
+}
+
+func TestDeleteDedupeOriginCacheFailures(t *testing.T) {
+	content := []byte("handoff-failure-content")
+	digest := godigest.FromBytes(content)
+
+	type fixture struct {
+		imgStore storageTypes.ImageStore
+		cache    storageTypes.Cache
+		faulty   *faultyCache
+		moves    *hookedMoveDriver
+		stats    *statFailingDriver
+		first    string
+		second   string
+		third    string
+	}
+
+	setup := func() fixture {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		faulty := &faultyCache{Cache: cacheDriver}
+		moves := &hookedMoveDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}}
+		stats := &statFailingDriver{Driver: moves}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			stats, faulty, nil, nil)
+
+		plant := func(repo string, body []byte, record bool) string {
+			So(imgStore.InitRepo(context.Background(), repo), ShouldBeNil)
+
+			blobPath := imgStore.BlobPath(repo, digest)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+			if record {
+				So(cacheDriver.PutBlob(digest, blobPath), ShouldBeNil)
+			}
+
+			return blobPath
+		}
+
+		return fixture{
+			imgStore: imgStore, cache: cacheDriver, faulty: faulty, moves: moves, stats: stats,
+			first:  plant("repo-a", content, true),
+			second: plant("repo-b", []byte{}, true),
+			third:  plant("repo-c", content, false),
+		}
+	}
+
+	Convey("The whole record removed during the hand-off: the copy becomes the origin", t, func() {
+		fix := setup()
+		fix.moves.onMove = func(_, _ string) {
+			So(fix.cache.DeleteBlob(digest, fix.second), ShouldBeNil)
+			So(fix.cache.DeleteBlob(digest, fix.first), ShouldBeNil)
+		}
+
+		So(fix.imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, fix.second)
+	})
+
+	Convey("The origin already moved to the copy by another node: nothing to publish", t, func() {
+		fix := setup()
+		fix.moves.onMove = func(_, _ string) {
+			So(fix.cache.SetOrigin(digest, fix.second), ShouldBeNil)
+		}
+
+		So(fix.imgStore.DeleteBlob("repo-a", digest), ShouldBeNil)
+
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, fix.second)
+		So(fix.cache.HasBlob(digest, fix.first), ShouldBeFalse)
+	})
+
+	Convey("A cache that cannot be read for the publication fails the delete", t, func() {
+		fix := setup()
+		fix.moves.onMove = func(_, _ string) { fix.faulty.armed = true }
+
+		So(fix.imgStore.DeleteBlob("repo-a", digest), ShouldEqual, errHandOffCache)
+
+		// the content is in the copy, and the record is unchanged for the retry
+		data, err := os.ReadFile(fix.second)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		fix.faulty.armed = false
+
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, fix.first)
+	})
+
+	Convey("A cache that cannot be read while recording the copy fails the delete", t, func() {
+		fix := setup()
+		fix.faulty.conflict = true
+		fix.moves.onMove = func(_, _ string) {
+			fix.faulty.armed = true
+			fix.faulty.allow = 1
+		}
+
+		So(fix.imgStore.DeleteBlob("repo-a", digest), ShouldEqual, errHandOffCache)
+
+		data, err := os.ReadFile(fix.second)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+
+	Convey("An origin that cannot be stat'd while recording the copy fails the delete", t, func() {
+		fix := setup()
+		fix.faulty.conflict = true
+		fix.stats.failPath = fix.third
+		fix.moves.onMove = func(_, _ string) {
+			So(fix.cache.SetOrigin(digest, fix.third), ShouldBeNil)
+		}
+
+		err := fix.imgStore.DeleteBlob("repo-a", digest)
+		So(errors.Is(err, errHandOffCache), ShouldBeTrue)
+
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, fix.third)
 	})
 }
