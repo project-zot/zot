@@ -22,6 +22,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/meta"
 	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	stypes "zotregistry.dev/zot/v2/pkg/storage/types"
@@ -140,7 +141,9 @@ func TestOnUpdateManifestDigestTags_rollbackPartialMeta(t *testing.T) {
 			log := log.NewTestLogger()
 			metrics := monitoring.NewNopMetricServer()
 
-			storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+			matcher, err := protectedtags.Compile(protectedtags.Config{Exact: []string{"ta", "tb"}})
+			So(err, ShouldBeNil)
+			storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil, matcher)
 
 			params := boltdb.DBParameters{RootDir: rootDir}
 			boltDriver, err := boltdb.GetBoltDriver(params)
@@ -377,6 +380,42 @@ func TestOnUpdateManifest_setRepoReferenceFailsRemovesManifest(t *testing.T) {
 		So(errors.Is(err, errSetRepoRefForHookTest), ShouldBeTrue)
 
 		_, _, _, err = imgStore.GetImageManifest("repo", "tag1")
+		So(errors.Is(err, zerr.ErrManifestNotFound), ShouldBeTrue)
+	})
+}
+
+func TestOnUpdateManifest_setRepoReferenceFailsRemovesProtectedManifest(t *testing.T) {
+	Convey("OnUpdateManifest can clean up a newly pushed protected tag when metadata fails", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		matcher, err := protectedtags.Compile(protectedtags.Config{Exact: []string{"prod"}})
+		So(err, ShouldBeNil)
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil, matcher)
+
+		metaDB := mocks.MetaDBMock{
+			SetRepoReferenceFn: func(context.Context, string, string, mTypes.ImageMeta) error {
+				return errSetRepoRefForHookTest
+			},
+		}
+
+		image := CreateDefaultImage()
+		mediaType := image.ManifestDescriptor.MediaType
+		if mediaType == "" {
+			mediaType = ispec.MediaTypeImageManifest
+		}
+
+		imgStore := storeController.GetImageStore("repo")
+		err = WriteImageToFileSystem(image, "repo", "prod", storeController)
+		So(err, ShouldBeNil)
+
+		err = meta.OnUpdateManifest(context.Background(), "repo", "prod", mediaType, image.Digest(),
+			image.ManifestDescriptor.Data, storeController, metaDB, log)
+		So(errors.Is(err, errSetRepoRefForHookTest), ShouldBeTrue)
+
+		_, _, _, err = imgStore.GetImageManifest("repo", "prod")
 		So(errors.Is(err, zerr.ErrManifestNotFound), ShouldBeTrue)
 	})
 }

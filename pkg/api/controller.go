@@ -31,6 +31,7 @@ import (
 	meta "zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	version "zotregistry.dev/zot/v2/pkg/meta/version"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	scheduler "zotregistry.dev/zot/v2/pkg/scheduler"
 	storage "zotregistry.dev/zot/v2/pkg/storage"
 	gc "zotregistry.dev/zot/v2/pkg/storage/gc"
@@ -746,12 +747,20 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 	// Enable running garbage-collect periodically for DefaultStore
 	storageConfig := conf.CopyStorageConfig()
 	if storageConfig.GC {
+		protectedTagMatcher, err := protectedtags.Compile(storageConfig.ProtectedTags)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to compile protected tag rules for GC")
+
+			return
+		}
+
 		gc := gc.NewGarbageCollect(storeController.DefaultStore, metaDB, gc.Options{
 			Delay:             storageConfig.GCDelay,
 			MaxSchedulerDelay: storageConfig.GCMaxSchedulerDelay,
 			TimeWindow:        storageConfig.GCTimeWindow,
 			ImageRetention:    storageConfig.Retention,
 			StagingRoot:       storeController.SyncStagingRootForImageStore(storeController.DefaultStore),
+			ProtectedTags:     protectedTagMatcher,
 		}, audit, logger, metrics)
 
 		gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
@@ -762,6 +771,14 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 		for route, subStorageConfig := range storageConfig.SubPaths {
 			// Enable running garbage-collect periodically for subImageStore
 			if subStorageConfig.GC {
+				protectedTagMatcher, err := protectedtags.Compile(subStorageConfig.ProtectedTags)
+				if err != nil {
+					logger.Error().Err(err).Str("subpath", route).
+						Msg("failed to compile protected tag rules for GC")
+
+					return
+				}
+
 				gc := gc.NewGarbageCollect(storeController.SubStore[route], metaDB,
 					gc.Options{
 						Delay:             subStorageConfig.GCDelay,
@@ -770,6 +787,7 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 						ImageRetention:    subStorageConfig.Retention,
 						StagingRoot: storeController.SyncStagingRootForImageStore(
 							storeController.SubStore[route]),
+						ProtectedTags: protectedTagMatcher,
 					}, audit, logger, metrics)
 
 				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)

@@ -163,6 +163,27 @@ Orphan blobs are removed if they are older than gcDelay.
         "gcDelay": "2h"
 ```
 
+### Protected tags
+
+Tags used as trusted deployment references can be protected from retargeting and deletion:
+
+```
+        "protectedTags": {
+            "exact": ["prod", "latest"],
+            "wildcard": ["release-*"],
+            "regex": ["^v[0-9]+\\.[0-9]+\\.[0-9]+$"]
+        }
+```
+
+The setting is available under the top-level `storage` object and under individual `subPaths` entries.
+The first push to a protected tag is allowed. Repeating a push with the same manifest digest is idempotent;
+retargeting the tag to another digest or deleting it returns `409 Conflict`. Deleting a manifest by digest also
+returns `409 Conflict` when the digest is referenced by a protected tag. Garbage collection and retention preserve
+protected tag references.
+
+Protected tag rules are validated when the configuration is loaded and take effect after a restart. Omitting
+`protectedTags` preserves the default mutable-tag behavior.
+
 On high-load registries, garbage collection can add lock contention on storage
 while it runs. To restrict when a periodic GC sweep over all repositories may
 start to a daily time-of-day window (e.g. only during off-peak hours), set

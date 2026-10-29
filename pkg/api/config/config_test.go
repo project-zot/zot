@@ -12,6 +12,7 @@ import (
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 )
 
 func TestStorageFingerprint(t *testing.T) {
@@ -54,6 +55,10 @@ func TestStorageFingerprint(t *testing.T) {
 			subPaths := newConf()
 			subPaths.Storage.SubPaths = map[string]config.StorageConfig{"/a": {RootDirectory: "/data/a"}}
 			So(subPaths.StorageFingerprint(), ShouldNotEqual, base)
+
+			protected := newConf()
+			protected.Storage.ProtectedTags = protectedtags.Config{Exact: []string{"prod"}}
+			So(protected.StorageFingerprint(), ShouldNotEqual, base)
 		})
 
 		Convey("changing a non-storage field keeps the fingerprint", func() {
@@ -141,6 +146,11 @@ func TestConfig(t *testing.T) {
 
 		So(secondStorageConfig.GCTimeWindow.UnmarshalJSON([]byte(`"01:00-08:00"`)), ShouldBeNil)
 
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
+
+		firstStorageConfig.ProtectedTags = protectedtags.Config{Wildcard: []string{"release-*"}}
+		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeFalse)
+		firstStorageConfig.ProtectedTags = protectedtags.Config{}
 		So(firstStorageConfig.ParamsEqual(secondStorageConfig), ShouldBeTrue)
 
 		isSame, err := config.SameFile("test-config", "test")

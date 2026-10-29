@@ -15,6 +15,21 @@ import (
 
 type FilterRepoFunc func(repo string) (bool, error)
 
+type manifestRollbackContextKey struct{}
+
+// WithManifestRollback marks a manifest deletion as cleanup for a failed metadata update.
+// The storage layer uses the digest to avoid deleting a tag that was changed concurrently.
+func WithManifestRollback(ctx context.Context, digest godigest.Digest) context.Context {
+	return context.WithValue(ctx, manifestRollbackContextKey{}, digest)
+}
+
+// ManifestRollbackDigest returns the digest associated with a metadata rollback cleanup.
+func ManifestRollbackDigest(ctx context.Context) (godigest.Digest, bool) {
+	digest, ok := ctx.Value(manifestRollbackContextKey{}).(godigest.Digest)
+
+	return digest, ok && digest != ""
+}
+
 type StoreController interface {
 	GetImageStore(name string) ImageStore
 	GetDefaultImageStore() ImageStore

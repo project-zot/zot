@@ -22,6 +22,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	"zotregistry.dev/zot/v2/pkg/retention"
 	rTypes "zotregistry.dev/zot/v2/pkg/retention/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
@@ -55,6 +56,9 @@ type Options struct {
 	// StagingRoot is the local filesystem root whose <repo>/.sync/<uuid> trees block
 	// idle-repository removal during GC for this image store. Populated by RunGCTasks.
 	StagingRoot string
+
+	// ProtectedTags prevents GC from removing or retargeting protected tag rows.
+	ProtectedTags *protectedtags.Matcher
 }
 
 type GarbageCollect struct {
@@ -157,6 +161,12 @@ func (gc GarbageCollect) memo(repo string) *common.WalkMemo {
 	}
 
 	return nil
+}
+
+func (gc GarbageCollect) isProtectedDescriptor(desc ispec.Descriptor) bool {
+	tag, ok := getDescriptorTag(desc)
+
+	return ok && gc.opts.ProtectedTags != nil && gc.opts.ProtectedTags.Matches(tag)
 }
 
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
@@ -315,6 +325,12 @@ func (gc GarbageCollect) removeUnknownMediaTypeManifestEntries(repo string, inde
 	kept := make([]ispec.Descriptor, 0, len(index.Manifests))
 
 	for _, desc := range index.Manifests {
+		if gc.isProtectedDescriptor(desc) {
+			kept = append(kept, desc)
+
+			continue
+		}
+
 		if isKnownManifestMediaType(desc.MediaType) {
 			kept = append(kept, desc)
 
@@ -368,6 +384,12 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 	kept := make([]ispec.Descriptor, 0, len(index.Manifests))
 
 	for _, desc := range index.Manifests {
+		if gc.isProtectedDescriptor(desc) {
+			kept = append(kept, desc)
+
+			continue
+		}
+
 		if !existingBlobs[desc.Digest.String()] {
 			missing, err := gc.confirmBlobMissing(repo, desc.Digest)
 			if err != nil {
@@ -984,6 +1006,10 @@ func (gc GarbageCollect) removeManifestIfOlderThan(repo string, index *ispec.Ind
 func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 	desc ispec.Descriptor, reference string, signatureType string, subjectDigest godigest.Digest,
 ) (bool, error) {
+	if gc.isProtectedDescriptor(desc) {
+		return false, nil
+	}
+
 	_, err := common.RemoveManifestDescByReference(index, reference, true)
 	if err != nil {
 		if errors.Is(err, zerr.ErrManifestConflict) || errors.Is(err, zerr.ErrManifestNotFound) {
