@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -124,23 +125,15 @@ func (t *dynamoManifestCheckTracker) ShouldCheckUpstream(ctx context.Context, re
 // MarkChecked records a successful upstream check. A failed write is logged and not returned;
 // the next request for this reference checks upstream again.
 func (t *dynamoManifestCheckTracker) MarkChecked(ctx context.Context, repo, reference string) {
-	item, err := attributevalue.MarshalMap(manifestCheckItem{
-		Digest:      t.key(repo, reference),
-		LastChecked: time.Now().UnixNano(),
-	})
-	if err != nil {
-		t.log.Warn().Err(err).Str("repo", repo).Str("reference", reference).
-			Msg("failed to encode manifest check state")
-
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(ctx, manifestCheckStoreTimeout)
 	defer cancel()
 
 	if _, err := t.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(t.tableName),
-		Item:      item,
+		Item: map[string]types.AttributeValue{
+			"Digest":      &types.AttributeValueMemberS{Value: t.key(repo, reference)},
+			"LastChecked": &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().UnixNano(), 10)},
+		},
 	}); err != nil {
 		t.log.Warn().Err(err).Str("repo", repo).Str("reference", reference).
 			Msg("failed to record manifest check state")
