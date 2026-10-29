@@ -142,6 +142,7 @@ var (
 	ErrInvalidMetaDBVersion             = errors.New("unrecognized version meta")
 	ErrBucketDoesNotExist               = errors.New("bucket does not exist")
 	ErrOpenIDProviderDoesNotExist       = errors.New("openid provider does not exist in given config")
+	ErrOpenIDRelyingPartyNil            = errors.New("openid relying party initialization returned no client")
 	ErrHashKeyNotCreated                = errors.New("cookiestore generated random hash key is nil, aborting")
 	ErrFailedTypeAssertion              = errors.New("type assertion failed")
 	ErrInvalidOldUserStarredRepos       = errors.New("invalid old entry for user starred repos")

@@ -520,6 +520,11 @@ for example to login with github use http://127.0.0.1:8080/zot/auth/login?provid
 
 callback_ui query parameter is used by zot to redirect to UI after a successful openid/oauth2 authentication
 
+OpenID Connect providers are initialized lazily, on the first login attempt, so zot startup does not depend on
+the provider issuer being reachable. While the issuer is unreachable, the login and callback endpoints of that
+provider respond with `503 Service Unavailable` and initialization is retried on the next attempt; other
+authentication methods (htpasswd, LDAP, API keys) and registry operations keep working.
+
 By default, `callback_ui` must be a relative path (starting with `/`) to prevent open redirects.
 If your UI runs on a different origin (e.g. different port during development), you can allowlist
 absolute redirect origins via:
