@@ -9,6 +9,7 @@ import (
 	"path"
 	"testing"
 
+	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -255,5 +256,246 @@ func TestKeepFullCopyRacesWithPush(t *testing.T) {
 		uploads, err := imgStore.ListBlobUploads("repo-copy")
 		So(err, ShouldBeNil)
 		So(uploads, ShouldBeEmpty)
+	})
+}
+
+// faultWriterDriver fails the staging writer: opening it, its Commit, or its Close.
+type faultWriterDriver struct {
+	storageTypes.Driver
+
+	mode string
+}
+
+func (d *faultWriterDriver) Writer(filepath string, isAppend bool) (driver.FileWriter, error) {
+	if d.mode == "open" {
+		return nil, errStagingFailed
+	}
+
+	writer, err := d.Driver.Writer(filepath, isAppend)
+	if err != nil {
+		return nil, err
+	}
+
+	return &faultWriter{FileWriter: writer, mode: d.mode}, nil
+}
+
+type faultWriter struct {
+	driver.FileWriter
+
+	mode string
+}
+
+func (w *faultWriter) Commit(ctx context.Context) error {
+	if w.mode == "commit" {
+		return errStagingFailed
+	}
+
+	return w.FileWriter.Commit(ctx)
+}
+
+func (w *faultWriter) Close() error {
+	if w.mode == "close" {
+		_ = w.FileWriter.Close()
+
+		return errStagingFailed
+	}
+
+	return w.FileWriter.Close()
+}
+
+// erroringCache fails every PutDuplicate with an error that is neither a miss nor a full record.
+type erroringCache struct {
+	storageTypes.Cache
+}
+
+func (c *erroringCache) PutDuplicate(_ godigest.Digest, _ string) error {
+	return errStagingFailed
+}
+
+func TestKeepFullCopyFailures(t *testing.T) {
+	content := []byte("dedupe-capacity-failure-content")
+	digest := godigest.FromBytes(content)
+
+	type fixture struct {
+		imgStore storageTypes.ImageStore
+		cache    storageTypes.Cache
+		origin   string
+		dest     string
+	}
+
+	setup := func(dedupe bool, wrap func(storageTypes.Driver) storageTypes.Driver,
+		storeCache func(storageTypes.Cache) storageTypes.Cache,
+	) fixture {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		var storeDriver storageTypes.Driver = &remoteNamedDriver{Driver: local.New(true)}
+		if wrap != nil {
+			storeDriver = wrap(storeDriver)
+		}
+
+		var cacheForStore storageTypes.Cache = &fullCache{Cache: cacheDriver}
+		if storeCache != nil {
+			cacheForStore = storeCache(cacheDriver)
+		}
+
+		imgStore := imagestore.NewImageStore(dir, dir, dedupe, true, log, monitoring.NewNopMetricServer(), nil,
+			storeDriver, cacheForStore, nil, nil)
+
+		So(imgStore.InitRepo(context.Background(), "repo-origin"), ShouldBeNil)
+
+		origin := imgStore.BlobPath("repo-origin", digest)
+		So(os.MkdirAll(path.Dir(origin), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(origin, content, storageConstants.DefaultFilePerms), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, origin), ShouldBeNil)
+
+		return fixture{imgStore: imgStore, cache: cacheDriver, origin: origin, dest: imgStore.BlobPath("repo-copy", digest)}
+	}
+
+	expectNoCopy := func(fix fixture) {
+		_, err := os.Stat(fix.dest)
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		uploads, err := fix.imgStore.ListBlobUploads("repo-copy")
+		So(err, ShouldBeNil)
+		So(uploads, ShouldBeEmpty)
+	}
+
+	Convey("A placeholder is filled under a read lock when dedupe is off", t, func() {
+		fix := setup(false, nil, nil)
+
+		So(fix.imgStore.InitRepo(context.Background(), "repo-copy"), ShouldBeNil)
+		So(os.MkdirAll(path.Dir(fix.dest), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(fix.dest, nil, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+		ok, size, err := fix.imgStore.CheckBlob(context.Background(), "repo-copy", digest)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, len(content))
+
+		data, err := os.ReadFile(fix.dest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+
+	Convey("A placeholder removed while staging is filled", t, func() {
+		var racing *racingReadDriver
+
+		fix := setup(true, func(d storageTypes.Driver) storageTypes.Driver {
+			racing = &racingReadDriver{Driver: d}
+
+			return racing
+		}, nil)
+
+		racing.origin = fix.origin
+		racing.onRead = func() { So(os.Remove(fix.dest), ShouldBeNil) }
+
+		ok, _, err := fix.imgStore.CheckBlob(context.Background(), "repo-copy", digest)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+
+		data, err := os.ReadFile(fix.dest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+
+	Convey("A copy that cannot be stat'd after staging fails, and the staged copy is dropped", t, func() {
+		var (
+			racing *racingReadDriver
+			stats  *statFailingDriver
+		)
+
+		fix := setup(true, func(d storageTypes.Driver) storageTypes.Driver {
+			racing = &racingReadDriver{Driver: d}
+			stats = &statFailingDriver{Driver: racing}
+
+			return stats
+		}, nil)
+
+		racing.origin = fix.origin
+		racing.onRead = func() { stats.failPath = fix.dest }
+
+		ok, _, err := fix.imgStore.CheckBlob(context.Background(), "repo-copy", digest)
+		So(errors.Is(err, errHandOffCache), ShouldBeTrue)
+		So(ok, ShouldBeFalse)
+
+		uploads, err := fix.imgStore.ListBlobUploads("repo-copy")
+		So(err, ShouldBeNil)
+		So(uploads, ShouldBeEmpty)
+	})
+
+	Convey("A move that fails after staging removes both the staged copy and the placeholder", t, func() {
+		fix := setup(true, func(d storageTypes.Driver) storageTypes.Driver {
+			return &failingMoveDriver{Driver: d, failures: 1}
+		}, nil)
+
+		ok, _, err := fix.imgStore.CheckBlob(context.Background(), "repo-copy", digest)
+		So(errors.Is(err, errMoveFailed), ShouldBeTrue)
+		So(ok, ShouldBeFalse)
+
+		expectNoCopy(fix)
+	})
+
+	Convey("A staging that cannot be written fails and leaves nothing behind", t, func() {
+		for _, mode := range []string{"open", "commit", "close"} {
+			Convey("the writer fails on "+mode, func() {
+				fix := setup(true, func(d storageTypes.Driver) storageTypes.Driver {
+					return &faultWriterDriver{Driver: d, mode: mode}
+				}, nil)
+
+				ok, _, err := fix.imgStore.CheckBlob(context.Background(), "repo-copy", digest)
+				So(errors.Is(err, errStagingFailed), ShouldBeTrue)
+				So(ok, ShouldBeFalse)
+
+				expectNoCopy(fix)
+			})
+		}
+	})
+
+	Convey("A staging cancelled by its context fails and leaves nothing behind", t, func() {
+		var racing *racingReadDriver
+
+		fix := setup(true, func(d storageTypes.Driver) storageTypes.Driver {
+			racing = &racingReadDriver{Driver: d}
+
+			return racing
+		}, nil)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		racing.origin = fix.origin
+		racing.onRead = cancel
+
+		ok, _, err := fix.imgStore.CheckBlob(ctx, "repo-copy", digest)
+		So(errors.Is(err, context.Canceled), ShouldBeTrue)
+		So(ok, ShouldBeFalse)
+
+		expectNoCopy(fix)
+	})
+
+	Convey("A push fails when the record cannot be updated for another reason", t, func() {
+		fix := setup(true, nil, func(c storageTypes.Cache) storageTypes.Cache {
+			return &erroringCache{Cache: c}
+		})
+
+		_, _, err := fix.imgStore.FullBlobUpload(context.Background(), "repo-push", bytes.NewReader(content), digest)
+		So(errors.Is(err, errStagingFailed), ShouldBeTrue)
+	})
+
+	Convey("A push fails when the upload cannot replace the linked copy", t, func() {
+		fix := setup(true, func(d storageTypes.Driver) storageTypes.Driver {
+			return &failingMoveDriver{Driver: d, failures: 1}
+		}, nil)
+
+		_, _, err := fix.imgStore.FullBlobUpload(context.Background(), "repo-push", bytes.NewReader(content), digest)
+		So(errors.Is(err, errMoveFailed), ShouldBeTrue)
 	})
 }
