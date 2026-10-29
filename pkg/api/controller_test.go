@@ -3959,6 +3959,23 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			So(rp, ShouldNotBeNil)
 		})
 
+		Convey("discovery URL on a different host than the issuer", func() {
+			oidcProvider := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			oidcProvider.DiscoveryURL = strings.Replace(mockOIDCServer.DiscoveryEndpoint(), "127.0.0.1", "localhost", 1)
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
+
+			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewTestLogger())
+			So(rp, ShouldNotBeNil)
+		})
+
+		Convey("discovery URL unreachable", func() {
+			oidcProvider := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			oidcProvider.DiscoveryURL = "http://127.0.0.1:1/.well-known/openid-configuration"
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
+
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewTestLogger()) }, ShouldPanic)
+		})
+
 		Convey("provider issuer unreachable", func() {
 			oidcProvider := conf.HTTP.Auth.OpenID.Providers["oidc"]
 			oidcProvider.Issuer = ""
