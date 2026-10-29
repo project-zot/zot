@@ -1063,3 +1063,115 @@ func TestRedisPutDuplicateAndReplaceBlob(t *testing.T) {
 		})
 	}
 }
+
+func TestRedisPutDuplicateAndReplaceBlobErrors(t *testing.T) {
+	Convey("Paths that cannot be made relative are rejected", t, func() {
+		miniRedis := miniredis.RunT(t)
+		dir := t.TempDir()
+
+		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
+		client := redis.NewClient(connOpts)
+
+		cacheDriver, err := storage.Create("redis",
+			cache.RedisDriverParameters{client, dir, true, "zot"}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		origin := path.Join(dir, "repo-a", "blobs", "sha256", "abc")
+		So(cacheDriver.PutBlob("digest", origin), ShouldBeNil)
+
+		So(cacheDriver.PutDuplicate("digest", "relative/copy"), ShouldNotBeNil)
+		So(cacheDriver.ReplaceBlob("digest", "relative/origin", origin), ShouldNotBeNil)
+		So(cacheDriver.ReplaceBlob("digest", origin, "relative/copy"), ShouldNotBeNil)
+
+		stored, err := cacheDriver.GetBlob("digest")
+		So(err, ShouldBeNil)
+		So(stored, ShouldEqual, path.Join("repo-a", "blobs", "sha256", "abc"))
+	})
+
+	Convey("Failures of each command are returned", t, func() {
+		dir := t.TempDir()
+		log := log.NewTestLogger()
+
+		params := cache.RedisDriverParameters{RootDir: dir, UseRelPaths: false, KeyPrefix: "zot"}
+		lockKey := "zot:locks:key"
+		originKey := "zot:" + constants.BlobsCache + ":" + constants.OriginalBucket
+		pathSet := "zot:" + constants.BlobsCache + ":" + constants.DuplicatesBucket + ":key"
+
+		newDriver := func() (*cache.RedisDriver, redismock.ClientMock) {
+			cacheDB, mock := redismock.NewClientMock()
+			params.Client = cacheDB
+
+			mock.ExpectPing().SetVal("OK")
+
+			cacheDriver, err := cache.NewRedisCache(params, log)
+			So(err, ShouldBeNil)
+
+			return cacheDriver, mock
+		}
+
+		Convey("PutDuplicate cannot take the lock", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetErr(ErrTestError)
+
+			So(cacheDriver.PutDuplicate("key", "/repo/copy"), ShouldNotBeNil)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("PutDuplicate cannot read the origin", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectHExists(originKey, "key").SetErr(ErrTestError)
+
+			So(cacheDriver.PutDuplicate("key", "/repo/copy"), ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("PutDuplicate cannot add the path", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectHExists(originKey, "key").SetVal(true)
+			mock.ExpectSAdd(pathSet, "/repo/copy").SetErr(ErrTestError)
+
+			So(cacheDriver.PutDuplicate("key", "/repo/copy"), ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("ReplaceBlob cannot take the lock", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetErr(ErrTestError)
+
+			So(cacheDriver.ReplaceBlob("key", "/repo/origin", "/repo/copy"), ShouldNotBeNil)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("ReplaceBlob cannot read the origin", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectHGet(originKey, "key").SetErr(ErrTestError)
+
+			So(cacheDriver.ReplaceBlob("key", "/repo/origin", "/repo/copy"), ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("ReplaceBlob cannot check the new path", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectHGet(originKey, "key").SetVal("/repo/origin")
+			mock.ExpectSIsMember(pathSet, "/repo/copy").SetErr(ErrTestError)
+
+			So(cacheDriver.ReplaceBlob("key", "/repo/origin", "/repo/copy"), ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("ReplaceBlob cannot write the origin", func() {
+			cacheDriver, mock := newDriver()
+			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
+			mock.ExpectHGet(originKey, "key").SetVal("/repo/origin")
+			mock.ExpectSIsMember(pathSet, "/repo/copy").SetVal(true)
+			mock.ExpectHSet(originKey, "key", "/repo/copy").SetErr(ErrTestError)
+
+			So(cacheDriver.ReplaceBlob("key", "/repo/origin", "/repo/copy"), ShouldEqual, ErrTestError)
+			So(mock.ExpectationsWereMet(), ShouldBeNil)
+		})
+	})
+}

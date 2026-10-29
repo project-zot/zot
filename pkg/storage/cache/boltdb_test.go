@@ -2,9 +2,11 @@ package cache_test
 
 import (
 	"path"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"go.etcd.io/bbolt"
 
 	"zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
@@ -329,4 +331,40 @@ func TestBoltDBPutDuplicateAndReplaceBlob(t *testing.T) {
 			So(cacheDriver.HasBlob("digest", origin), ShouldBeTrue)
 		})
 	}
+}
+
+func TestBoltDBPutDuplicateAndReplaceBlobErrors(t *testing.T) {
+	Convey("Paths that cannot be made relative are rejected", t, func() {
+		dir := t.TempDir()
+
+		cacheDriver, err := cache.NewBoltDBCache(cache.BoltDBDriverParameters{
+			RootDir: dir, Name: "cache_test", UseRelPaths: true,
+		}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		origin := path.Join(dir, "repo-a", "blobs", "sha256", "abc")
+		So(cacheDriver.PutBlob("digest", origin), ShouldBeNil)
+
+		So(cacheDriver.PutDuplicate("digest", "relative/copy"), ShouldNotBeNil)
+		So(cacheDriver.ReplaceBlob("digest", "relative/origin", origin), ShouldNotBeNil)
+		So(cacheDriver.ReplaceBlob("digest", origin, "relative/copy"), ShouldNotBeNil)
+
+		stored, err := cacheDriver.GetBlob("digest")
+		So(err, ShouldBeNil)
+		So(stored, ShouldEqual, path.Join("repo-a", "blobs", "sha256", "abc"))
+	})
+
+	Convey("A path the database cannot store is reported", t, func() {
+		cacheDriver, err := cache.NewBoltDBCache(cache.BoltDBDriverParameters{
+			RootDir: t.TempDir(), Name: "cache_test", UseRelPaths: false,
+		}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		So(cacheDriver.PutBlob("digest", "/repo/origin"), ShouldBeNil)
+
+		tooLong := "/" + strings.Repeat("p", bbolt.MaxKeySize)
+
+		So(cacheDriver.PutDuplicate("digest", tooLong), ShouldEqual, bbolt.ErrKeyTooLarge)
+		So(cacheDriver.HasBlob("digest", tooLong), ShouldBeFalse)
+	})
 }
