@@ -3,6 +3,7 @@ package cache
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -750,5 +751,32 @@ func TestDynamoDBPutDuplicateAndReplaceBlob(t *testing.T) {
 		So(driver.ReplaceBlob(digest, "", "/repo/copy"), ShouldEqual, zerr.ErrEmptyValue)
 		So(driver.ReplaceBlob(digest, "/repo/origin", ""), ShouldEqual, zerr.ErrEmptyValue)
 		So(transport.targets, ShouldBeEmpty)
+	})
+}
+
+// A write that fails for any reason other than its condition is returned as it is, and not
+// read as a miss or a conflict.
+func TestDynamoDBPutDuplicateAndReplaceBlobErrors(t *testing.T) {
+	digest := godigest.FromString("write-failure")
+
+	serverError := scriptedDynamoResponse{http.StatusInternalServerError,
+		`{"__type":"com.amazonaws.dynamodb.v20120810#InternalServerError","message":"internal"}`}
+
+	Convey("PutDuplicate returns a failed write", t, func() {
+		driver, transport := newScriptedDynamoDriver(serverError)
+
+		err := driver.PutDuplicate(digest, "/repo/copy")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrCacheMiss), ShouldBeFalse)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem"})
+	})
+
+	Convey("ReplaceBlob returns a failed write", t, func() {
+		driver, transport := newScriptedDynamoDriver(serverError)
+
+		err := driver.ReplaceBlob(digest, "/repo/origin", "/repo/copy")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrCacheConflict), ShouldBeFalse)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem"})
 	})
 }
