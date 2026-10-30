@@ -46,7 +46,7 @@ func (f *fakeStreamManager) ConnectClient(repo, blobDigest string, writer io.Wri
 	return nil, errFakeStreamManager
 }
 
-func (f *fakeStreamManager) DownloadStreamedBlobs(_ context.Context, _, _ string, _ sync.BlobFetcher,
+func (f *fakeStreamManager) DownloadStreamedBlobs(_ context.Context, _, _ string, _, _ sync.BlobFetcher,
 ) map[godigest.Digest]string {
 	return nil
 }
