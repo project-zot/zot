@@ -18,6 +18,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2782,76 +2783,46 @@ type RepositoryList struct {
 func (rh *RouteHandler) listStorageRepositories(lastEntry string, maxEntries int,
 	userAc *reqCtx.UserAccessControl,
 ) ([]string, bool, error) {
-	var moreEntries bool
-
-	var err error
-
-	var repos []string
-
-	remainder := maxEntries
-
-	combineRepoList := make([]string, 0)
-
 	subStore := rh.c.StoreController.SubStore
 
-	subPaths := make([]string, 0)
+	subPaths := make([]string, 0, len(subStore))
 	for subPath := range subStore {
 		subPaths = append(subPaths, subPath)
 	}
 
 	sort.Strings(subPaths)
 
-	storePath := rh.c.StoreController.GetStorePath(lastEntry)
-	if storePath == storage.DefaultStorePath {
-		singleStore := rh.c.StoreController.DefaultStore
+	storePaths := append([]string{storage.DefaultStorePath}, subPaths...)
+	storePaths = storePaths[slices.Index(storePaths, rh.c.StoreController.GetStorePath(lastEntry)):]
 
-		repos, moreEntries, err = singleStore.GetNextRepositories(lastEntry, remainder, AuthzFilterFunc(userAc))
+	repos := make([]string, 0)
+	remainder := maxEntries
+
+	for _, storePath := range storePaths {
+		imgStore := rh.c.StoreController.DefaultStore
+		if storePath != storage.DefaultStorePath {
+			imgStore = subStore[storePath]
+		}
+
+		storeRepos, moreEntries, err := imgStore.GetNextRepositories(lastEntry, remainder, AuthzFilterFunc(userAc))
 		if err != nil {
 			return repos, false, err
 		}
 
-		remainder = maxEntries - len(repos)
+		repos = append(repos, storeRepos...)
 
-		if moreEntries && remainder <= 0 && len(repos) > 0 {
-			// maxEntries has been hit
-			lastEntry = repos[len(repos)-1]
-		} else {
-			// reset for the next substores
-			lastEntry = ""
+		if moreEntries {
+			return repos, true, nil
 		}
 
-		combineRepoList = append(combineRepoList, repos...)
-	}
+		lastEntry = ""
 
-	for _, subPath := range subPaths {
-		imgStore := subStore[subPath]
-
-		if lastEntry != "" && subPath != storePath {
-			continue
-		}
-
-		if remainder > 0 || maxEntries == -1 {
-			repos, moreEntries, err = imgStore.GetNextRepositories(lastEntry, remainder, AuthzFilterFunc(userAc))
-			if err != nil {
-				return combineRepoList, false, err
-			}
-
-			// compute remainder
-			remainder -= len(repos)
-
-			if moreEntries && remainder <= 0 && len(repos) > 0 {
-				// maxEntries has been hit
-				lastEntry = repos[len(repos)-1]
-			} else {
-				// reset for the next substores
-				lastEntry = ""
-			}
-
-			combineRepoList = append(combineRepoList, repos...)
+		if remainder > 0 {
+			remainder -= len(storeRepos)
 		}
 	}
 
-	return combineRepoList, moreEntries, nil
+	return repos, false, nil
 }
 
 // ListRepositories godoc

@@ -424,12 +424,6 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 	lastExists := is.catalogLastExists(lastRepo)
 
 	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
-		if entries == maxEntries {
-			moreEntries = true
-
-			return io.EOF
-		}
-
 		if !fileInfo.IsDir() {
 			return nil
 		}
@@ -488,6 +482,12 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 		}
 
 		if afterLast && ok {
+			if entries == maxEntries {
+				moreEntries = true
+
+				return io.EOF
+			}
+
 			entries++
 
 			stores = append(stores, rel)

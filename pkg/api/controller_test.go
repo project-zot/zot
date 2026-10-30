@@ -10663,6 +10663,24 @@ func TestPagedRepositoriesWithSubpaths(t *testing.T) {
 			expectedRepos: repoNames[5:9],
 		},
 		{
+			testCaseName:  "a page that fills the default store",
+			pageSize:      "3",
+			last:          "",
+			expectedRepos: repoNames[:3],
+		},
+		{
+			testCaseName:  "a page that fills a substore",
+			pageSize:      "3",
+			last:          "alpine3",
+			expectedRepos: repoNames[3:6],
+		},
+		{
+			testCaseName:  "a page that ends exactly on the last repo",
+			pageSize:      "3",
+			last:          "a/alpine6",
+			expectedRepos: repoNames[6:9],
+		},
+		{
 			testCaseName:  "0",
 			pageSize:      "0",
 			last:          "",
@@ -10743,6 +10761,12 @@ func TestPagedRepositories(t *testing.T) {
 		{
 			testCaseName:  "next 5",
 			pageSize:      "5",
+			last:          repoName + "5",
+			expectedRepos: repoNames[5:9],
+		},
+		{
+			testCaseName:  "a page that ends exactly on the last repo",
+			pageSize:      "4",
 			last:          repoName + "5",
 			expectedRepos: repoNames[5:9],
 		},
