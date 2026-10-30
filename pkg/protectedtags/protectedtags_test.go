@@ -42,6 +42,9 @@ func TestMatcher(t *testing.T) {
 
 			_, err = protectedtags.Compile(protectedtags.Config{Regex: []string{"["}})
 			So(err, ShouldNotBeNil)
+
+			_, err = protectedtags.Compile(protectedtags.Config{Regex: []string{`prod)|(?:release`}})
+			So(err, ShouldNotBeNil)
 		})
 	})
 }

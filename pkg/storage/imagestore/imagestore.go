@@ -867,10 +867,6 @@ func (is *ImageStore) CheckProtectedTagWrite(repo, reference, mediaType string, 
 		return nil
 	}
 
-	if err := common.ValidateManifest(is, repo, reference, mediaType, body, is.compat, is.log); err != nil {
-		return nil //nolint:nilerr // let PutImageManifest preserve the normal validation error
-	}
-
 	digest, err := common.GetAndValidateRequestDigest(body, reference, is.log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrBadManifest) || len(extraTags) > 0 {
@@ -879,31 +875,37 @@ func (is *ImageStore) CheckProtectedTagWrite(repo, reference, mediaType string, 
 
 		// A non-digest reference is a tag. GetAndValidateRequestDigest returns the
 		// canonical body digest together with the reference parse error in this case.
-		return is.checkProtectedTagWriteForTag(repo, reference, digest)
+		refIsDigest := false
+
+		err = is.checkProtectedTagWriteForValidManifest(repo, reference, mediaType, body, refIsDigest,
+			extraTags, digest)
+	} else {
+		err = is.checkProtectedTagWriteForValidManifest(repo, reference, mediaType, body, true,
+			extraTags, digest)
 	}
-
-	return is.checkProtectedTagWriteForTag(repo, reference, digest, extraTags...)
-}
-
-func (is *ImageStore) checkProtectedTagWriteForTag(repo, reference string, digest godigest.Digest,
-	extraTags ...string,
-) error {
-	err := is.WithRepoReadLock(repo, func() error {
-		index, err := common.GetIndex(is, repo, is.log)
-		if err != nil {
-			return err
-		}
-
-		refIsDigest := zcommon.IsDigest(reference)
-
-		return is.checkProtectedTagWrite(index, reference, refIsDigest, extraTags, digest)
-	})
 
 	if errors.Is(err, zerr.ErrProtectedTag) {
 		return err
 	}
 
 	return nil
+}
+
+func (is *ImageStore) checkProtectedTagWriteForValidManifest(repo, reference, mediaType string,
+	body []byte, refIsDigest bool, extraTags []string, digest godigest.Digest,
+) error {
+	return is.WithRepoReadLock(repo, func() error {
+		if err := common.ValidateManifest(is, repo, reference, mediaType, body, is.compat, is.log); err != nil {
+			return err
+		}
+
+		index, err := common.GetIndex(is, repo, is.log)
+		if err != nil {
+			return err
+		}
+
+		return is.checkProtectedTagWrite(index, reference, refIsDigest, extraTags, digest)
+	})
 }
 
 func (is *ImageStore) checkProtectedTagDelete(index ispec.Index, reference string) error {

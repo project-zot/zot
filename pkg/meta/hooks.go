@@ -94,6 +94,10 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 
 	for i := range slices.Backward(tags) {
 		refTag := tags[i]
+		if prior, ok := priorTagManifests[refTag]; ok && prior.digest == digest {
+			continue
+		}
+
 		rollbackCtx := storageTypes.WithManifestRollback(ctx, digest)
 		if delErr := imgStore.DeleteImageManifest(rollbackCtx, repo, refTag, false); delErr != nil &&
 			!errors.Is(delErr, zerr.ErrManifestNotFound) {
@@ -104,6 +108,9 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 
 	for i := range slices.Backward(appliedMetaTags) {
 		refTag := appliedMetaTags[i]
+		if prior, ok := priorTagManifests[refTag]; ok && prior.digest == digest {
+			continue
+		}
 
 		metaDelErr := OnDeleteManifest(repo, refTag, mediaType, digest, body, storeController, metaDB, log)
 		if metaDelErr != nil {
@@ -119,6 +126,9 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 	for _, refTag := range tags {
 		prior, ok := priorTagManifests[refTag]
 		if !ok {
+			continue
+		}
+		if prior.digest == digest {
 			continue
 		}
 
@@ -167,6 +177,10 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 	if err != nil {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
+		if tagAlreadyPointsToDigest(ctx, metaDB, repo, reference, digest) {
+			return err
+		}
+
 		rollbackCtx := ctx
 		if !zcommon.IsDigest(reference) {
 			rollbackCtx = storageTypes.WithManifestRollback(ctx, digest)
@@ -182,6 +196,23 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 	}
 
 	return nil
+}
+
+func tagAlreadyPointsToDigest(ctx context.Context, metaDB mTypes.MetaDB, repo, reference string,
+	digest godigest.Digest,
+) bool {
+	if zcommon.IsDigest(reference) {
+		return false
+	}
+
+	repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+	if err != nil {
+		return false
+	}
+
+	desc, ok := repoMeta.Tags[reference]
+
+	return ok && desc.Digest == digest.String()
 }
 
 // OnUpdateManifestDigestTags updates metadb for each tag from a digest-addressed manifest push that used

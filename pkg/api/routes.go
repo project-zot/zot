@@ -883,15 +883,18 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 
-	if checker, ok := imgStore.(interface {
-		CheckProtectedTagWrite(repo, reference, mediaType string, body []byte, extraTags []string) error
-	}); ok {
-		if err := checker.CheckProtectedTagWrite(name, reference, mediaType, body, digestQueryTags); errors.Is(
-			err, zerr.ErrProtectedTag,
-		) {
-			rh.writePutImageManifestError(response, name, reference, err)
+	storePath := rh.c.StoreController.GetStorePath(name)
+	if rh.c.MetaDB != nil && rh.c.Config.MaxRepoBytesForStore(storePath) > 0 {
+		if checker, ok := imgStore.(interface {
+			CheckProtectedTagWrite(repo, reference, mediaType string, body []byte, extraTags []string) error
+		}); ok {
+			if err := checker.CheckProtectedTagWrite(name, reference, mediaType, body, digestQueryTags); errors.Is(
+				err, zerr.ErrProtectedTag,
+			) {
+				rh.writePutImageManifestError(response, name, reference, err)
 
-			return
+				return
+			}
 		}
 	}
 

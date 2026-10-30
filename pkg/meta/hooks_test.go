@@ -420,6 +420,97 @@ func TestOnUpdateManifest_setRepoReferenceFailsRemovesProtectedManifest(t *testi
 	})
 }
 
+func TestOnUpdateManifest_setRepoReferenceFailsKeepsExistingProtectedManifest(t *testing.T) {
+	Convey("OnUpdateManifest preserves an existing protected tag on a same-digest metadata failure", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		matcher, err := protectedtags.Compile(protectedtags.Config{Exact: []string{"prod"}})
+		So(err, ShouldBeNil)
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil, matcher)
+
+		image := CreateDefaultImage()
+		mediaType := image.ManifestDescriptor.MediaType
+		if mediaType == "" {
+			mediaType = ispec.MediaTypeImageManifest
+		}
+
+		err = WriteImageToFileSystem(image, "repo", "prod", storeController)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{
+			GetRepoMetaFn: func(context.Context, string) (mTypes.RepoMeta, error) {
+				return mTypes.RepoMeta{Tags: map[mTypes.Tag]mTypes.Descriptor{
+					"prod": {Digest: image.Digest().String()},
+				}}, nil
+			},
+			SetRepoReferenceFn: func(context.Context, string, string, mTypes.ImageMeta) error {
+				return errSetRepoRefForHookTest
+			},
+		}
+
+		err = meta.OnUpdateManifest(context.Background(), "repo", "prod", mediaType, image.Digest(),
+			image.ManifestDescriptor.Data, storeController, metaDB, log)
+		So(errors.Is(err, errSetRepoRefForHookTest), ShouldBeTrue)
+
+		_, _, _, err = storeController.GetImageStore("repo").GetImageManifest("repo", "prod")
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestOnUpdateManifestDigestTags_rollbackKeepsExistingProtectedTag(t *testing.T) {
+	Convey("digest tag rollback keeps an existing protected tag with the same digest", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		matcher, err := protectedtags.Compile(protectedtags.Config{Exact: []string{"ta", "tb"}})
+		So(err, ShouldBeNil)
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil, matcher)
+
+		image := CreateDefaultImage()
+		mediaType := image.ManifestDescriptor.MediaType
+		if mediaType == "" {
+			mediaType = ispec.MediaTypeImageManifest
+		}
+
+		err = WriteImageToFileSystem(image, "repo", "ta", storeController)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{
+			GetRepoMetaFn: func(context.Context, string) (mTypes.RepoMeta, error) {
+				return mTypes.RepoMeta{Tags: map[mTypes.Tag]mTypes.Descriptor{
+					"ta": {Digest: image.Digest().String(), MediaType: mediaType},
+				}}, nil
+			},
+			SetRepoReferenceFn: func(_ context.Context, _ string, reference string, _ mTypes.ImageMeta) error {
+				if reference == "tb" {
+					return errDigestTagsSetRepoReferenceFail
+				}
+
+				return nil
+			},
+		}
+
+		imgStore := storeController.GetImageStore("repo")
+		_, _, err = imgStore.PutImageManifest(context.Background(), "repo", image.Digest().String(), mediaType,
+			image.ManifestDescriptor.Data, []string{"ta", "tb"})
+		So(err, ShouldBeNil)
+
+		err = meta.OnUpdateManifestDigestTags(context.Background(), "repo", []string{"ta", "tb"}, mediaType,
+			image.Digest(), image.ManifestDescriptor.Data, storeController, metaDB, log)
+		So(errors.Is(err, errDigestTagsSetRepoReferenceFail), ShouldBeTrue)
+
+		_, _, _, err = imgStore.GetImageManifest("repo", "ta")
+		So(err, ShouldBeNil)
+		_, _, _, err = imgStore.GetImageManifest("repo", "tb")
+		So(errors.Is(err, zerr.ErrManifestNotFound), ShouldBeTrue)
+	})
+}
+
 func TestOnUpdateManifest_whenDeleteAfterMetaFailureFails(t *testing.T) {
 	Convey("OnUpdateManifest returns the delete error when meta fails and store cleanup fails", t, func() {
 		rootDir := t.TempDir()

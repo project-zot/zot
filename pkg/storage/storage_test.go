@@ -740,6 +740,21 @@ func TestProtectedTagsAtStorageLayer(t *testing.T) {
 	})
 }
 
+func TestStorageRejectsConflictingProtectedTagsForSharedRoot(t *testing.T) {
+	Convey("shared local storage roots cannot use different protected tag rules", t, func() {
+		conf := config.New()
+		conf.Storage.RootDirectory = t.TempDir()
+		sharedRoot := t.TempDir()
+		conf.Storage.SubPaths = map[string]config.StorageConfig{
+			"/a": {RootDirectory: sharedRoot, ProtectedTags: protectedtags.Config{Exact: []string{"prod"}}},
+			"/b": {RootDirectory: sharedRoot, ProtectedTags: protectedtags.Config{Exact: []string{"release"}}},
+		}
+
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+		So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+	})
+}
+
 // TestTagOverwriteRetainsDigestAccess covers issue #4444: overwriting the last tag that
 // references a digest must leave that digest pullable (same as delete-by-tag).
 func TestTagOverwriteRetainsDigestAccess(t *testing.T) {

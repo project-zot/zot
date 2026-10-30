@@ -321,6 +321,7 @@ func TestProtectedTagInvalidManifestKeepsValidationError(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = "0"
 		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.MaxRepoBytes = 1 << 30
 		conf.Storage.ProtectedTags = protectedtags.Config{Exact: []string{"prod"}}
 
 		ctlr := api.NewController(conf)

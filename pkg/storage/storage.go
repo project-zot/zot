@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
@@ -150,6 +151,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 	linter common.Lint, metrics monitoring.MetricServer, log log.Logger, recorder events.Recorder,
 ) (map[string]storageTypes.ImageStore, error) {
 	imgStoreMap := make(map[string]storageTypes.ImageStore, 0)
+	protectedTagConfigs := make(map[string]protectedtags.Config)
 
 	subImageStore := make(map[string]storageTypes.ImageStore)
 
@@ -188,6 +190,11 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			for file := range imgStoreMap {
 				// We already have image storage for this file
 				if compareImageStore(file, storageConfig.RootDirectory) {
+					if !protectedTagsConfigEqual(protectedTagConfigs[file], storageConfig.ProtectedTags) {
+						return nil, fmt.Errorf("%w: shared storage root %q has conflicting protectedTags configurations",
+							zerr.ErrBadConfig, storageConfig.RootDirectory)
+					}
+
 					subImageStore[route] = imgStoreMap[file]
 
 					isUnique = false
@@ -213,6 +220,7 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				}
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
+				protectedTagConfigs[storageConfig.RootDirectory] = storageConfig.ProtectedTags
 			}
 		} else {
 			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
@@ -318,6 +326,12 @@ func compareImageStore(root1, root2 string) bool {
 	}
 
 	return isSameFile
+}
+
+func protectedTagsConfigEqual(first, second protectedtags.Config) bool {
+	return slices.Equal(first.Exact, second.Exact) &&
+		slices.Equal(first.Wildcard, second.Wildcard) &&
+		slices.Equal(first.Regex, second.Regex)
 }
 
 // CheckIsImageSignature checks if the given image (repo:tag) represents a signature. The function

@@ -61,6 +61,10 @@ func Compile(config Config) (*Matcher, error) {
 			return nil, fmt.Errorf("%w: invalid protected tag regex: pattern is empty", ErrInvalidRule)
 		}
 
+		if _, err := regexp.Compile(pattern); err != nil {
+			return nil, fmt.Errorf("invalid protected tag regex %q: %w", pattern, err)
+		}
+
 		compiled, err := regexp.Compile("^(?:" + pattern + ")$")
 		if err != nil {
 			return nil, fmt.Errorf("invalid protected tag regex %q: %w", pattern, err)
