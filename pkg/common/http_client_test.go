@@ -10,6 +10,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
 	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
@@ -99,6 +100,26 @@ func TestHTTPClient(t *testing.T) {
 			},
 		})
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("test CreateHTTPClient() with a root CA file that has no PEM certificate", t, func() {
+		tempDir := t.TempDir()
+		setupTestCerts(t, tempDir)
+
+		for _, content := range []string{"", "not a certificate\n"} {
+			err := os.WriteFile(path.Join(tempDir, common.CaCertFilename), []byte(content), 0o600)
+			So(err, ShouldBeNil)
+
+			_, err = common.CreateHTTPClient(&common.HTTPClientOptions{
+				TLSEnabled: true,
+				VerifyTLS:  true,
+				Host:       "localhost",
+				CertOptions: common.HTTPClientCertOptions{
+					RootCaCertFile: path.Join(tempDir, common.CaCertFilename),
+				},
+			})
+			So(err, ShouldWrap, zerr.ErrBadCACert)
+		}
 	})
 
 	Convey("test CreateHTTPClient() no TLS", t, func() {
