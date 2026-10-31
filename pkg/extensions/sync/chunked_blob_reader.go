@@ -3,6 +3,7 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -25,6 +26,9 @@ import (
 type ChunkedBlobReader struct {
 	numBytesTotal      int64
 	numBytesReadToDisk int64
+	// numBytesWritten is how many bytes the temp file holds. It is ahead of numBytesReadToDisk,
+	// the last announced offset, while the final chunk's digest check is pending. Guarded by readMu.
+	numBytesWritten int64
 	// readMu serializes Read and is held across the blocking upstream read; bytesMu is not, so a
 	// stalled upstream can't block Descriptor, Err or Subscribe (and so streamLock).
 	readMu  sync.Mutex
@@ -36,6 +40,14 @@ type ChunkedBlobReader struct {
 	readerClosed bool
 	// claimed is set by the first Claim, so one sync downloads the blob and the rest wait.
 	claimed bool
+	// priorityClaimed is set by the first ClaimPriority: a client is waiting on this blob, so a second
+	// producer opens it out of band, racing the claimed sync's download.
+	priorityClaimed bool
+	// cancelPriority stops the priority download while it is still opening the blob. Set by
+	// ClaimPriority, called by CancelPriority once another producer started the blob.
+	cancelPriority context.CancelFunc
+	// pendingOpens counts producers that claimed the blob and have neither started nor given up.
+	pendingOpens int
 	// done is closed with the temp file: on completion, failure, or Abort before a start.
 	done     chan struct{}
 	abortErr error
@@ -149,19 +161,71 @@ func (cbr *ChunkedBlobReader) Claim() bool {
 	}
 
 	cbr.claimed = true
+	cbr.pendingOpens++
 
 	return true
 }
 
-// FailStart fails a claimed download that couldn't start (e.g. upstream refused the GET): waiting
-// clients get err rather than wait for teardown, and later ones are turned away.
-func (cbr *ChunkedBlobReader) FailStart(err error) {
+// ClaimPriority reports whether the caller is the first to claim an out-of-band download of a blob
+// whose download has not started, for a client waiting on it. It races the download Claim granted:
+// whichever producer's InitReader comes first feeds the blob, and the other must drop its reader.
+// The caller must then call InitReader or FailStart. It is granted once, so a failed out-of-band
+// download is not retried for every client. cancel stops the download's open if the other producer
+// starts the blob first (see CancelPriority).
+func (cbr *ChunkedBlobReader) ClaimPriority(cancel context.CancelFunc) bool {
+	cbr.bytesMu.Lock()
+	defer cbr.bytesMu.Unlock()
+
+	if cbr.readerClosed || cbr.priorityClaimed {
+		return false
+	}
+
+	cbr.priorityClaimed = true
+	cbr.cancelPriority = cancel
+	cbr.pendingOpens++
+
+	return true
+}
+
+// CancelPriority stops a priority download still opening the blob. The caller's InitReader has
+// been accepted, so the priority download has lost and its FailStart is a no-op; a priority
+// download that started the blob itself is never cancelled here, since the caller's InitReader
+// would have been refused.
+func (cbr *ChunkedBlobReader) CancelPriority() {
+	cbr.bytesMu.RLock()
+	cancel := cbr.cancelPriority
+	cbr.bytesMu.RUnlock()
+
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// Started reports whether a producer was accepted, or the blob will never be fed.
+func (cbr *ChunkedBlobReader) Started() bool {
+	cbr.bytesMu.RLock()
+	defer cbr.bytesMu.RUnlock()
+
+	return cbr.readerClosed
+}
+
+// FailStart gives up a claimed download that couldn't start (e.g. upstream refused the GET). It
+// reports whether the blob is now failed: waiting clients then get err rather than wait for
+// teardown, and later ones are turned away. It returns false if another producer already started
+// or is still trying to open the blob.
+func (cbr *ChunkedBlobReader) FailStart(err error) bool {
 	cbr.bytesMu.Lock()
 
 	if cbr.readerClosed {
 		cbr.bytesMu.Unlock()
 
-		return
+		return false
+	}
+
+	if cbr.pendingOpens--; cbr.pendingOpens > 0 {
+		cbr.bytesMu.Unlock()
+
+		return false
 	}
 
 	cbr.readErr = err
@@ -172,6 +236,8 @@ func (cbr *ChunkedBlobReader) FailStart(err error) {
 	cbr.bytesMu.Unlock()
 
 	cbr.abortAllClients()
+
+	return true
 }
 
 // Wait waits for the download to finish, or ctx. It returns nil only if the blob is complete and
@@ -286,14 +352,177 @@ func (cbr *ChunkedBlobReader) closeDiskFileLocked() {
 const fillChunkSize = 32 * 1024
 
 // Fill reads the whole blob from the producer set by InitReader, writing it to the temp file and
-// announcing each chunk. It returns nil once the blob is complete and verified.
+// announcing each chunk. It returns nil once the blob is complete and verified. If upstream fails
+// mid-blob, the blob fails.
 func (cbr *ChunkedBlobReader) Fill() error {
+	return cbr.FillResumable(context.Background(), nil)
+}
+
+// fillResume is how FillResumable continues a blob upstream cut short.
+type fillResume struct {
+	// fetch reopens the blob from its start.
+	fetch BlobFetcher
+	// maxAttempts bounds the reopens of one blob.
+	maxAttempts int
+	// delay is waited before each reopen.
+	delay time.Duration
+}
+
+// interruptedError is an upstream read that failed or ended short of the blob's size, without
+// failing the blob: its bytes so far are on disk, and a reopen can continue from there.
+type interruptedError struct {
+	err error
+}
+
+func (e *interruptedError) Error() string { return e.err.Error() }
+
+func (e *interruptedError) Unwrap() error { return e.err }
+
+// FillResumable is Fill, except that when upstream fails or ends short, resume reopens the blob,
+// skips the bytes already on disk, and continues, so clients keep streaming. The reopened reader
+// verifies the whole blob's digest, so a blob whose upstream bytes changed fails. After
+// resume.maxAttempts reopens, or if resume is nil, the blob fails.
+func (cbr *ChunkedBlobReader) FillResumable(ctx context.Context, resume *fillResume) error {
 	buf := make([]byte, fillChunkSize)
 
+	var reopened *blob.BReader
+
+	defer func() {
+		if reopened != nil {
+			_ = reopened.Close()
+		}
+	}()
+
+	err := cbr.fillOnce(buf)
+
+	for attempt := 0; ; attempt++ {
+		var interrupted *interruptedError
+		if !errors.As(err, &interrupted) {
+			return err
+		}
+
+		if readErr := cbr.Err(); readErr != nil {
+			return readErr
+		}
+
+		if resume == nil || attempt >= resume.maxAttempts || ctx.Err() != nil {
+			if !errors.Is(interrupted.err, zerr.ErrStreamIncomplete) {
+				cbr.logIntegrityOrUpstreamError(interrupted.err)
+			}
+
+			cbr.fail(interrupted.err)
+
+			return interrupted.err
+		}
+
+		cbr.logger.Warn().Err(interrupted.err).Str("onDiskPath", cbr.onDiskPath).Int("attempt", attempt+1).
+			Msg("upstream read of streamed blob interrupted, resuming it")
+
+		select {
+		case <-ctx.Done():
+			err = &interruptedError{err: ctx.Err()}
+
+			continue
+		case <-time.After(resume.delay):
+		}
+
+		next, reopenErr := cbr.reopen(ctx, resume.fetch)
+		if reopenErr != nil {
+			if errors.Is(reopenErr, zerr.ErrStreamCorruptPrefix) {
+				cbr.logIntegrityOrUpstreamError(reopenErr)
+				cbr.fail(reopenErr)
+
+				return reopenErr
+			}
+
+			err = &interruptedError{err: reopenErr}
+
+			continue
+		}
+
+		if reopened != nil {
+			_ = reopened.Close()
+		}
+
+		reopened = next
+		err = cbr.fillOnce(buf)
+	}
+}
+
+// reopen replaces the producer with a fresh reader of the blob, positioned after the bytes already
+// on disk. The skipped bytes still pass through the reader's digest check, and are compared with
+// the bytes on disk (ErrStreamCorruptPrefix if they differ).
+func (cbr *ChunkedBlobReader) reopen(ctx context.Context, fetch BlobFetcher) (*blob.BReader, error) {
+	cbr.readMu.Lock()
+	defer cbr.readMu.Unlock()
+
+	cbr.bytesMu.RLock()
+	desc := cbr.blobDesc
+	cbr.bytesMu.RUnlock()
+
+	next, err := fetch(ctx, desc)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cbr.verifyPrefix(next); err != nil {
+		_ = next.Close()
+
+		return nil, err
+	}
+
+	cbr.bytesMu.Lock()
+	cbr.inFlightReader = next
+	cbr.bytesMu.Unlock()
+
+	return next, nil
+}
+
+// verifyPrefix reads the bytes already on disk from next, which replays the blob from its start,
+// and checks they are the bytes clients were sent. The cut-short response may have carried corrupt
+// bytes before it ended: next's own digest check covers what it serves, not what was retained.
+// Must be called with readMu held.
+func (cbr *ChunkedBlobReader) verifyPrefix(next io.Reader) error {
+	onDisk, err := os.Open(cbr.onDiskPath)
+	if err != nil {
+		return err
+	}
+	defer onDisk.Close()
+
+	retained := make([]byte, fillChunkSize)
+	replayed := make([]byte, fillChunkSize)
+
+	for remaining := cbr.numBytesWritten; remaining > 0; {
+		n, err := io.ReadFull(onDisk, retained[:min(remaining, int64(fillChunkSize))])
+		if err != nil {
+			return err
+		}
+
+		if _, err := io.ReadFull(next, replayed[:n]); err != nil {
+			return err
+		}
+
+		if !bytes.Equal(retained[:n], replayed[:n]) {
+			return zerr.ErrStreamCorruptPrefix
+		}
+
+		remaining -= int64(n)
+	}
+
+	return nil
+}
+
+// fillOnce reads the current producer to its end. It returns an interruptedError if the producer
+// failed or ended short without failing the blob, and any other error once the blob failed.
+func (cbr *ChunkedBlobReader) fillOnce(buf []byte) error {
 	for {
-		_, err := cbr.Read(buf)
+		_, interrupted, err := cbr.readChunk(buf)
 		if err == nil {
 			continue
+		}
+
+		if interrupted {
+			return &interruptedError{err: err}
 		}
 
 		// regclient's digest mismatch also matches io.EOF, so check for a failure first.
@@ -315,9 +544,7 @@ func (cbr *ChunkedBlobReader) Fill() error {
 	// A clean EOF short of the descriptor's size: regclient checks the size, but don't leave
 	// clients waiting for bytes that will never come.
 	if !complete {
-		cbr.fail(zerr.ErrStreamIncomplete)
-
-		return zerr.ErrStreamIncomplete
+		return &interruptedError{err: zerr.ErrStreamIncomplete}
 	}
 
 	return nil
@@ -325,25 +552,44 @@ func (cbr *ChunkedBlobReader) Fill() error {
 
 // Read reads the next chunk from upstream, writes it to the temp file, and announces the new
 // offset. regclient's digest mismatch also matches io.EOF, so integrity errors are checked first.
+// An upstream failure fails the blob.
 func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
+	n, interrupted, err := cbr.readChunk(buff)
+	if interrupted {
+		cbr.logIntegrityOrUpstreamError(err)
+		cbr.fail(err)
+	}
+
+	return n, err
+}
+
+// readChunk is Read, except that an upstream failure is reported with interrupted set instead of
+// failing the blob. The failed read's bytes are dropped, so the temp file ends at numBytesWritten.
+func (cbr *ChunkedBlobReader) readChunk(buff []byte) (n int, interrupted bool, err error) {
 	cbr.readMu.Lock()
 	defer cbr.readMu.Unlock()
 
-	// After InitReader, only Read writes these fields, so under readMu the snapshot stays current.
+	// After InitReader, only readChunk and reopen write these fields, so under readMu the snapshot
+	// stays current.
 	cbr.bytesMu.RLock()
 	upstream, numBytesTotal := cbr.inFlightReader, cbr.numBytesTotal
-	numBytesRead, diskFileClosed := cbr.numBytesReadToDisk, cbr.diskFileClosed
+	diskFileClosed := cbr.diskFileClosed
 	cbr.bytesMu.RUnlock()
 
-	n, err := io.ReadFull(upstream, buff)
+	numBytesRead := cbr.numBytesWritten
+
+	n, err = io.ReadFull(upstream, buff)
 
 	switch classifyReadErr(err) {
-	case readErrIntegrityFailure, readErrUpstream:
-		// Integrity or upstream failure: don't write or announce these bytes; fail every client.
+	case readErrIntegrityFailure:
+		// Integrity failure: don't write or announce these bytes; fail every client.
 		cbr.logIntegrityOrUpstreamError(err)
 		cbr.fail(err)
 
-		return n, err
+		return n, false, err
+
+	case readErrUpstream:
+		return n, true, err
 
 	case readErrEOF:
 		// Partial read at the end: report a plain EOF.
@@ -357,10 +603,11 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 			// Fail clients now rather than leave them waiting for the drain timeout.
 			cbr.fail(werr)
 
-			return n, werr
+			return n, false, werr
 		}
 
 		numBytesRead += int64(n)
+		cbr.numBytesWritten = numBytesRead
 	}
 
 	complete := !diskFileClosed && numBytesRead >= numBytesTotal
@@ -370,11 +617,15 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 		var probe [1]byte
 
 		_, verifyErr := upstream.Read(probe[:])
-		if class := classifyReadErr(verifyErr); class == readErrIntegrityFailure || class == readErrUpstream {
+		switch classifyReadErr(verifyErr) {
+		case readErrIntegrityFailure:
 			cbr.logIntegrityOrUpstreamError(verifyErr)
 			cbr.fail(verifyErr)
 
-			return n, verifyErr
+			return n, false, verifyErr
+
+		case readErrUpstream:
+			return n, true, verifyErr
 		}
 	}
 
@@ -402,7 +653,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 
 	cbr.clientMu.Unlock()
 
-	return n, err
+	return n, false, err
 }
 
 // logIntegrityOrUpstreamError logs err as an integrity failure or an upstream read failure.
@@ -416,10 +667,11 @@ func (cbr *ChunkedBlobReader) logIntegrityOrUpstreamError(err error) {
 	cbr.logger.Error().Err(err).Msg("failed to read from in flight reader")
 }
 
-// isIntegrityErr reports whether err is regclient's digest or size check failing.
+// isIntegrityErr reports whether err is regclient's digest or size check failing, or a resumed
+// download finding the retained bytes corrupt.
 func isIntegrityErr(err error) bool {
 	return errors.Is(err, errs.ErrDigestMismatch) ||
-		errors.Is(err, errs.ErrShortRead) ||
+		errors.Is(err, zerr.ErrStreamCorruptPrefix) ||
 		errors.Is(err, errs.ErrSizeLimitExceeded)
 }
 
@@ -432,7 +684,8 @@ const (
 	readErrEOF
 	// readErrIntegrityFailure is a failed digest/size check (also matches io.EOF: check first).
 	readErrIntegrityFailure
-	// readErrUpstream is any other (network/upstream) error.
+	// readErrUpstream is any other (network/upstream) error, including a body that ended short of
+	// the descriptor's size: a resumed download can finish it.
 	readErrUpstream
 )
 
@@ -440,6 +693,10 @@ func classifyReadErr(err error) readErrClass {
 	switch {
 	case err == nil:
 		return readErrNone
+	case errors.Is(err, errs.ErrShortRead):
+		// A truncated body's digest can't match either, so this comes before the integrity check.
+		// The reopened reader verifies the whole blob.
+		return readErrUpstream
 	case isIntegrityErr(err):
 		return readErrIntegrityFailure
 	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
@@ -493,6 +750,14 @@ func (cbr *ChunkedBlobReader) Subscribe() (chan int64, int) {
 	}
 
 	return channel, chanId
+}
+
+// HasClients reports whether any client is subscribed.
+func (cbr *ChunkedBlobReader) HasClients() bool {
+	cbr.clientMu.RLock()
+	defer cbr.clientMu.RUnlock()
+
+	return len(cbr.clients) > 0
 }
 
 // Unsubscribe removes a client and closes its channel. Unknown ids (including -1) are ignored.

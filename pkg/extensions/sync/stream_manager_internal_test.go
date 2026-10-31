@@ -488,7 +488,7 @@ func TestChunkingStreamManagerDownloadUnstaged(t *testing.T) {
 
 	fetcher := newStoreBlobFetcher(storeCtrl, "repo-a")
 
-	assert.Empty(t, sm.DownloadStreamedBlobs(context.Background(), "repo-a", predictTestTag, fetcher.fetch))
+	assert.Empty(t, sm.DownloadStreamedBlobs(context.Background(), "repo-a", predictTestTag, fetcher.fetch, nil))
 	assert.Empty(t, fetcher.counts())
 }
 
@@ -529,7 +529,7 @@ func TestChunkingStreamManagerDownloadStreamedBlobs(t *testing.T) {
 	go func() { clientDone <- copier.Copy() }()
 
 	fetcher := newStoreBlobFetcher(storeCtrl, "repo-a")
-	files := sm.DownloadStreamedBlobs(context.Background(), "repo-a", predictTestTag, fetcher.fetch)
+	files := sm.DownloadStreamedBlobs(context.Background(), "repo-a", predictTestTag, fetcher.fetch, nil)
 
 	configDesc, err := imager.GetConfig()
 	require.NoError(t, err)
@@ -583,8 +583,8 @@ func TestChunkingStreamManagerDownloadSharedAcrossSyncs(t *testing.T) {
 		files1, files2 map[godigest.Digest]string
 	)
 
-	wg.Go(func() { files1 = sm.DownloadStreamedBlobs(context.Background(), "repo-a", "tag-1", fetcher.fetch) })
-	wg.Go(func() { files2 = sm.DownloadStreamedBlobs(context.Background(), "repo-a", "tag-2", fetcher.fetch) })
+	wg.Go(func() { files1 = sm.DownloadStreamedBlobs(context.Background(), "repo-a", "tag-1", fetcher.fetch, nil) })
+	wg.Go(func() { files2 = sm.DownloadStreamedBlobs(context.Background(), "repo-a", "tag-2", fetcher.fetch, nil) })
 	wg.Wait()
 
 	require.NotEmpty(t, files1)
@@ -634,8 +634,8 @@ func TestChunkingStreamManagerDownloadFailedFetch(t *testing.T) {
 		files1, files2 map[godigest.Digest]string
 	)
 
-	wg.Go(func() { files1 = sm.DownloadStreamedBlobs(context.Background(), "repo-a", "tag-1", fetcher.fetch) })
-	wg.Go(func() { files2 = sm.DownloadStreamedBlobs(context.Background(), "repo-a", "tag-2", fetcher.fetch) })
+	wg.Go(func() { files1 = sm.DownloadStreamedBlobs(context.Background(), "repo-a", "tag-1", fetcher.fetch, nil) })
+	wg.Go(func() { files2 = sm.DownloadStreamedBlobs(context.Background(), "repo-a", "tag-2", fetcher.fetch, nil) })
 	wg.Wait()
 
 	assert.NotContains(t, files1, configDesc.Digest)
@@ -691,8 +691,8 @@ func TestChunkingStreamManagerStreamsNamespacedBySource(t *testing.T) {
 	// would find A's streams already claimed and download nothing.
 	fetcher := newStoreBlobFetcher(storeCtrl, "repo-a")
 
-	filesA := sm.DownloadStreamedBlobs(context.Background(), "repo-a", predictTestTag, fetcher.fetch)
-	filesB := sm.DownloadStreamedBlobs(context.Background(), "repo-b", predictTestTag, fetcher.fetch)
+	filesA := sm.DownloadStreamedBlobs(context.Background(), "repo-a", predictTestTag, fetcher.fetch, nil)
+	filesB := sm.DownloadStreamedBlobs(context.Background(), "repo-b", predictTestTag, fetcher.fetch, nil)
 
 	require.NotEmpty(t, filesA)
 	require.Len(t, filesB, len(filesA))
@@ -1011,7 +1011,7 @@ func TestChunkingStreamManagerSkipsLocalBlobs(t *testing.T) {
 
 		// Nothing to download: seeding places them, or ImageCopy downloads any it missed.
 		fetcher := newStoreBlobFetcher(storeCtrl, "repo-a")
-		assert.Empty(t, sm.DownloadStreamedBlobs(context.Background(), "repo-a", predictTestTag, fetcher.fetch))
+		assert.Empty(t, sm.DownloadStreamedBlobs(context.Background(), "repo-a", predictTestTag, fetcher.fetch, nil))
 		assert.Empty(t, fetcher.counts())
 
 		sm.RemoveStreamingImage("repo-a", predictTestTag, false)

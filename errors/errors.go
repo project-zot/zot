@@ -253,6 +253,7 @@ var (
 	ErrSyncNoStagingRoot                = errors.New("no local sync staging directory, set extensions.sync.downloadDir")
 	ErrStreamNeverInitialized           = errors.New("background sync finished without ever streaming this blob")
 	ErrStreamIncomplete                 = errors.New("background sync finished before this blob finished streaming")
+	ErrStreamCorruptPrefix              = errors.New("bytes already streamed to clients differ from the blob upstream")
 	ErrSyncIndexNotStreamed             = errors.New("image index is synced without streaming")
 	ErrSyncNotStreamed                  = errors.New("image was synced on demand without streaming")
 	ErrSyncNoStreamingRegistry          = errors.New("no sync registry streams the repo")

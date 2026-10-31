@@ -44,8 +44,10 @@ type StreamManager interface {
 	ConnectClient(repo, blobDigest string, writer io.Writer) (BlobCopier, error)
 	// DownloadStreamedBlobs downloads repo:reference's streamed blobs with fetch, for its
 	// background sync, and returns each completed blob's temp file by digest, for the sync to link
-	// into its layout.
-	DownloadStreamedBlobs(ctx context.Context, repo, reference string, fetch BlobFetcher) map[godigest.Digest]string
+	// into its layout. If priority is not nil, a blob a client is waiting on is also opened with it,
+	// without waiting for fetch's throttle.
+	DownloadStreamedBlobs(ctx context.Context, repo, reference string,
+		fetch, priority BlobFetcher) map[godigest.Digest]string
 	// StoreImageForStreaming stages a manifest and creates a stream per blob the repo lacks. If
 	// repo:reference is already staged, that manifest is returned instead; use the returned one,
 	// since only its blobs have streams.
@@ -69,6 +71,14 @@ type StreamManager interface {
 // regclient's BlobGet, pinned to its remote repo, so auth, mirrors, throttling and resumed reads
 // all stay regclient's.
 type BlobFetcher func(ctx context.Context, desc descriptor.Descriptor) (*blob.BReader, error)
+
+// priorityFetch is the out-of-band download of a staged image's blobs, set while its sync downloads
+// them (see StreamManager.DownloadStreamedBlobs). ctx is derived from the sync's and cancelled when
+// that download returns, so no priority download outlives it.
+type priorityFetch struct { //nolint:unused // only used by sync-tagged files
+	ctx   context.Context //nolint:containedctx,unused // only used by sync-tagged files
+	fetch BlobFetcher     //nolint:unused // only used by sync-tagged files
+}
 
 // BlobCopier copies one streamed blob (or a range of it) to one client.
 type BlobCopier interface {
@@ -101,6 +111,8 @@ type StreamableManifest struct {
 	// then reports whether its sync succeeded. Lets a flight that joined it wait for its sync.
 	done   chan struct{} //nolint:unused // only used by sync-tagged files
 	synced bool          //nolint:unused // only used by sync-tagged files
+	// priority is set while this manifest's sync downloads its streams. Guarded by streamLock.
+	priority *priorityFetch //nolint:unused // only used by sync-tagged files
 }
 
 // NewStreamableManifest wraps an image manifest for staging.

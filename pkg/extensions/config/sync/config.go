@@ -90,6 +90,10 @@ type RegistryConfig struct {
 	// the upstream negotiates h2, while DisableHTTP2 alone still caps concurrency at ReqConcurrent's
 	// default of 3 connections. To actually open more than 3 parallel connections to an HTTP/2
 	// upstream, raise ReqConcurrent and set DisableHTTP2.
+	//
+	// A streaming registry also opens a second client with the same limits (ReqConcurrent and
+	// ReqPerSec) for the blobs a downstream client is waiting on, so those don't queue behind the
+	// rest of the image. Its requests are counted separately from the first client's.
 	ReqConcurrent *int
 	// ReqPerSec caps the request rate (requests/second) per upstream host, applied independently to the
 	// upstream registry and to each of its mirrors (a per-host cap, not a shared total across hosts).
