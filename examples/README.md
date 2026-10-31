@@ -1497,6 +1497,11 @@ Configure each registry sync:
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"platforms": ["linux/amd64"],       # periodic sync default: sparse-copy these OS/arch[/variant] children; omit/empty = all. Overridden by content[].platforms when set. On-demand ignores both. Extra slash tokens beyond three are ignored by platform.Parse (not rejected).
 				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream. Requires onDemand.
+				"manifestCheckStore": {             # optional; share manifestCheckInterval state across replicas instead of keeping it in memory; requires manifestCheckInterval. See "Sync's manifestCheckInterval option" below
+					"name": "dynamodb",             # only "dynamodb" is supported
+					"tableName": "zot-dedupe-cache",
+					"region": "us-east-2"
+				},
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
@@ -1586,7 +1591,35 @@ local. Notes:
  - it requires `onDemand`, since it only affects on-demand requests, never periodic sync
  - requests by digest are unaffected, a locally present digest is already served without contacting upstream
  - a local miss, for instance after garbage collection, always falls back to a normal sync
- - the last check time is kept in memory, so the first request after a restart checks upstream again
+ - the last check time is kept in memory by default, so the first request after a restart checks upstream again, and with several replicas a request only benefits from the interval when it reaches the replica that performed the check. Set `manifestCheckStore` to share it, see below
+
+#### Sharing check state across replicas
+
+`manifestCheckStore` keeps the last check time in a store shared by all replicas, so a check made by
+one replica is honored by the others and survives restarts. The replicas must also share one storage
+backend (the same S3 bucket, or the same mounted filesystem): the store records that a check
+succeeded, not which manifest was stored, so a replica with its own storage would keep serving its
+old manifest until the interval elapses. With a local `rootDirectory` and no `storageDriver`, zot
+logs a warning at startup.
+
+```
+			"registries": [{
+				"urls": ["https://registry-1.docker.io"],
+				"onDemand": true,
+				"manifestCheckInterval": "10m",
+				"manifestCheckStore": {
+					"name": "dynamodb",
+					"tableName": "zot-dedupe-cache",
+					"region": "us-east-2"
+				}
+			}]
+```
+
+ - `dynamodb` is the only supported `name`; `tableName` and `region` are required
+ - it requires `manifestCheckInterval`
+ - the table needs a string partition key named `Digest`, which is the layout of the DynamoDB `cacheDriver` table, so that table can be shared; keys are prefixed and cannot collide with blob digests
+ - zot reads and writes items in the table (`dynamodb:GetItem`, `dynamodb:PutItem`) but does not create it for this store or expire old items
+ - if the store cannot be read, the check counts as due and upstream is contacted; a failed write is logged and ignored
 
 ### On-demand sync in the background
 
