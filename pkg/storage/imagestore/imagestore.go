@@ -112,6 +112,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		compat:      compat,
 		events:      recorder,
 		lifecycle:   newBlobLifecycle(storeDriver, rootDir, metrics),
+		uploads:     newUploadSessionRegistry(),
 	}
 
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
@@ -1403,6 +1404,11 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	if err := is.uploads.startInProgress(src); err != nil {
+		return -1, err
+	}
+	defer is.uploads.finishInProgress(src)
+
 	session := is.uploads.get(src)
 	total := int64(-1)
 
@@ -1436,6 +1442,11 @@ func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from,
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	if err := is.uploads.startInProgress(src); err != nil {
+		return -1, err
+	}
+	defer is.uploads.finishInProgress(src)
+
 	session := is.uploads.get(src)
 	total := int64(-1)
 
@@ -1499,6 +1510,11 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	if err := is.uploads.startInProgress(src); err != nil {
+		return err
+	}
+	defer is.uploads.finishInProgress(src)
+
 	session := is.uploads.get(src)
 
 	err := session.finalize(func() error {
@@ -2796,6 +2812,17 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 	if len(blobs) > 0 {
 		return false, nil
 	}
+
+	// Chunk copies and commits are in progress before the bytes are a listed
+	// object. Drivers that keep an open multipart upload off the object listing
+	// report no uploads for that whole window. blockIfIdle refuses new copies
+	// and commits for this repo before it returns, under the same lock that
+	// observed none in progress, and that refusal lasts through the delete.
+	release, idle := is.uploads.blockIfIdle(path.Join(dir, storageConstants.BlobUploadDir))
+	if !idle {
+		return false, nil
+	}
+	defer release()
 
 	is.log.Info().Str("repository", repo).Msg("removing idle repo")
 
