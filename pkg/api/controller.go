@@ -629,14 +629,15 @@ func (c *Controller) Shutdown() {
 	// stop all background tasks
 	c.StopBackgroundTasks()
 
-	// Stop metrics server to prevent resource leaks (only during full shutdown)
-	if c.Metrics != nil {
-		c.Metrics.Stop()
-	}
-
 	if c.Server != nil {
 		ctx := context.Background()
 		_ = c.Server.Shutdown(ctx)
+	}
+
+	// Stop metrics server to prevent resource leaks (only during full shutdown).
+	// In-flight requests send metrics when they finish, so stop it only after they have.
+	if c.Metrics != nil {
+		c.Metrics.Stop()
 	}
 
 	// close event sinks

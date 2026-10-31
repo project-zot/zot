@@ -98,6 +98,9 @@ func TestServeDrainsRequestsOnSIGTERM(t *testing.T) {
 		digest := godigest.FromBytes(blob)
 		So(uploadBlob(baseURL, "repo", digest, blob), ShouldBeNil)
 
+		// a scrape enables metrics, so the in-flight request sends one when it finishes
+		So(scrapeMetrics(baseURL), ShouldBeNil)
+
 		conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", "127.0.0.1:"+port)
 		So(err, ShouldBeNil)
 
@@ -154,6 +157,20 @@ func waitForServer(url string, served <-chan error) bool {
 	}
 
 	return false
+}
+
+func scrapeMetrics(baseURL string) error {
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/metrics", nil)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	return err
 }
 
 func uploadBlob(baseURL, repo string, digest godigest.Digest, blob []byte) error {
