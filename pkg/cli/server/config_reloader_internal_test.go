@@ -29,15 +29,17 @@ func TestHotReloaderStop(t *testing.T) {
 
 		sigCh := make(chan os.Signal, 1)
 		finished := make(chan struct{})
+		shutdownDone := make(chan struct{})
 
 		go func() {
-			signalHandler(reloader.ctlr, reloader, sigCh)
+			signalHandler(reloader.ctlr, reloader, sigCh, shutdownDone)
 			close(finished)
 		}()
 
 		sigCh <- syscall.SIGTERM
 		So(waitChan(finished, 2*time.Second), ShouldBeTrue)
 		So(isClosed(reloader.done), ShouldBeTrue)
+		So(isClosed(shutdownDone), ShouldBeTrue)
 	})
 
 	Convey("closed signal channel returns without stopping the reloader", t, func() {
@@ -46,15 +48,17 @@ func TestHotReloaderStop(t *testing.T) {
 
 		sigCh := make(chan os.Signal)
 		finished := make(chan struct{})
+		shutdownDone := make(chan struct{})
 
 		go func() {
-			signalHandler(reloader.ctlr, reloader, sigCh)
+			signalHandler(reloader.ctlr, reloader, sigCh, shutdownDone)
 			close(finished)
 		}()
 
 		close(sigCh)
 		So(waitChan(finished, 2*time.Second), ShouldBeTrue)
 		So(isClosed(reloader.done), ShouldBeFalse)
+		So(isClosed(shutdownDone), ShouldBeFalse)
 	})
 
 	Convey("closed watcher events channel exits the watch loop", t, func() {
