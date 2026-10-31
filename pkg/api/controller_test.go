@@ -10819,6 +10819,20 @@ func TestPagedRepositories(t *testing.T) {
 				testCase.last, testCase.expectedRepos, repoNames[len(repoNames)-1])
 		})
 	}
+
+	Convey("An n that is not a non-negative integer is rejected", t, func() {
+		for _, rawQuery := range []string{"n=a", "n=-1", "n=", "n=1&n=2"} {
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet,
+				baseURL+constants.RoutePrefix+constants.ExtCatalogPrefix+"?"+rawQuery, nil)
+			response := httptest.NewRecorder()
+
+			rthdlr.ListRepositories(response, request)
+
+			resp := response.Result()
+			So(resp.Body.Close(), ShouldBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+		}
+	})
 }
 
 func testHTTPPagedRepositories(t *testing.T, client *resty.Client, baseURL string, testCaseName string,
