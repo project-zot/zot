@@ -617,7 +617,9 @@ func (gc GarbageCollect) imageIndexHasStaleNestedManifests(repo string, desc isp
 		}
 	}
 
-	return true, nil
+	// A sparse on-demand sync stores the index before any of its manifests, which follow only
+	// when a client requests them, so a new index with none stored yet is not stale.
+	return isBlobOlderThan(gc.imgStore, repo, desc.Digest, gc.opts.Delay, gc.log)
 }
 
 func (gc GarbageCollect) removeManifestsPerRepoPolicy(ctx context.Context, repo string, index *ispec.Index) error {
