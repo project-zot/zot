@@ -7,11 +7,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path"
 	"syscall"
@@ -40,14 +42,14 @@ func writeServeConfig(t *testing.T, port string) string {
 	return cfgPath
 }
 
-func runServe(cfgPath string, output io.Writer) <-chan error {
+const serveStartFailureChildEnv = "ZOT_TEST_SERVE_START_FAILURE_CONFIG"
+
+func runServe(cfgPath string) <-chan error {
 	served := make(chan error, 1)
 
 	go func() {
 		cmd := cli.NewServerRootCmd()
 		cmd.SetArgs([]string{"serve", cfgPath})
-		cmd.SetOut(output)
-		cmd.SetErr(output)
 		served <- cmd.Execute()
 	}()
 
@@ -55,7 +57,21 @@ func runServe(cfgPath string, output io.Writer) <-chan error {
 }
 
 func TestServeReportsStartFailure(t *testing.T) {
-	Convey("serve fails when the controller can't start", t, func() {
+	// The controller starts its background tasks before it binds the port, and they are left
+	// running when serve fails, as the process exits then; so serve runs in a separate process,
+	// which exits like cmd/zot does.
+	if cfgPath := os.Getenv(serveStartFailureChildEnv); cfgPath != "" {
+		cmd := cli.NewServerRootCmd()
+		cmd.SetArgs([]string{"serve", cfgPath})
+
+		if err := cmd.Execute(); err != nil {
+			os.Exit(1)
+		}
+
+		os.Exit(0)
+	}
+
+	Convey("serve exits with a non-zero code when the controller can't start", t, func() {
 		listener, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test-only listener
 		So(err, ShouldBeNil)
 
@@ -64,19 +80,24 @@ func TestServeReportsStartFailure(t *testing.T) {
 		_, port, err := net.SplitHostPort(listener.Addr().String())
 		So(err, ShouldBeNil)
 
-		defer signal.Reset()
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
 
-		output := &bytes.Buffer{}
+		//nolint:gosec // G204: test-only, re-runs this test binary
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestServeReportsStartFailure$")
 
-		select {
-		case err := <-runServe(writeServeConfig(t, port), output):
-			So(err, ShouldNotBeNil)
-			// the error is reported, but it is not a command line error, so no usage is printed
-			So(output.String(), ShouldContainSubstring, "address already in use")
-			So(output.String(), ShouldNotContainSubstring, "Usage:")
-		case <-time.After(30 * time.Second):
-			t.Fatal("serve did not return")
-		}
+		cmd.Env = append(os.Environ(), serveStartFailureChildEnv+"="+writeServeConfig(t, port))
+
+		output, err := cmd.CombinedOutput()
+		So(ctx.Err(), ShouldBeNil)
+
+		var exitErr *exec.ExitError
+
+		So(errors.As(err, &exitErr), ShouldBeTrue)
+		So(exitErr.ExitCode(), ShouldEqual, 1)
+		// the error is reported, but it is not a command line error, so no usage is printed
+		So(string(output), ShouldContainSubstring, "address already in use")
+		So(string(output), ShouldNotContainSubstring, "Usage:")
 	})
 }
 
@@ -87,7 +108,7 @@ func TestServeDrainsRequestsOnSIGTERM(t *testing.T) {
 
 		defer signal.Reset()
 
-		served := runServe(writeServeConfig(t, port), io.Discard)
+		served := runServe(writeServeConfig(t, port))
 		So(waitForServer(baseURL+"/v2/", served), ShouldBeTrue)
 
 		// a blob larger than the socket buffers, so the server is still writing it while the client waits
