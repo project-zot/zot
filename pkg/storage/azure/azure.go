@@ -10,6 +10,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
@@ -21,6 +22,7 @@ import (
 func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlog.Logger,
 	metrics monitoring.MetricServer, linter common.Lint, store driver.StorageDriver,
 	cacheDriver storageTypes.Cache, compat []compat.MediaCompatibility, recorder events.Recorder,
+	protectedTagMatchers ...*protectedtags.Matcher,
 ) storageTypes.ImageStore {
 	return imagestore.NewImageStore(
 		rootDir,
@@ -34,5 +36,6 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		cacheDriver,
 		compat,
 		recorder,
+		protectedTagMatchers...,
 	)
 }

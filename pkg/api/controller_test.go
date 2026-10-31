@@ -64,6 +64,7 @@ import (
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	zreg "zotregistry.dev/zot/v2/pkg/regexp"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
@@ -9525,6 +9526,65 @@ func TestManifestDigestQueryTags(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			So(resp.Header().Values(constants.OCITagResponseKey), ShouldResemble, []string{"dup"})
 		})
+	})
+}
+
+func TestProtectedTags(t *testing.T) {
+	Convey("protected tags reject retargeting and deletion", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.ProtectedTags = protectedtags.Config{
+			Exact:    []string{"prod"},
+			Wildcard: []string{"release-*"},
+			Regex:    []string{`^v[0-9]+\.[0-9]+\.[0-9]+$`},
+		}
+
+		ctlr := makeController(conf, t.TempDir())
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+		defer cm.StopServer()
+
+		repoName := "protected-tags"
+		first := CreateRandomImage()
+		second := CreateRandomImage()
+
+		So(UploadImage(first, baseURL, repoName, "prod"), ShouldBeNil)
+		So(UploadImage(first, baseURL, repoName, "prod"), ShouldBeNil)
+		So(UploadImage(second, baseURL, repoName, "seed"), ShouldBeNil)
+
+		putManifest := func(reference string, body []byte, rawQuery string) *resty.Response {
+			manifestURL := baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, reference)
+			if rawQuery != "" {
+				manifestURL += "?" + rawQuery
+			}
+
+			resp, err := resty.R().
+				SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(body).
+				Put(manifestURL)
+			So(err, ShouldBeNil)
+
+			return resp
+		}
+
+		resp := putManifest("prod", second.ManifestDescriptor.Data, "")
+		So(resp.StatusCode(), ShouldEqual, http.StatusConflict)
+
+		resp = putManifest(second.DigestStr(), second.ManifestDescriptor.Data, "tag=prod")
+		So(resp.StatusCode(), ShouldEqual, http.StatusConflict)
+
+		resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/prod", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, first.DigestStr())
+
+		resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/%s/manifests/prod", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusConflict)
+
+		resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, first.DigestStr()))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusConflict)
 	})
 }
 

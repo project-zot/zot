@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
@@ -16,6 +17,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	"zotregistry.dev/zot/v2/pkg/storage/azure"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
@@ -36,6 +38,11 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 			Msg("no storage config provided")
 
 		return storeController, zerr.ErrImgStoreNotFound
+	}
+
+	protectedTagMatcher, err := protectedtags.Compile(config.Storage.ProtectedTags)
+	if err != nil {
+		return storeController, fmt.Errorf("%w: %w", zerr.ErrBadConfig, err)
 	}
 
 	// no need to validate hard links work on s3
@@ -62,6 +69,7 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		rootDir := config.Storage.RootDirectory
 		defaultStore = local.NewImageStore(rootDir,
 			config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, cacheDriver, config.HTTP.Compat, recorder,
+			protectedTagMatcher,
 		)
 		if defaultStore == nil {
 			return storeController, zerr.ErrDefaultImgStoreCreate
@@ -100,15 +108,15 @@ func New(config *config.Config, linter common.Lint, metrics monitoring.MetricSer
 		case constants.S3StorageDriverName:
 			defaultStore = s3.NewImageStore(rootDir, config.Storage.RootDirectory,
 				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
-				config.HTTP.Compat, recorder)
+				config.HTTP.Compat, recorder, protectedTagMatcher)
 		case constants.AzureStorageDriverName:
 			defaultStore = azure.NewImageStore(rootDir, config.Storage.RootDirectory,
 				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
-				config.HTTP.Compat, recorder)
+				config.HTTP.Compat, recorder, protectedTagMatcher)
 		default:
 			defaultStore = gcs.NewImageStore(rootDir, config.Storage.RootDirectory,
 				config.Storage.Dedupe, config.Storage.Commit, log, metrics, linter, store, cacheDriver,
-				config.HTTP.Compat, recorder)
+				config.HTTP.Compat, recorder, protectedTagMatcher)
 		}
 
 		if defaultStore == nil {
@@ -143,11 +151,17 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 	linter common.Lint, metrics monitoring.MetricServer, log log.Logger, recorder events.Recorder,
 ) (map[string]storageTypes.ImageStore, error) {
 	imgStoreMap := make(map[string]storageTypes.ImageStore, 0)
+	protectedTagConfigs := make(map[string]protectedtags.Config)
 
 	subImageStore := make(map[string]storageTypes.ImageStore)
 
 	// creating image store per subpaths
 	for route, storageConfig := range subPaths {
+		protectedTagMatcher, err := protectedtags.Compile(storageConfig.ProtectedTags)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", zerr.ErrBadConfig, err)
+		}
+
 		// no need to validate hard links work on s3
 		if storageConfig.Dedupe && storageConfig.StorageDriver == nil {
 			err := local.ValidateHardLink(storageConfig.RootDirectory)
@@ -176,6 +190,11 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			for file := range imgStoreMap {
 				// We already have image storage for this file
 				if compareImageStore(file, storageConfig.RootDirectory) {
+					if !protectedTagsConfigEqual(protectedTagConfigs[file], storageConfig.ProtectedTags) {
+						return nil, fmt.Errorf("%w: shared storage root %q has conflicting protectedTags configurations",
+							zerr.ErrBadConfig, storageConfig.RootDirectory)
+					}
+
 					subImageStore[route] = imgStoreMap[file]
 
 					isUnique = false
@@ -194,12 +213,14 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 				rootDir := storageConfig.RootDirectory
 				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(rootDir,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, cacheDriver, cfg.HTTP.Compat, recorder,
+					protectedTagMatcher,
 				)
 				if imgStoreMap[storageConfig.RootDirectory] == nil {
 					return nil, fmt.Errorf("%w: %s", zerr.ErrSubpathImgStoreCreate, route)
 				}
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
+				protectedTagConfigs[storageConfig.RootDirectory] = storageConfig.ProtectedTags
 			}
 		} else {
 			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
@@ -238,14 +259,17 @@ func getSubStore(cfg *config.Config, subPaths map[string]config.StorageConfig,
 			case constants.S3StorageDriverName:
 				subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
+					protectedTagMatcher,
 				)
 			case constants.AzureStorageDriverName:
 				subImageStore[route] = azure.NewImageStore(rootDir, storageConfig.RootDirectory,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
+					protectedTagMatcher,
 				)
 			default:
 				subImageStore[route] = gcs.NewImageStore(rootDir, storageConfig.RootDirectory,
 					storageConfig.Dedupe, storageConfig.Commit, log, metrics, linter, store, cacheDriver, cfg.HTTP.Compat, recorder,
+					protectedTagMatcher,
 				)
 			}
 
@@ -302,6 +326,12 @@ func compareImageStore(root1, root2 string) bool {
 	}
 
 	return isSameFile
+}
+
+func protectedTagsConfigEqual(first, second protectedtags.Config) bool {
+	return slices.Equal(first.Exact, second.Exact) &&
+		slices.Equal(first.Wildcard, second.Wildcard) &&
+		slices.Equal(first.Regex, second.Regex)
 }
 
 // CheckIsImageSignature checks if the given image (repo:tag) represents a signature. The function

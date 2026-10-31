@@ -37,6 +37,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/azure"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
@@ -671,6 +672,86 @@ func TestPutImageManifestExtraTagsAndEvents(t *testing.T) {
 		So(eventCapture.ImageUpdatedCalls[3].Digest, ShouldEqual, manifestDigest.String())
 		So(eventCapture.ImageUpdatedCalls[3].Manifest, ShouldEqual, string(manifestBuf))
 		eventCapture.Unlock()
+	})
+}
+
+func TestProtectedTagsAtStorageLayer(t *testing.T) {
+	Convey("protected tags reject retargeting and deletion", t, func() {
+		matcher, err := protectedtags.Compile(protectedtags.Config{
+			Exact:    []string{"prod"},
+			Wildcard: []string{"release-*"},
+			Regex:    []string{`^v[0-9]+\.[0-9]+\.[0-9]+$`},
+		})
+		So(err, ShouldBeNil)
+
+		rootDir := t.TempDir()
+		cacheDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     cacheDir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := imagestore.NewImageStore(rootDir, cacheDir, true, true, log,
+			monitoring.NewNopMetricServer(), nil, local.New(true), cacheDriver, nil, nil, matcher)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+		repo := "protected-storage"
+		first := CreateRandomImage()
+		second := CreateRandomImage()
+
+		So(WriteImageToFileSystem(first, repo, "prod", storeController), ShouldBeNil)
+		So(WriteImageToFileSystem(first, repo, "prod", storeController), ShouldBeNil)
+		So(WriteImageToFileSystem(second, repo, "seed", storeController), ShouldBeNil)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), repo, "prod", first.Manifest.MediaType,
+			first.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), repo, "prod", second.Manifest.MediaType,
+			second.ManifestDescriptor.Data, nil)
+		So(errors.Is(err, zerr.ErrProtectedTag), ShouldBeTrue)
+
+		_, _, err = imgStore.PutImageManifest(context.Background(), repo, second.DigestStr(), second.Manifest.MediaType,
+			second.ManifestDescriptor.Data, []string{"prod"})
+		So(errors.Is(err, zerr.ErrProtectedTag), ShouldBeTrue)
+
+		err = imgStore.DeleteImageManifest(context.Background(), repo, "prod", false)
+		So(errors.Is(err, zerr.ErrProtectedTag), ShouldBeTrue)
+
+		err = imgStore.DeleteImageManifest(context.Background(), repo, first.DigestStr(), false)
+		So(errors.Is(err, zerr.ErrProtectedTag), ShouldBeTrue)
+
+		rawIndex, err := imgStore.GetIndexContent(repo)
+		So(err, ShouldBeNil)
+
+		var index ispec.Index
+		So(json.Unmarshal(rawIndex, &index), ShouldBeNil)
+
+		for i := range index.Manifests {
+			if tag, ok := index.Manifests[i].Annotations[ispec.AnnotationRefName]; ok && tag == "prod" {
+				delete(index.Manifests[i].Annotations, ispec.AnnotationRefName)
+			}
+		}
+
+		err = imgStore.PutIndexContent(repo, index)
+		So(errors.Is(err, zerr.ErrProtectedTag), ShouldBeTrue)
+	})
+}
+
+func TestStorageRejectsConflictingProtectedTagsForSharedRoot(t *testing.T) {
+	Convey("shared local storage roots cannot use different protected tag rules", t, func() {
+		conf := config.New()
+		conf.Storage.RootDirectory = t.TempDir()
+		sharedRoot := t.TempDir()
+		conf.Storage.SubPaths = map[string]config.StorageConfig{
+			"/a": {RootDirectory: sharedRoot, ProtectedTags: protectedtags.Config{Exact: []string{"prod"}}},
+			"/b": {RootDirectory: sharedRoot, ProtectedTags: protectedtags.Config{Exact: []string{"release"}}},
+		}
+
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+		So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
 	})
 }
 

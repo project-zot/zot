@@ -19,6 +19,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/compat"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
@@ -49,8 +50,9 @@ type StorageConfig struct {
 	// window, e.g. "01:00-08:00". The zero value means GC can run at any time.
 	GCTimeWindow  GCTimeWindow
 	Retention     ImageRetention
-	StorageDriver map[string]any `mapstructure:",omitempty"`
-	CacheDriver   map[string]any `mapstructure:",omitempty"`
+	ProtectedTags protectedtags.Config `json:"protectedTags"      mapstructure:"protectedTags"`
+	StorageDriver map[string]any       `mapstructure:",omitempty"`
+	CacheDriver   map[string]any       `mapstructure:",omitempty"`
 
 	// GCMaxSchedulerDelay is the maximum random delay for GC task scheduling
 	// This field is not configurable by the end user
@@ -897,7 +899,10 @@ func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
 		expConfig.RedirectBlobURL == actConfig.RedirectBlobURL &&
 		expConfig.HydrateBlobOnRead == actConfig.HydrateBlobOnRead &&
 		expConfig.GCDelay == actConfig.GCDelay &&
-		expConfig.GCInterval == actConfig.GCInterval && expConfig.GCTimeWindow == actConfig.GCTimeWindow
+		expConfig.GCInterval == actConfig.GCInterval && expConfig.GCTimeWindow == actConfig.GCTimeWindow &&
+		slices.Equal(expConfig.ProtectedTags.Exact, actConfig.ProtectedTags.Exact) &&
+		slices.Equal(expConfig.ProtectedTags.Wildcard, actConfig.ProtectedTags.Wildcard) &&
+		slices.Equal(expConfig.ProtectedTags.Regex, actConfig.ProtectedTags.Regex)
 }
 
 // isRetentionEnabledInternal checks if retention is enabled without acquiring a lock (internal use only).

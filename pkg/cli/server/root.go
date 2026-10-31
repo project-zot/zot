@@ -34,6 +34,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
@@ -353,6 +354,17 @@ func getStorageType(storageDriver map[string]any) string {
 
 func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 	storageConfig := cfg.CopyStorageConfig()
+
+	if err := validateProtectedTags(storageConfig.StorageConfig, "default", logger); err != nil {
+		return err
+	}
+
+	for route, subStorageConfig := range storageConfig.SubPaths {
+		if err := validateProtectedTags(subStorageConfig, "subpath "+route, logger); err != nil {
+			return err
+		}
+	}
+
 	defaultRootDir := storageConfig.RootDirectory
 	defaultStorageType := getStorageType(storageConfig.StorageDriver)
 
@@ -428,6 +440,17 @@ func validateStorageConfig(cfg *config.Config, logger zlog.Logger) error {
 
 			return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 		}
+	}
+
+	return nil
+}
+
+func validateProtectedTags(storageConfig config.StorageConfig, scope string, logger zlog.Logger) error {
+	if _, err := protectedtags.Compile(storageConfig.ProtectedTags); err != nil {
+		msg := fmt.Sprintf("invalid protectedTags configuration for %s: %s", scope, err)
+		logger.Error().Err(zerr.ErrBadConfig).Str("scope", scope).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
 
 	return nil

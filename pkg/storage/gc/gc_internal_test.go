@@ -27,6 +27,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
@@ -72,6 +73,7 @@ func statBlobMissingUnlessPresent(present ...godigest.Digest) func(string, godig
 
 type retentionPolicyMock struct {
 	retainedUntagged []string
+	hasTagRetention  bool
 }
 
 func (rpm retentionPolicyMock) HasDeleteReferrer(repo string) bool {
@@ -87,7 +89,7 @@ func (rpm retentionPolicyMock) HasUntaggedRetention(repo string) bool {
 }
 
 func (rpm retentionPolicyMock) HasTagRetention(repo string) bool {
-	return false
+	return rpm.hasTagRetention
 }
 
 func (rpm retentionPolicyMock) GetRetainedTagsFromIndex(ctx context.Context, repo string, index ispec.Index) []string {
@@ -136,6 +138,37 @@ func TestRemoveUntaggedManifestsWithRetention(t *testing.T) {
 		So(gced, ShouldBeFalse)
 		So(index.Manifests, ShouldHaveLength, 1)
 		So(index.Manifests[0].Digest, ShouldEqual, digest)
+	})
+}
+
+func TestProtectedTagRetention(t *testing.T) {
+	Convey("protected tags survive tag retention", t, func() {
+		matcher, err := protectedtags.Compile(protectedtags.Config{Exact: []string{"prod"}})
+		So(err, ShouldBeNil)
+
+		digest := godigest.FromString("protected")
+		index := ispec.Index{Manifests: []ispec.Descriptor{
+			{
+				Digest:    digest,
+				MediaType: ispec.MediaTypeImageManifest,
+				Annotations: map[string]string{
+					ispec.AnnotationRefName: "prod",
+				},
+			},
+		}}
+
+		gc := GarbageCollect{
+			opts: Options{ProtectedTags: matcher},
+			policyMgr: retentionPolicyMock{
+				hasTagRetention: true,
+			},
+			log: zlog.NewTestLogger(),
+		}
+
+		err = gc.removeTagsPerRetentionPolicy(context.Background(), repoName, &index)
+		So(err, ShouldBeNil)
+		So(index.Manifests, ShouldHaveLength, 1)
+		So(index.Manifests[0].Annotations[ispec.AnnotationRefName], ShouldEqual, "prod")
 	})
 }
 
