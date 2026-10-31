@@ -2966,6 +2966,8 @@ func (s *mockCheckService) ResetCatalog() {}
 
 func (s *mockCheckService) CanRetryOnError() bool { return false }
 
+func (s *mockCheckService) GetRetryOptions() (int, time.Duration) { return 0, 0 }
+
 func (s *mockCheckService) GetSyncTimeout() time.Duration { return time.Minute }
 
 func (s *mockCheckService) ShouldCheckUpstream(repo, reference string) bool {
@@ -3650,6 +3652,8 @@ func (s *fakeStreamService) SyncReferrers(_ context.Context, _ string, _ string,
 func (s *fakeStreamService) ResetCatalog() {}
 
 func (s *fakeStreamService) CanRetryOnError() bool { return false }
+
+func (s *fakeStreamService) GetRetryOptions() (int, time.Duration) { return 0, 0 }
 
 func (s *fakeStreamService) GetSyncTimeout() time.Duration { return time.Minute }
 

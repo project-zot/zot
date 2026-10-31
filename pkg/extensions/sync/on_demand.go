@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/manifest"
@@ -776,8 +777,8 @@ func (onDemand *BaseOnDemand) runOnDemandServices(ctx context.Context, repo, ref
 	return preferredErr
 }
 
-// maybeRetryInBackground schedules at most one background retry for kind+repo+reference.
-// The retry re-enters the same singleflight so a later matching request waits on it.
+// maybeRetryInBackground schedules at most one background retry routine for kind+repo+reference.
+// Each attempt re-enters the same singleflight so a later matching request waits on it.
 func (onDemand *BaseOnDemand) maybeRetryInBackground(ctx context.Context, kind, repo, reference, sharedMsg string,
 	service Service, retryErr error, backgroundFullSync func(context.Context) error,
 ) {
@@ -797,6 +798,7 @@ func (onDemand *BaseOnDemand) maybeRetryInBackground(ctx context.Context, kind, 
 	}
 
 	key := onDemandKey(kind, repo, reference)
+	maxRetries, delay := service.GetRetryOptions()
 
 	go func() {
 		defer func() {
@@ -808,30 +810,50 @@ func (onDemand *BaseOnDemand) maybeRetryInBackground(ctx context.Context, kind, 
 		onDemand.log.Info().Str("repo", repo).Str("reference", reference).Str("err", retryErr.Error()).
 			Msg("sync routine: starting routine to retry copy image due to error")
 
-		// Loop until we are the flight leader (or a concurrent request already succeeded):
-		// a Do started while the failed call still holds the key shares that failure and
-		// would otherwise skip the retry while still holding requestStore.
-		for {
-			leader := false
-
-			err := onDemand.doOnDemandFlight(key, repo, reference, sharedMsg, func() error {
-				leader = true
-
-				return backgroundFullSync(context.WithoutCancel(ctx))
-			})
-			if leader {
-				if err != nil {
-					onDemand.log.Error().Str("errorType", common.TypeOf(err)).
-						Str("repo", repo).Str("reference", reference).
-						Err(err).Msg("sync routine: error while copying image")
-				}
-
-				return
-			}
-
+		/* The remote client's own retries are mostly spent by the request that failed, so the
+		routine retries on its own, maxRetries times retryDelay apart: an upstream that is down for
+		longer than one attempt still gets the image synced once it is back. */
+		for attempt := 1; ; attempt++ {
+			err := onDemand.retryOnDemandFlight(ctx, key, repo, reference, sharedMsg, backgroundFullSync)
 			if err == nil {
 				return
 			}
+
+			// an upstream answer that will not change, such as not found, is not worth retrying
+			if isSkippableSyncImageErr(err) || attempt >= maxRetries {
+				onDemand.log.Error().Str("errorType", common.TypeOf(err)).
+					Str("repo", repo).Str("reference", reference).Int("attempt", attempt).
+					Err(err).Msg("sync routine: error while copying image")
+
+				return
+			}
+
+			onDemand.log.Info().Str("repo", repo).Str("reference", reference).Int("attempt", attempt).
+				Str("err", err.Error()).Dur("retryIn", delay).Msg("sync routine: retrying copy image")
+
+			time.Sleep(delay)
 		}
 	}()
+}
+
+// retryOnDemandFlight runs one background retry attempt as the flight leader, and returns its
+// result, or nil if a concurrent request already synced the image.
+func (onDemand *BaseOnDemand) retryOnDemandFlight(ctx context.Context, key, repo, reference, sharedMsg string,
+	backgroundFullSync func(context.Context) error,
+) error {
+	// Loop until we are the flight leader (or a concurrent request already succeeded):
+	// a Do started while the failed call still holds the key shares that failure and
+	// would otherwise skip the retry while still holding requestStore.
+	for {
+		leader := false
+
+		err := onDemand.doOnDemandFlight(key, repo, reference, sharedMsg, func() error {
+			leader = true
+
+			return backgroundFullSync(context.WithoutCancel(ctx))
+		})
+		if leader || err == nil {
+			return err
+		}
+	}
 }

@@ -400,6 +400,23 @@ func (service *BaseService) markUpstreamChecked(repo, reference string) {
 	service.checkTracker.MarkChecked(repo, reference)
 }
 
+func (service *BaseService) GetRetryOptions() (int, time.Duration) {
+	var (
+		maxRetries int
+		delay      time.Duration
+	)
+
+	if service.config.MaxRetries != nil {
+		maxRetries = *service.config.MaxRetries
+	}
+
+	if service.config.RetryDelay != nil {
+		delay = *service.config.RetryDelay
+	}
+
+	return maxRetries, delay
+}
+
 func (service *BaseService) GetSyncTimeout() time.Duration {
 	if service.config.SyncTimeout == 0 {
 		return syncConstants.DefaultSyncTimeout
