@@ -2833,13 +2833,13 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 		return
 	}
 
-	queryParams := request.URL.Query()
+	q := request.URL.Query()
 
-	lastEntry := queryParams.Get("last")
+	lastEntry := q.Get("last")
 
 	maxEntries := -1
 
-	if nQuery, ok := queryParams["n"]; ok {
+	if nQuery, ok := request.URL.Query()["n"]; ok {
 		if len(nQuery) != 1 {
 			response.WriteHeader(http.StatusBadRequest)
 
