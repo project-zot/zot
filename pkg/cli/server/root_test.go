@@ -391,7 +391,7 @@ func TestLoadConfigurationSyncCredentialHelper(t *testing.T) {
 }
 
 func TestLoadConfigurationInjectsHTTPTimeoutDefaults(t *testing.T) {
-	Convey("load config sets HTTP read/write timeout defaults when not explicitly configured", t, func() {
+	Convey("load config sets HTTP read/write/shutdown timeout defaults when not explicitly configured", t, func() {
 		content := `{
 			"storage": {"rootDirectory": "/tmp/zot"},
 			"http": {"address": "127.0.0.1", "port": "8080"}
@@ -406,16 +406,18 @@ func TestLoadConfigurationInjectsHTTPTimeoutDefaults(t *testing.T) {
 		So(cfg.HTTP.WriteTimeout, ShouldNotBeNil)
 		So(cfg.GetHTTPReadTimeout(), ShouldEqual, 60*time.Second)
 		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, 60*time.Second)
+		So(cfg.GetHTTPShutdownTimeout(), ShouldEqual, 30*time.Second)
 	})
 
-	Convey("load config preserves explicit HTTP read/write timeout values", t, func() {
+	Convey("load config preserves explicit HTTP read/write/shutdown timeout values", t, func() {
 		content := `{
 			"storage": {"rootDirectory": "/tmp/zot"},
 			"http": {
 				"address": "127.0.0.1",
 				"port": "8080",
 				"readTimeout": "45s",
-				"writeTimeout": "1m"
+				"writeTimeout": "1m",
+				"shutdownTimeout": "2m"
 			}
 		}`
 
@@ -428,6 +430,7 @@ func TestLoadConfigurationInjectsHTTPTimeoutDefaults(t *testing.T) {
 		So(cfg.HTTP.WriteTimeout, ShouldNotBeNil)
 		So(cfg.GetHTTPReadTimeout(), ShouldEqual, 45*time.Second)
 		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, time.Minute)
+		So(cfg.GetHTTPShutdownTimeout(), ShouldEqual, 2*time.Minute)
 	})
 }
 

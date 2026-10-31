@@ -38,8 +38,9 @@ import (
 )
 
 const (
-	defaultReadTimeout  = 60 * time.Second
-	defaultWriteTimeout = 60 * time.Second
+	defaultReadTimeout     = 60 * time.Second
+	defaultWriteTimeout    = 60 * time.Second
+	defaultShutdownTimeout = 30 * time.Second
 )
 
 // metadataConfig reports metadata after parsing, which we use to track
@@ -1296,6 +1297,11 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 	if config.HTTP.WriteTimeout == nil {
 		writeTimeout := defaultWriteTimeout
 		config.HTTP.WriteTimeout = &writeTimeout
+	}
+
+	if config.HTTP.ShutdownTimeout == nil {
+		shutdownTimeout := defaultShutdownTimeout
+		config.HTTP.ShutdownTimeout = &shutdownTimeout
 	}
 
 	// if OpenID authentication is enabled,
