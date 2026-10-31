@@ -629,14 +629,14 @@ func (c *Controller) Shutdown() {
 	// stop all background tasks
 	c.StopBackgroundTasks()
 
-	// Stop metrics server to prevent resource leaks (only during full shutdown)
-	if c.Metrics != nil {
-		c.Metrics.Stop()
+	if c.Server != nil {
+		c.shutdownServer()
 	}
 
-	if c.Server != nil {
-		ctx := context.Background()
-		_ = c.Server.Shutdown(ctx)
+	// Stop metrics server to prevent resource leaks (only during full shutdown).
+	// In-flight requests send metrics when they finish, so stop it only after they have.
+	if c.Metrics != nil {
+		c.Metrics.Stop()
 	}
 
 	// close event sinks
@@ -647,6 +647,27 @@ func (c *Controller) Shutdown() {
 	// close metadb
 	if c.MetaDB != nil {
 		c.MetaDB.Close()
+	}
+}
+
+// shutdownServer stops the HTTP server, and waits for in-flight requests to finish for up to
+// http.shutdownTimeout; then it closes their connections.
+func (c *Controller) shutdownServer() {
+	ctx := context.Background()
+
+	timeout := c.Config.GetHTTPShutdownTimeout()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	if err := c.Server.Shutdown(ctx); err != nil {
+		c.Log.Warn().Err(err).Dur("timeout", timeout).
+			Msg("in-flight requests didn't finish before the shutdown timeout, closing their connections")
+
+		_ = c.Server.Close()
 	}
 }
 
