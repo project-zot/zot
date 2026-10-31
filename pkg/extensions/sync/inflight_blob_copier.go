@@ -5,6 +5,7 @@ package sync
 import (
 	"context"
 	"io"
+	"net/http"
 	"os"
 	"sync/atomic"
 
@@ -26,6 +27,10 @@ type InFlightBlobCopier struct {
 	announceChan   chan int64
 	subscriptionID int
 
+	// flush sends what was written to a client's connection now, instead of when the server's
+	// buffer fills, so the client sees each chunk as it lands on disk.
+	flush func()
+
 	// latestOffset is the newest announced on-disk offset, set by the announcement goroutine.
 	latestOffset atomic.Int64
 }
@@ -42,8 +47,22 @@ func NewInFlightBlobCopier(
 		dest:           dest,
 		announceChan:   announceChan,
 		subscriptionID: subscriptionID,
+		flush:          flusherFor(dest),
 		log:            logger,
 	}
+}
+
+// flusherFor returns a function that flushes dest if it is an HTTP response, and does nothing
+// otherwise.
+func flusherFor(dest io.Writer) func() {
+	response, ok := dest.(http.ResponseWriter)
+	if !ok {
+		return func() {}
+	}
+
+	controller := http.NewResponseController(response)
+
+	return func() { _ = controller.Flush() }
 }
 
 // Close releases the subscription when Copy will never run (e.g. Descriptor failed). Harmless
@@ -57,15 +76,15 @@ func (ifbc *InFlightBlobCopier) Descriptor(ctx context.Context) (descriptor.Desc
 	return ifbc.Source.Descriptor(ctx)
 }
 
-// Copy streams the whole blob; same as CopyRange(0, -1).
-func (ifbc *InFlightBlobCopier) Copy() error {
-	return ifbc.CopyRange(0, -1)
+// Copy streams the whole blob; same as CopyRange(ctx, 0, -1).
+func (ifbc *InFlightBlobCopier) Copy(ctx context.Context) error {
+	return ifbc.CopyRange(ctx, 0, -1)
 }
 
 // CopyRange streams bytes [start, end] (inclusive; -1 means the last byte), waiting for bytes not
-// on disk yet, and returns once end has arrived. Callers validate the range first; the check here
-// is a backstop.
-func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
+// on disk yet, and returns once end has arrived, or ctx (the client's request) ends. Callers
+// validate the range first; the check here is a backstop.
+func (ifbc *InFlightBlobCopier) CopyRange(ctx context.Context, start, end int64) error {
 	ifbc.log.Debug().Str("onDiskPath", ifbc.onDiskPath).Int64("start", start).Int64("end", end).
 		Msg("starting inflight copy")
 
@@ -83,7 +102,7 @@ func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
 	byteAnnounceChan := ifbc.announceChan
 
 	// Usually instant: the caller already waited on Descriptor.
-	desc, err := ifbc.Source.Descriptor(context.Background())
+	desc, err := ifbc.Source.Descriptor(ctx)
 	if err != nil {
 		return err
 	}
@@ -161,6 +180,13 @@ func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
 
 	for !copied && !copierDone {
 		select {
+		case <-ctx.Done():
+			// The client is gone: don't keep waiting for bytes to send it.
+			close(shutdown)
+			<-done
+
+			return ctx.Err()
+
 		case <-copyChan:
 			// Never copy past the requested range.
 			latest := min(ifbc.latestOffset.Load(), target)
@@ -172,8 +198,6 @@ func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
 			// These bytes are already on disk, so CopyN shouldn't short-read.
 			written, err := io.CopyN(ifbc.dest, onDiskFile, latest-numBytesCopied)
 			if err != nil {
-				ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
-
 				close(shutdown)
 				<-done
 
@@ -181,6 +205,8 @@ func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
 			}
 
 			numBytesCopied += written
+
+			ifbc.flush()
 
 			if numBytesCopied >= target {
 				copied = true
@@ -197,10 +223,10 @@ func (ifbc *InFlightBlobCopier) CopyRange(start, end int64) error {
 	if latest > numBytesCopied {
 		_, err := io.CopyN(ifbc.dest, onDiskFile, latest-numBytesCopied)
 		if err != nil {
-			ifbc.log.Error().Err(err).Msg("failed to copy data to downstream client")
-
 			return err
 		}
+
+		ifbc.flush()
 	}
 
 	<-done

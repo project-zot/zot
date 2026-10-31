@@ -121,6 +121,11 @@ Notes:
   (`reqConcurrent`), so a client may subscribe before that blob's download starts. The copier
   waits until it starts, the client disconnects, or teardown's `Abort` (the sync itself is
   bounded by `syncTimeout`).
+- **Client disconnect.** The copy follows the request's context: when the client leaves, the
+  handler returns and the client's subscription is released at once, even if the download has
+  stalled, so teardown never waits on a client that is gone. Each chunk, and the response headers,
+  are flushed as written, so a client sees bytes as they land on disk rather than when the server's
+  buffer fills.
 - **Blob GET after commit.** The sync commits a blob before its stream is torn down. A GET that
   finds neither storage nor a stream rechecks storage. `HEAD` and `Range` GETs follow the same
   order. A range is served from the stream only for a single range; a multi-range request gets
