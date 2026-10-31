@@ -98,9 +98,8 @@ func TestServeReportsStartFailure(t *testing.T) {
 		output, err := cmd.CombinedOutput()
 		So(ctx.Err(), ShouldBeNil)
 
-		var exitErr *exec.ExitError
-
-		So(errors.As(err, &exitErr), ShouldBeTrue)
+		exitErr, ok := errors.AsType[*exec.ExitError](err)
+		So(ok, ShouldBeTrue)
 		So(exitErr.ExitCode(), ShouldEqual, 1)
 		// the error is reported, but it is not a command line error, so no usage is printed
 		So(string(output), ShouldContainSubstring, "address already in use")
