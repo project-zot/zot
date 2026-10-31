@@ -2694,7 +2694,8 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest) (int, er
 			Str("digest", digest.String()).Msg("perform GC on blob")
 
 		// unconditional delete: GC has already filtered blobs down to known orphans (it computed the
-		// referenced set and re-derives it under this repo's write lock), so no re-check is needed here.
+		// referenced set and confirmed it still holds under this repo's write lock), so no re-check
+		// is needed here.
 		err := is.deleteBlobChecked(repo, digest, func() (bool, error) { return false, nil })
 		if err == nil {
 			count++
