@@ -69,14 +69,19 @@ func (ms *metricServer) SendMetric(metric any) {
 	ms.lock.RLock()
 	if ms.enabled {
 		ms.lock.RUnlock()
-		ms.reqChan <- metric
+		ms.ForceSendMetric(metric)
 	} else {
 		ms.lock.RUnlock()
 	}
 }
 
+// ForceSendMetric sends the metric even when metrics are not enabled; it drops the metric
+// after Stop, as nothing receives it then.
 func (ms *metricServer) ForceSendMetric(metric any) {
-	ms.reqChan <- metric
+	select {
+	case ms.reqChan <- metric:
+	case <-ms.stopChan:
+	}
 }
 
 func (ms *metricServer) ReceiveMetrics() any {
