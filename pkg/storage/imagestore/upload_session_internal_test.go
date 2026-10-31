@@ -76,7 +76,7 @@ func (d *missingUploadDriver) Stat(string) (driver.FileInfo, error) {
 
 func TestCleanupUploadSessionIfMissingRemovesEntry(t *testing.T) {
 	root := t.TempDir()
-	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}}
+	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}, uploads: newUploadSessionRegistry()}
 	src := path.Join(root, "repo", constants.BlobUploadDir, "missing")
 	session := store.uploads.get(src)
 
@@ -92,7 +92,7 @@ func TestCleanupUploadSessionIfMissingRemovesEntry(t *testing.T) {
 
 func TestInvalidUploadIDDoesNotRegisterSession(t *testing.T) {
 	root := t.TempDir()
-	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}}
+	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}, uploads: newUploadSessionRegistry()}
 	uuids := []string{
 		strings.Repeat("x", maxUploadSessionIDLength+1),
 		"missing\x00one",
@@ -114,7 +114,7 @@ func TestInvalidUploadIDDoesNotRegisterSession(t *testing.T) {
 
 func TestOverlongRepositoryPathDoesNotRegisterSession(t *testing.T) {
 	root := t.TempDir()
-	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}}
+	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}, uploads: newUploadSessionRegistry()}
 	repo := strings.Repeat("r", maxStoragePathComponentLength+1)
 	uuid := "upload"
 
@@ -133,7 +133,7 @@ func TestOverlongRepositoryPathDoesNotRegisterSession(t *testing.T) {
 
 func TestOverlongUploadPathDoesNotRegisterSession(t *testing.T) {
 	root := t.TempDir()
-	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}}
+	store := &ImageStore{rootDir: root, storeDriver: &missingUploadDriver{}, uploads: newUploadSessionRegistry()}
 	component := strings.Repeat("r", 240)
 	repo := strings.TrimSuffix(strings.Repeat(component+"/", 18), "/")
 	uuid := "upload"
@@ -153,7 +153,7 @@ func TestOverlongUploadPathDoesNotRegisterSession(t *testing.T) {
 
 func TestSuccessfulIdleDeleteRemovesSession(t *testing.T) {
 	driver := &successfulDeleteDriver{}
-	store := &ImageStore{rootDir: t.TempDir(), storeDriver: driver}
+	store := &ImageStore{rootDir: t.TempDir(), storeDriver: driver, uploads: newUploadSessionRegistry()}
 	src := store.BlobUploadPath("repo", "upload")
 	store.uploads.get(src)
 
@@ -171,4 +171,43 @@ func TestSuccessfulIdleDeleteRemovesSession(t *testing.T) {
 	if exists {
 		t.Fatal("successfully deleted upload session was retained in the registry")
 	}
+}
+
+func TestBlockIfIdleRefusesWritersOnlyAfterTheCheck(t *testing.T) {
+	registry := newUploadSessionRegistry()
+
+	// A child upload lives under the parent directory that Delete removes.
+	active := "/root/repo/child/.uploads/active"
+	if err := registry.startInProgress(active); err != nil {
+		t.Fatal(err)
+	}
+
+	release, idle := registry.blockIfIdle("/root/repo")
+	if idle || release != nil {
+		t.Fatal("parent was treated as idle while a child upload was in progress")
+	}
+
+	registry.finishInProgress(active)
+
+	release, idle = registry.blockIfIdle("/root/repo")
+	if !idle {
+		t.Fatal("parent stayed busy after the child upload finished")
+	}
+	defer release()
+
+	if err := registry.startInProgress("/root/repo/.uploads/next"); !errors.Is(err, zerr.ErrUploadNotFound) {
+		t.Fatalf("parent start during blocked delete = %v, want ErrUploadNotFound", err)
+	}
+	if err := registry.startInProgress("/root/repo/child/.uploads/next"); !errors.Is(err, zerr.ErrUploadNotFound) {
+		t.Fatalf("child start during blocked delete = %v, want ErrUploadNotFound", err)
+	}
+	if err := registry.startInProgress("/root/repo-extra/.uploads/next"); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.startInProgress("/root/other/.uploads/next"); err != nil {
+		t.Fatal(err)
+	}
+
+	registry.finishInProgress("/root/repo-extra/.uploads/next")
+	registry.finishInProgress("/root/other/.uploads/next")
 }
