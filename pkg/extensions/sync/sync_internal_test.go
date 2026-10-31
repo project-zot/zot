@@ -2161,6 +2161,44 @@ func TestCopyManifestReferrersTag(t *testing.T) {
 	})
 }
 
+func TestCopyManifestBlobWithWrongSize(t *testing.T) {
+	Convey("copyManifest replaces a destination blob whose size differs from its descriptor", t, func() {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		repoName := "repo"
+		tempDir := t.TempDir()
+		destDir := t.TempDir()
+		tempStore := local.NewImageStore(tempDir, true, true, log, metrics, nil, nil, nil, nil)
+		destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
+		tempController := storage.StoreController{DefaultStore: tempStore}
+		destController := storage.StoreController{DefaultStore: destStore}
+		destReg := NewDestinationRegistry(destController, tempController, nil, log).(*DestinationRegistry)
+
+		img := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		So(WriteImageToFileSystem(img, repoName, "1.0", tempController), ShouldBeNil)
+
+		// the destination has the layer cut short, and no manifest referencing it
+		layer := img.Layers[0]
+		blobPath := destStore.BlobPath(repoName, img.Manifest.Layers[0].Digest)
+		So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(blobPath, layer[:len(layer)-1], storageConstants.DefaultFilePerms), ShouldBeNil)
+
+		seen := &[]godigest.Digest{}
+
+		err := destReg.copyManifest(repoName, img.Descriptor(), "1.0", tempStore, seen)
+		So(err, ShouldBeNil)
+
+		blobContent, err := os.ReadFile(blobPath)
+		So(err, ShouldBeNil)
+		So(blobContent, ShouldResemble, layer)
+
+		_, manifestDigest, _, err := destStore.GetImageManifest(repoName, "1.0")
+		So(err, ShouldBeNil)
+		So(manifestDigest, ShouldEqual, img.Digest())
+	})
+}
+
 // TestNewClientTimeoutBehavior verifies that newClient creates a client that respects timeouts.
 func TestNewClientTimeoutBehavior(t *testing.T) {
 	Convey("Test newClient timeout behavior", t, func() {

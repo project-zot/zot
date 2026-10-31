@@ -2072,6 +2072,21 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 // CheckBlob verifies a blob and returns true if the blob is correct.
 // If the blob is not found but it's found in cache then it will be copied over.
 func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
+	return is.checkBlob(ctx, repo, digest, -1)
+}
+
+// CheckBlobWithSize is CheckBlob for callers that already know the size of the blob, e.g. from the
+// descriptor referencing it. A present blob is compared against that size instead of the size found
+// by looking up its descriptor in the manifests of the repository, which reads every manifest in the
+// worst case. A negative size means the size is unknown, same as CheckBlob.
+func (is *ImageStore) CheckBlobWithSize(ctx context.Context, repo string, digest godigest.Digest, size int64,
+) (bool, int64, error) {
+	return is.checkBlob(ctx, repo, digest, size)
+}
+
+// checkBlob implements CheckBlob and CheckBlobWithSize, a negative expectedSize means unknown.
+func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godigest.Digest, expectedSize int64,
+) (bool, int64, error) {
 	var lockLatency time.Time
 
 	if err := digest.Validate(); err != nil {
@@ -2136,20 +2151,28 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	if binfo.Size() > 0 {
-		// try to find blob size in blob descriptors, if blob can not be found
-		desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
-		if err != nil || desc.Size == binfo.Size() {
-			// blob not found in descriptors, can not compare, just return
+		if expectedSize < 0 {
+			// try to find blob size in blob descriptors, if blob can not be found
+			desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
+			if err != nil {
+				// blob not found in descriptors, can not compare, just return
+				is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
+
+				return true, binfo.Size(), nil //nolint: nilerr
+			}
+
+			expectedSize = desc.Size
+		}
+
+		if expectedSize == binfo.Size() {
 			is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
 
-			return true, binfo.Size(), nil //nolint: nilerr
+			return true, binfo.Size(), nil
 		}
 
-		if desc.Size != binfo.Size() {
-			is.log.Debug().Str("blob path", blobPath).Msg("blob path found, but it's corrupted")
+		is.log.Debug().Str("blob path", blobPath).Msg("blob path found, but it's corrupted")
 
-			return false, -1, zerr.ErrBlobNotFound
-		}
+		return false, -1, zerr.ErrBlobNotFound
 	}
 
 	// Size == 0: a genuine empty blob, a dedupe placeholder, or a corrupt copy.
