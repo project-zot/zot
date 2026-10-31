@@ -454,13 +454,17 @@ type HTTPConfig struct {
 	// WriteTimeout controls maximum duration before timing out response writes.
 	// When unset (nil), server-level defaults may apply. When explicitly set to <= 0,
 	// the HTTP server treats it as no timeout.
-	WriteTimeout  *time.Duration `mapstructure:"writeTimeout,omitempty"`
-	TLS           *TLSConfig
-	Auth          *AuthConfig
-	AccessControl *AccessControlConfig `mapstructure:"accessControl,omitempty"`
-	Realm         string
-	Ratelimit     *RatelimitConfig            `mapstructure:",omitempty"`
-	Compat        []compat.MediaCompatibility `mapstructure:",omitempty"`
+	WriteTimeout *time.Duration `mapstructure:"writeTimeout,omitempty"`
+	// ShutdownTimeout controls how long a shutdown waits for in-flight requests to finish
+	// before closing their connections. When unset (nil), server-level defaults may apply.
+	// When explicitly set to <= 0, the shutdown waits for them without a timeout.
+	ShutdownTimeout *time.Duration `mapstructure:"shutdownTimeout,omitempty"`
+	TLS             *TLSConfig
+	Auth            *AuthConfig
+	AccessControl   *AccessControlConfig `mapstructure:"accessControl,omitempty"`
+	Realm           string
+	Ratelimit       *RatelimitConfig            `mapstructure:",omitempty"`
+	Compat          []compat.MediaCompatibility `mapstructure:",omitempty"`
 }
 
 type SchedulerConfig struct {
@@ -1666,6 +1670,22 @@ func (c *Config) GetHTTPWriteTimeout() time.Duration {
 	}
 
 	return *c.HTTP.WriteTimeout
+}
+
+// GetHTTPShutdownTimeout returns the configured HTTP server shutdown timeout.
+func (c *Config) GetHTTPShutdownTimeout() time.Duration {
+	if c == nil {
+		return 0
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.HTTP.ShutdownTimeout == nil {
+		return 0
+	}
+
+	return *c.HTTP.ShutdownTimeout
 }
 
 // GetAllowOrigin returns the CORS allow origin configuration.

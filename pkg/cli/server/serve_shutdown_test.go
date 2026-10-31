@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -27,13 +28,19 @@ import (
 	. "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
-func writeServeConfig(t *testing.T, port string) string {
+// writeServeConfig writes a minimal config; httpOptions are added to its http section.
+func writeServeConfig(t *testing.T, port string, httpOptions ...string) string {
 	t.Helper()
+
+	extra := ""
+	if len(httpOptions) > 0 {
+		extra = ", " + strings.Join(httpOptions, ", ")
+	}
 
 	cfgPath := path.Join(t.TempDir(), "config.json")
 	content := fmt.Sprintf(`{"distSpecVersion": "1.1.1", "storage": {"rootDirectory": %q},
-		"http": {"address": "127.0.0.1", "port": %q}, "log": {"level": "error", "output": %q}}`,
-		t.TempDir(), port, path.Join(t.TempDir(), "zot.log"))
+		"http": {"address": "127.0.0.1", "port": %q%s}, "log": {"level": "error", "output": %q}}`,
+		t.TempDir(), port, extra, path.Join(t.TempDir(), "zot.log"))
 
 	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
@@ -111,29 +118,9 @@ func TestServeDrainsRequestsOnSIGTERM(t *testing.T) {
 		served := runServe(writeServeConfig(t, port))
 		So(waitForServer(baseURL+"/v2/", served), ShouldBeTrue)
 
-		// a blob larger than the socket buffers, so the server is still writing it while the client waits
-		blob := make([]byte, 32*1024*1024)
-		_, err := rand.Read(blob)
-		So(err, ShouldBeNil)
-
-		digest := godigest.FromBytes(blob)
-		So(uploadBlob(baseURL, "repo", digest, blob), ShouldBeNil)
-
-		// a scrape enables metrics, so the in-flight request sends one when it finishes
-		So(scrapeMetrics(baseURL), ShouldBeNil)
-
-		conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", "127.0.0.1:"+port)
-		So(err, ShouldBeNil)
+		blob, body, conn := startBlobDownload(baseURL, port)
 
 		defer conn.Close()
-
-		_, err = fmt.Fprintf(conn, "GET /v2/repo/blobs/%s HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", digest)
-		So(err, ShouldBeNil)
-
-		reader := bufio.NewReader(conn)
-		resp, err := http.ReadResponse(reader, nil) //nolint:bodyclose // closed with conn
-		So(err, ShouldBeNil)
-		So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
 		// the client stops reading while the server is still writing the blob
 		So(syscall.Kill(os.Getpid(), syscall.SIGTERM), ShouldBeNil)
@@ -144,9 +131,9 @@ func TestServeDrainsRequestsOnSIGTERM(t *testing.T) {
 		case <-time.After(time.Second):
 		}
 
-		body, err := io.ReadAll(resp.Body)
+		received, err := io.ReadAll(body)
 		So(err, ShouldBeNil)
-		So(bytes.Equal(body, blob), ShouldBeTrue)
+		So(bytes.Equal(received, blob), ShouldBeTrue)
 
 		select {
 		case err := <-served:
@@ -155,6 +142,59 @@ func TestServeDrainsRequestsOnSIGTERM(t *testing.T) {
 			t.Fatal("serve did not return after the request finished")
 		}
 	})
+}
+
+func TestServeShutdownTimeout(t *testing.T) {
+	Convey("SIGTERM closes requests still running after http.shutdownTimeout", t, func() {
+		port := GetFreePort()
+		baseURL := "http://127.0.0.1:" + port
+
+		defer signal.Reset()
+
+		served := runServe(writeServeConfig(t, port, `"shutdownTimeout": "1s"`))
+		So(waitForServer(baseURL+"/v2/", served), ShouldBeTrue)
+
+		_, _, conn := startBlobDownload(baseURL, port)
+
+		defer conn.Close()
+
+		// the client never reads the rest of the blob, so the request can't finish
+		So(syscall.Kill(os.Getpid(), syscall.SIGTERM), ShouldBeNil)
+
+		select {
+		case err := <-served:
+			So(err, ShouldBeNil)
+		case <-time.After(15 * time.Second):
+			t.Fatal("serve did not return after the shutdown timeout")
+		}
+	})
+}
+
+// startBlobDownload uploads a blob larger than the socket buffers, then starts downloading it and
+// reads only the response headers, so the server is still writing the blob when this returns.
+// It returns the blob, the response body, and the connection, which closes the body.
+func startBlobDownload(baseURL, port string) ([]byte, io.Reader, net.Conn) {
+	blob := make([]byte, 32*1024*1024)
+	_, err := rand.Read(blob)
+	So(err, ShouldBeNil)
+
+	digest := godigest.FromBytes(blob)
+	So(uploadBlob(baseURL, "repo", digest, blob), ShouldBeNil)
+
+	// a scrape enables metrics, so the in-flight request sends one when it finishes
+	So(scrapeMetrics(baseURL), ShouldBeNil)
+
+	conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", "127.0.0.1:"+port)
+	So(err, ShouldBeNil)
+
+	_, err = fmt.Fprintf(conn, "GET /v2/repo/blobs/%s HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", digest)
+	So(err, ShouldBeNil)
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil) //nolint:bodyclose // closed with conn
+	So(err, ShouldBeNil)
+	So(resp.StatusCode, ShouldEqual, http.StatusOK)
+
+	return blob, resp.Body, conn
 }
 
 func waitForServer(url string, served <-chan error) bool {

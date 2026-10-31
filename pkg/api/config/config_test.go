@@ -3930,6 +3930,20 @@ func TestHTTPTimeoutAccessors(t *testing.T) {
 		cfg.HTTP.WriteTimeout = &positive
 		So(cfg.GetHTTPWriteTimeout(), ShouldEqual, positive)
 	})
+
+	Convey("GetHTTPShutdownTimeout returns configured values", t, func() {
+		cfg := config.New()
+
+		So(cfg.GetHTTPShutdownTimeout(), ShouldEqual, 0)
+
+		zero := time.Duration(0)
+		cfg.HTTP.ShutdownTimeout = &zero
+		So(cfg.GetHTTPShutdownTimeout(), ShouldEqual, 0)
+
+		positive := 10 * time.Second
+		cfg.HTTP.ShutdownTimeout = &positive
+		So(cfg.GetHTTPShutdownTimeout(), ShouldEqual, positive)
+	})
 }
 
 func TestConfigSyncStagingHelpers(t *testing.T) {
