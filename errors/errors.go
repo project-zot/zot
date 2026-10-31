@@ -169,6 +169,7 @@ var (
 	ErrInvalidPublicKeyContent          = errors.New("invalid signature public key content")
 	ErrInvalidStateCookie               = errors.New("auth state cookie not present or differs from original state")
 	ErrSyncNoURLsLeft                   = errors.New("no valid registry urls left after filtering local ones")
+	ErrSyncInvalidURL                   = errors.New("sync registry url is not a valid http(s) registry url")
 	ErrSyncInternal                     = errors.New("synchronization failed")
 	ErrInvalidCLIParameter              = errors.New("invalid cli parameter")
 	ErrGQLEndpointNotFound              = errors.New("the server doesn't have a gql endpoint")

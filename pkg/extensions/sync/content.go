@@ -67,8 +67,21 @@ func effectivePeriodicPlatforms(content *syncconf.Content, registryDefault []str
 
 // FilterTags filters a repo tags based on content config rules (semver, regex).
 func (cm ContentManager) FilterTags(repo string, tags []string) ([]string, error) {
-	content := cm.getContentByUpstreamRepo(repo)
+	return cm.filterTags(cm.getContentByUpstreamRepo(repo), tags)
+}
 
+// FilterLocalTags is FilterTags for a local repo name, so the push loop applies the same tag
+// rules the pull loop applies upstream.
+func (cm ContentManager) FilterLocalTags(repo string, tags []string) ([]string, error) {
+	return cm.filterTags(cm.GetContentByLocalRepo(repo), tags)
+}
+
+// EffectiveLocalPlatforms is EffectivePlatforms for a local repo name.
+func (cm ContentManager) EffectiveLocalPlatforms(repo string, registryDefault []string) []string {
+	return effectivePeriodicPlatforms(cm.GetContentByLocalRepo(repo), registryDefault)
+}
+
+func (cm ContentManager) filterTags(content *syncconf.Content, tags []string) ([]string, error) {
 	var err error
 	// filter based on tags rules
 	if content != nil && content.Tags != nil {
@@ -151,11 +164,31 @@ func (cm ContentManager) getContentByUpstreamRepo(repo string) *syncconf.Content
 	return nil
 }
 
+// GetContentByLocalRepo returns the content entry that governs a local repository, or nil when
+// none matches. Entries are evaluated in config order and the first match wins: a repo can be
+// matched by a broad rule and a narrow one, and only the broad one's tag and platform rules
+// would apply. The pull direction has the same rule (see getContentByUpstreamRepo), so both
+// directions read a content list the same way.
 func (cm ContentManager) GetContentByLocalRepo(repo string) *syncconf.Content {
-	contentID := -1
+	matches := cm.LocalContentMatches(repo)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	return matches[0]
+}
+
+// LocalContentMatches returns every content entry whose rules match a local repo, in config
+// order. Only the first governs, which GetContentByLocalRepo enforces; the full list exists so
+// the push loop can report an ambiguous config instead of silently applying one of two rules.
+func (cm ContentManager) LocalContentMatches(repo string) []*syncconf.Content {
 	repo = strings.Trim(repo, "/")
 
-	for cID, content := range cm.contents {
+	var matches []*syncconf.Content
+
+	for cID := range cm.contents {
+		content := &cm.contents[cID]
+
 		// make sure prefix ends in "/" to extract the meta characters
 		prefix := strings.Trim(content.Prefix, "/") + "/"
 		destination := strings.Trim(content.Destination, "/")
@@ -177,17 +210,11 @@ func (cm ContentManager) GetContentByLocalRepo(repo string) *syncconf.Content {
 		}
 
 		if matched {
-			contentID = cID
-
-			break
+			matches = append(matches, content)
 		}
 	}
 
-	if contentID == -1 {
-		return nil
-	}
-
-	return &cm.contents[contentID]
+	return matches
 }
 
 func getRepoSource(localRepo string, content syncconf.Content) string {

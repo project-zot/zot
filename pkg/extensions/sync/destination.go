@@ -20,6 +20,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
+	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
@@ -54,9 +55,7 @@ func NewDestinationRegistry(
 		storeController: storeController,
 		tempStorage:     NewOciLayoutStorage(tempStoreController),
 		metaDB:          metaDB,
-		// first we sync from remote (using containers/image copy from docker:// to oci:) to a temp imageStore
-		// then we copy the image from tempStorage to zot's storage using ImageStore APIs
-		log: log,
+		log:             log,
 	}
 }
 
@@ -95,7 +94,7 @@ func (registry *DestinationRegistry) GetImageReference(repo, reference string) (
 
 // CommitAll finalizes a syncing image.
 func (registry *DestinationRegistry) CommitAll(repo string, imageReference ref.Ref) error {
-	tempImageStore, err := getImageStoreFromImageReference(repo, imageReference, registry.log)
+	tempImageStore, err := getImageStoreFromImageReference(repo, imageReference, nil, registry.log)
 	if err != nil {
 		registry.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
 			Str("repo", repo).Str("reference", imageReference.Reference).
@@ -418,14 +417,15 @@ func syncTempSessionRoot(repo string, imageReference ref.Ref) (string, error) {
 }
 
 // use only with local imageReferences.
-func getImageStoreFromImageReference(repo string, imageReference ref.Ref, log log.Logger,
+func getImageStoreFromImageReference(repo string, imageReference ref.Ref, mediaCompat []compat.MediaCompatibility,
+	log log.Logger,
 ) (storageTypes.ImageStore, error) {
 	sessionRootDir, err := syncTempSessionRoot(repo, imageReference)
 	if err != nil {
 		return nil, err
 	}
 
-	store := getImageStore(sessionRootDir, log)
+	store := getImageStore(sessionRootDir, mediaCompat, log)
 	if store == nil {
 		return nil, fmt.Errorf("%w: %q", errSyncTempImageStoreCreateFailed, sessionRootDir)
 	}
@@ -433,7 +433,7 @@ func getImageStoreFromImageReference(repo string, imageReference ref.Ref, log lo
 	return store, nil
 }
 
-func getImageStore(rootDir string, log log.Logger) storageTypes.ImageStore {
+func getImageStore(rootDir string, mediaCompat []compat.MediaCompatibility, log log.Logger) storageTypes.ImageStore {
 	// Temp sync layouts are short-lived and don't need an active metrics server.
-	return local.NewImageStore(rootDir, false, false, log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+	return local.NewImageStore(rootDir, false, false, log, monitoring.NewNopMetricServer(), nil, nil, mediaCompat, nil)
 }

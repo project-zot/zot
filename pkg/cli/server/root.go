@@ -1932,23 +1932,27 @@ func validateRegistryStreamingSyncConfig(regCfg syncconf.RegistryConfig) error {
 }
 
 func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	if pushErr := validateSyncPush(regID, regCfg, logger); pushErr != nil {
+		return pushErr
+	}
+
 	if bgValidationErr := validateRegistryOnDemandInBackground(regCfg); bgValidationErr != nil {
 		logger.Error().Err(bgValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg("invalid config for onDemandInBackground")
+			redactedRegistryConfig(regCfg)).Msg("invalid config for onDemandInBackground")
 
 		return bgValidationErr
 	}
 
 	if intervalValidationErr := validateRegistryManifestCheckInterval(regCfg); intervalValidationErr != nil {
 		logger.Error().Err(intervalValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg("invalid config for manifestCheckInterval")
+			redactedRegistryConfig(regCfg)).Msg("invalid config for manifestCheckInterval")
 
 		return intervalValidationErr
 	}
 
 	if streamValidationErr := validateRegistryStreamingSyncConfig(regCfg); streamValidationErr != nil {
 		logger.Error().Err(streamValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg("invalid config for stream")
+			redactedRegistryConfig(regCfg)).Msg("invalid config for stream")
 
 		return streamValidationErr
 	}
@@ -1957,7 +1961,7 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 	if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
 		msg := "retryDelay is required when using maxRetries"
 		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg(msg)
+			redactedRegistryConfig(regCfg)).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
@@ -1965,7 +1969,7 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 	if regCfg.MaxRetryDelay != nil && regCfg.RetryDelay == nil {
 		msg := "retryDelay is required when using maxRetryDelay"
 		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg(msg)
+			redactedRegistryConfig(regCfg)).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
@@ -1974,7 +1978,7 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 		*regCfg.MaxRetryDelay < *regCfg.RetryDelay {
 		msg := "maxRetryDelay must be greater than or equal to retryDelay"
 		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg(msg)
+			redactedRegistryConfig(regCfg)).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
@@ -1985,7 +1989,7 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 
 	if err := validateRegistryPlatforms(regCfg); err != nil {
 		logger.Error().Err(err).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg("invalid config for platforms")
+			redactedRegistryConfig(regCfg)).Msg("invalid config for platforms")
 
 		return err
 	}
@@ -2000,13 +2004,109 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 		if err != nil {
 			msg := "invalid oauth2CredentialHelper config"
 			logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-				regCfg).Msg(msg)
+				redactedRegistryConfig(regCfg)).Msg(msg)
 
 			return fmt.Errorf("%w: %s: %w", zerr.ErrBadConfig, msg, err)
 		}
 	}
 
 	return validateSyncContent(config, regCfg, logger)
+}
+
+// redactedURL drops the credential part of a url so it can be logged safely; an unparsable
+// value is not echoed at all, because the raw string may still contain a secret.
+func redactedURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "<unparsable>"
+	}
+
+	return parsed.Redacted()
+}
+
+func redactedPushConfig(push *syncconf.PushConfig) *syncconf.PushConfig {
+	if push == nil {
+		return nil
+	}
+
+	redacted := *push
+	redacted.URLs = make([]string, 0, len(push.URLs))
+
+	for _, rawURL := range push.URLs {
+		redacted.URLs = append(redacted.URLs, redactedURL(rawURL))
+	}
+
+	return &redacted
+}
+
+func redactedRegistryConfig(regCfg syncconf.RegistryConfig) syncconf.RegistryConfig {
+	redacted := regCfg
+	redacted.URLs = make([]string, 0, len(regCfg.URLs))
+
+	for _, rawURL := range regCfg.URLs {
+		redacted.URLs = append(redacted.URLs, redactedURL(rawURL))
+	}
+
+	redacted.Push = redactedPushConfig(regCfg.Push)
+
+	return redacted
+}
+
+// validateSyncPush checks the outbound half of a registry entry. Push is additive: one entry
+// may carry upstreams (urls) and destinations (push.urls) at once, and both loops then run off
+// the same content list. What is not optional is the allowlist - an empty content list would
+// mirror the whole store, which is never what an operator means.
+func validateSyncPush(regID int, regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	push := regCfg.Push
+	if push == nil {
+		return nil
+	}
+
+	invalid := func(msg string) error {
+		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id].push",
+			redactedPushConfig(push)).Msg(msg)
+
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
+	}
+
+	if !push.IsEnabled() {
+		return nil
+	}
+
+	if len(push.URLs) == 0 {
+		return invalid("push.urls must list at least one destination registry")
+	}
+
+	for _, rawURL := range push.URLs {
+		parsed, err := url.Parse(rawURL)
+		if err != nil {
+			// No echo of the value: a malformed url can still contain a credential.
+			return invalid("a push.urls entry is not a parsable url")
+		}
+
+		if parsed.User != nil {
+			return invalid("push.urls must not carry credentials, put them in sync.credentialsFile")
+		}
+
+		if parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return invalid(fmt.Sprintf("push.urls entry %q is not an http(s) registry url", parsed.Redacted()))
+		}
+	}
+
+	if platformErr := validatePlatformsList(push.Platforms); platformErr != nil {
+		return invalid(fmt.Sprintf("invalid push.platforms: %v", platformErr))
+	}
+
+	if len(regCfg.Content) == 0 {
+		return invalid("content is required for a push registry: an empty list would mirror the whole store." +
+			` use {"prefix": "**"} to say that on purpose`)
+	}
+
+	if regCfg.PollInterval <= 0 {
+		return invalid("pollInterval is required for a push registry and must be positive: it is the push loop interval")
+	}
+
+	return nil
 }
 
 // invalidOptionalPositiveFloat reports whether an optional float setting is set to a value that is
@@ -2020,7 +2120,7 @@ func validateSyncReqLimits(regID int, regCfg syncconf.RegistryConfig, logger zlo
 	if regCfg.ReqConcurrent != nil && *regCfg.ReqConcurrent <= 0 {
 		msg := "reqConcurrent must be greater than 0"
 		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg(msg)
+			redactedRegistryConfig(regCfg)).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
@@ -2028,7 +2128,7 @@ func validateSyncReqLimits(regID int, regCfg syncconf.RegistryConfig, logger zlo
 	if invalidOptionalPositiveFloat(regCfg.ReqPerSec) {
 		msg := "reqPerSec must be a finite value greater than 0"
 		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg(msg)
+			redactedRegistryConfig(regCfg)).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}
@@ -2039,7 +2139,7 @@ func validateSyncReqLimits(regID int, regCfg syncconf.RegistryConfig, logger zlo
 	if regCfg.MaxIdleConnsPerHost != nil && *regCfg.MaxIdleConnsPerHost <= 0 {
 		msg := "maxIdleConnsPerHost must be greater than 0"
 		logger.Error().Err(zerr.ErrBadConfig).Int("id", regID).Interface("extensions.sync.registries[id]",
-			regCfg).Msg(msg)
+			redactedRegistryConfig(regCfg)).Msg(msg)
 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, msg)
 	}

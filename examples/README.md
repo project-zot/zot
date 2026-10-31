@@ -1564,6 +1564,56 @@ Configure each registry sync:
 ```
 Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
 
+### Push mode
+
+A registry entry can also mirror local content out instead of pulling remote content in. Add a
+`push` block to the entry; the entry's `content` list then describes what leaves the store, with
+the same fields:
+
+```
+			"registries": [{
+				"pollInterval": "15m",              # the push loop interval
+				"content": [                        # required: the allowlist of what may leave
+					{
+						"prefix": "library/**",       # matches the local repo name
+						"tags": { "excludeRegex": "-rc" }
+					}
+				],
+				"push": {
+					"enabled": true,
+					"urls": ["https://zot.edge:5000"], # every url is a destination, not a mirror
+					"tlsVerify": false,
+					"certDir": "/home/user/certs"
+				}
+			}]
+```
+
+The allowlist is mandatory. Without `content` there is nothing to select, and an empty list used
+to mean "the whole store"; state that on purpose with `{"prefix": "**"}` if that is what you want.
+
+`tlsVerify: false` keeps TLS but skips verification, and credentials then travel over an
+unverified connection; an `http://` url turns TLS off entirely. Use either only on a network you
+trust. Credentials belong in `sync.credentialsFile`, never in `push.urls` - a url carrying
+credentials is rejected at config load.
+
+One entry can have both `urls` and `push.urls`: the content list is then read in both
+directions, upstream names for the pull side and local names for the push side (the
+`destination` and `stripPrefix` rules are applied in reverse, see `GetContentByLocalRepo`). If a
+repo matches more than one content entry, the first one in config order governs, including its
+`tags` and `platforms` rules.
+
+The push loop is time driven: each `pollInterval` it walks the store and asks every destination
+for the digest it holds, so a tag that changed locally, including one that a pull-through
+refreshed, reaches the destinations on the next cycle. Destinations are independent: an
+unreachable one is reported at the end of the cycle and does not hold back the others.
+Deletions do not travel: a tag removed locally stays on the destination. Referrers travel with
+their subject; if a referrer cannot be pushed the tag is reported as failed rather than left
+behind unsigned.
+
+Credentials for a destination come from `sync.credentialsFile`, keyed by host, exactly like the
+pull upstreams. A credential helper (`credentialHelper`) applies to the entry's upstreams, not to
+its destinations; a destination that needs one has to be handled by the credentials file for now.
+
 ### Sync's manifestCheckInterval option
 
 With `onDemand` enabled, every request for a tag validates the manifest against the upstream

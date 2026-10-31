@@ -127,8 +127,51 @@ type RegistryConfig struct {
 	// streaming registries, so they must agree on it. Past the cap, requests use the plain
 	// on-demand path. Defaults to syncConstants.DefaultMaxConcurrentStreams.
 	MaxConcurrentStreams *int
+	// Push mirrors local content out instead of pulling remote content in. Nil means the
+	// registry entry is pull-only, which is the behaviour every existing config has.
+	Push *PushConfig
 	// dockerCompat is set at runtime from http.compat (docker2s2), not from sync config JSON.
 	dockerCompat bool
+}
+
+// PushConfig is the outbound half of a sync registry entry. A registry entry with a push
+// block mirrors the local store to the given destinations; the content rules stay the
+// allowlist, so the same prefixes, tag rules and platform lists describe what leaves.
+//
+// URLs, TLSVerify, CertDir and Platforms carry the names of their pull siblings on
+// RegistryConfig on purpose: an operator who knows the pull block reads this one without
+// learning a second vocabulary. The meaning of URLs differs, though - the pull field is one
+// registry plus its mirrors, because a pull only needs one source to answer. A push writes,
+// so every URL here is an independent destination and each one receives the same content.
+// Credentials are not duplicated: Config.CredentialsFile is keyed by host and already covers
+// destination hosts.
+type PushConfig struct {
+	// Enabled schedules the push loop. Unset or false keeps the block inert, which lets a
+	// destination list be staged before the feature is turned on.
+	Enabled *bool
+	// URLs are destination registries as scheme://host[:port], for example
+	// "https://zot.edge:5000". Each one is a full destination, not a mirror.
+	URLs []string
+	// TLSVerify and CertDir behave exactly as their pull siblings.
+	TLSVerify *bool
+	CertDir   string
+	// Platforms is the default OS/arch allowlist for multi-arch images. Content-level
+	// platforms still win per prefix, exactly like the pull path. Empty means all.
+	Platforms []string
+}
+
+// IsEnabled reports whether the push loop should run for this config.
+func (push *PushConfig) IsEnabled() bool {
+	return push != nil && push.Enabled != nil && *push.Enabled
+}
+
+// IsPushEnabled reports whether this registry entry mirrors local content out.
+func (r *RegistryConfig) IsPushEnabled() bool {
+	if r == nil {
+		return false
+	}
+
+	return r.Push.IsEnabled()
 }
 
 // SetDockerCompat records whether http.compat includes docker2s2 for this registry's sync path.

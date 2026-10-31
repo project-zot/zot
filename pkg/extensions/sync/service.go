@@ -96,6 +96,9 @@ type BaseService struct {
 	// SyncRepo index/child ensures).
 	imageFlight   singleflight.Group
 	streamManager StreamManager
+	// pushTargets are the destination registries of a push entry, one client per destination.
+	// Empty for a pull entry.
+	pushTargets []pushDestination
 
 	clientLock sync.RWMutex
 	log        log.Logger
@@ -214,7 +217,7 @@ func New(
 		service.destination = NewDestinationRegistry(
 			storeController,
 			storage.StoreController{
-				DefaultStore: getImageStore(tmpDir, log),
+				DefaultStore: getImageStore(tmpDir, nil, log),
 			},
 			metadb,
 			log,
@@ -1075,7 +1078,7 @@ func (service *BaseService) seedRef(
 	remoteImageRef, localImageRef ref.Ref,
 	digest godigest.Digest,
 ) error {
-	tempStore, err := getImageStoreFromImageReference(localRepo, localImageRef, service.log)
+	tempStore, err := getImageStoreFromImageReference(localRepo, localImageRef, nil, service.log)
 	if err != nil {
 		return err
 	}

@@ -552,5 +552,19 @@
       "begin": 11660,
       "end": 11669
     }
+  },
+  "blackbox/sync_push.bats": {
+    "zotsrc": {
+      "begin": 21000,
+      "end": 21099
+    },
+    "zotdst": {
+      "begin": 21100,
+      "end": 21199
+    },
+    "zotfiltered": {
+      "begin": 21200,
+      "end": 21299
+    }
   }
 }

@@ -1438,7 +1438,7 @@ func TestDestinationRegistry(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(imageReference, ShouldNotBeNil)
 
-		imgStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+		imgStore, err := getImageStoreFromImageReference(repoName, imageReference, nil, log)
 		So(err, ShouldBeNil)
 
 		// create a blob/layer
@@ -1637,7 +1637,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Get the temp image store from the image reference
-			tempImgStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+			tempImgStore, err := getImageStoreFromImageReference(repoName, imageReference, nil, log)
 			So(err, ShouldBeNil)
 
 			// Create an image index with multiple manifests
@@ -1758,7 +1758,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(imageReference, ShouldNotBeNil)
 
-			imgStore, err := getImageStoreFromImageReference(repoName, imageReference, log)
+			imgStore, err := getImageStoreFromImageReference(repoName, imageReference, nil, log)
 			So(err, ShouldBeNil)
 
 			// upload image
@@ -1840,7 +1840,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Remove the directory to simulate it not existing
-			tempImageStore, err := getImageStoreFromImageReference("nonexistent-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("nonexistent-repo", imageReference, nil, log)
 			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "nonexistent-repo")
 			err = os.RemoveAll(repoDir)
@@ -1858,7 +1858,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Create an empty directory (no index.json, no blobs)
-			tempImageStore, err := getImageStoreFromImageReference("empty-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("empty-repo", imageReference, nil, log)
 			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "empty-repo")
 			err = os.MkdirAll(repoDir, 0o755)
@@ -1876,7 +1876,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Create a directory with some files but no index.json (inconsistent state)
-			tempImageStore, err := getImageStoreFromImageReference("inconsistent-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("inconsistent-repo", imageReference, nil, log)
 			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "inconsistent-repo")
 			err = os.MkdirAll(repoDir, 0o755)
@@ -1901,7 +1901,7 @@ func TestDestinationRegistry(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// Get the repo directory path
-			tempImageStore, err := getImageStoreFromImageReference("error-repo", imageReference, log)
+			tempImageStore, err := getImageStoreFromImageReference("error-repo", imageReference, nil, log)
 			So(err, ShouldBeNil)
 			repoDir := path.Join(tempImageStore.RootDir(), "error-repo")
 
@@ -1996,7 +1996,7 @@ func TestSyncTempLayoutPathHelpers(t *testing.T) {
 			So(os.WriteFile(sessionFile, []byte("x"), 0o644), ShouldBeNil)
 
 			layoutPath := path.Join(sessionFile, "repo")
-			_, err := getImageStoreFromImageReference("repo", ref.Ref{Path: layoutPath}, log)
+			_, err := getImageStoreFromImageReference("repo", ref.Ref{Path: layoutPath}, nil, log)
 			So(errors.Is(err, errSyncTempImageStoreCreateFailed), ShouldBeTrue)
 		})
 	})

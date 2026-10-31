@@ -18,7 +18,7 @@ func TestGetImageStoreDoesNotLeakMetricsGoroutines(t *testing.T) {
 	const iterations = 25
 
 	for range iterations {
-		store := getImageStore(t.TempDir(), logger)
+		store := getImageStore(t.TempDir(), nil, logger)
 		if store == nil {
 			t.Fatal("expected temp image store")
 		}

@@ -3,6 +3,7 @@
 package extensions
 
 import (
+	"fmt"
 	"net"
 	"net/url"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 // EnableSyncExtension builds the sync services for config. prev is the SyncOnDemand from before a
@@ -42,6 +44,28 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		)
 
 		for _, registryConfig := range syncConfig.Registries {
+			if registryConfig.IsPushEnabled() {
+				err := enablePushEntry(registryConfig, syncConfig, config, httpAddress, httpPort,
+					storeController, metaDB, sch, log)
+				if err != nil {
+					log.Error().Err(err).Msg("failed to enable sync push mode")
+
+					return nil, err
+				}
+
+				// A push entry may also have upstreams: same content list, two directions.
+				// Without them there is nothing to pull, so the pull wiring below is skipped.
+				if len(registryConfig.URLs) == 0 {
+					continue
+				}
+			}
+
+			if registryConfig.Push != nil && !registryConfig.IsPushEnabled() && len(registryConfig.URLs) == 0 {
+				log.Debug().Msg("sync registry entry has a disabled push block and no urls, skipping it")
+
+				continue
+			}
+
 			if len(registryConfig.URLs) > 1 {
 				if err := removeSelfURLs(httpAddress, httpPort, &registryConfig, log); err != nil {
 					return nil, err
@@ -121,6 +145,83 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 	log.Info().Msg("sync config not provided or disabled, so not enabling sync")
 
 	return nil, nil //nolint: nilnil
+}
+
+// enablePushEntry starts the outbound loop for one push registry entry: one generator per
+// image store, each walking that store's repository catalog.
+func enablePushEntry(registryConfig syncconf.RegistryConfig, syncConfig *syncconf.Config, config *config.Config,
+	httpAddress, httpPort string, storeController storage.StoreController, metaDB mTypes.MetaDB,
+	sch *scheduler.Scheduler, log log.Logger,
+) error {
+	// A destination that resolves to this instance would copy to itself and never converge,
+	// which is why the pull path already filters self URLs. Same check, same helper.
+	pushConfig := *registryConfig.Push
+
+	selfCheck := syncconf.RegistryConfig{URLs: pushConfig.URLs}
+	if err := removeSelfURLs(httpAddress, httpPort, &selfCheck, log); err != nil {
+		return err
+	}
+
+	pushConfig.URLs = selfCheck.URLs
+	if len(pushConfig.URLs) == 0 {
+		return zerr.ErrSyncNoURLsLeft
+	}
+
+	pullConfig := registryConfig
+	pullConfig.Push = &pushConfig
+
+	if len(pullConfig.URLs) == 0 {
+		// Push-only entry: the service needs one URL to build a client at all, and the pull
+		// loop must not believe it has a source.
+		pullConfig.URLs = pushConfig.URLs[:1]
+		pullConfig.OnDemand = false
+		pullConfig.OnDemandInBackground = nil
+		pullConfig.Stream = nil
+		pullConfig.ManifestCheckInterval = 0
+		pullConfig.OnlySigned = nil
+	}
+
+	pullConfig.SetDockerCompat(config.IsDockerCompatEnabled())
+
+	service, err := sync.New(pullConfig, syncConfig.CredentialsFile, config.CopyClusterConfig(),
+		syncConfig.DownloadDir, storeController, nil, metaDB, log)
+	if err != nil {
+		return err
+	}
+
+	if err := service.InitPushMode(); err != nil {
+		return err
+	}
+
+	interval := registryConfig.PollInterval
+	if interval == 0 {
+		return fmt.Errorf("push registry entry needs a pollInterval: %w", zerr.ErrSyncInvalidURL)
+	}
+
+	for _, store := range pushImageStores(storeController) {
+		generator := sync.NewPushTaskGenerator(service, []storageTypes.ImageStore{store}, log)
+		sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
+	}
+
+	return nil
+}
+
+// pushImageStores returns every store that can hold local content: the default store plus any
+// route-specific sub stores.
+func pushImageStores(storeController storage.StoreController) []storageTypes.ImageStore {
+	subStores := storeController.GetImageSubStores()
+	if len(subStores) == 0 {
+		return []storageTypes.ImageStore{storeController.GetDefaultImageStore()}
+	}
+
+	stores := make([]storageTypes.ImageStore, 0, len(subStores)+1)
+	stores = append(stores, storeController.GetDefaultImageStore())
+
+	for _, store := range subStores {
+		stores = append(stores, store)
+	}
+
+	return stores
 }
 
 // reuseOrNewStreamManager returns prev's stream manager, not yet resized (EnableSyncExtension does
