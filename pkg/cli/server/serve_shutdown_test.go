@@ -114,7 +114,8 @@ func TestServeDrainsRequestsOnSIGTERM(t *testing.T) {
 
 		defer signal.Reset()
 
-		served := runServe(writeServeConfig(t, port))
+		// no shutdown timeout, so the test can't pass by closing the request
+		served := runServe(writeServeConfig(t, port, `"shutdownTimeout": "0"`))
 		So(waitForServer(baseURL+"/v2/", served), ShouldBeTrue)
 
 		blob, body, conn := startBlobDownload(baseURL, port)
@@ -158,11 +159,13 @@ func TestServeShutdownTimeout(t *testing.T) {
 		defer conn.Close()
 
 		// the client never reads the rest of the blob, so the request can't finish
+		signaled := time.Now()
 		So(syscall.Kill(os.Getpid(), syscall.SIGTERM), ShouldBeNil)
 
 		select {
 		case err := <-served:
 			So(err, ShouldBeNil)
+			So(time.Since(signaled), ShouldBeGreaterThanOrEqualTo, time.Second)
 		case <-time.After(15 * time.Second):
 			t.Fatal("serve did not return after the shutdown timeout")
 		}
