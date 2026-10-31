@@ -431,3 +431,82 @@ func TestDeleteBlobUploadIfIdleDoesNotWaitForActiveWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// An unlisted upload (S3 multipart is not an object until commit) must still
+// keep the repo while the body is being copied. Once that copy finishes, an
+// idle session must not pin the repo.
+func TestRemoveIdleRepositoryKeepsRepoDuringUnlistedUpload(t *testing.T) {
+	root := t.TempDir()
+	store := imagestore.NewImageStore(root, "", false, false, zlog.NewTestLogger(),
+		monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+	ctx := context.Background()
+	repo := "unlisted-upload"
+
+	uuid, err := store.NewBlobUpload(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := &blockedUploadBody{
+		data:    []byte("partial"),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	writerErr := make(chan error, 1)
+
+	go func() {
+		_, err := store.PutBlobChunk(ctx, repo, uuid, 0, int64(len(body.data)), body)
+		writerErr <- err
+	}()
+
+	select {
+	case <-body.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("blob chunk did not start reading")
+	}
+
+	uploadPath := path.Join(root, repo, storageConstants.BlobUploadDir, uuid)
+	if err := os.Remove(uploadPath); err != nil {
+		t.Fatal(err)
+	}
+
+	var removed bool
+
+	err = store.WithRepoLock(repo, func() error {
+		var lockErr error
+
+		removed, lockErr = store.RemoveIdleRepository(repo, 0)
+
+		return lockErr
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed {
+		t.Fatal("repo was removed while a blob upload was being written")
+	}
+	if _, statErr := os.Stat(path.Join(root, repo)); statErr != nil {
+		t.Fatal(statErr)
+	}
+
+	body.unblock()
+	if err := <-writerErr; err != nil {
+		t.Fatal(err)
+	}
+
+	// The copy finished and the upload object is still gone, so the session is
+	// idle and the listing is empty. The repo can be removed.
+	err = store.WithRepoLock(repo, func() error {
+		var lockErr error
+
+		removed, lockErr = store.RemoveIdleRepository(repo, 0)
+
+		return lockErr
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !removed {
+		t.Fatal("idle upload session kept the repo after the write finished")
+	}
+}
