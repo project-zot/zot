@@ -28,3 +28,9 @@ replace `FILENAME` with the name of the test file along with its extension e.g. 
 ```
 
 A test file may have multiple services defined by a unique key. You can use any key for the service identifier, however, ensure that the same key is used in the BATS test file as an argument to the `get_free_port_for_service` function.
+
+The optional eMudhra CA distrust test is not part of the default blackbox CI shards. Run it with mitmproxy 12.3 or newer installed:
+
+```sh
+make run-blackbox-tests BATS_TEST_FILE_PATH=test/blackbox/emudhra.bats
+```
