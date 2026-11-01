@@ -72,11 +72,12 @@ type BlobFetcher func(ctx context.Context, desc descriptor.Descriptor) (*blob.BR
 
 // BlobCopier copies one streamed blob (or a range of it) to one client.
 type BlobCopier interface {
-	// Copy streams the whole blob, returning when done or when the download fails.
-	Copy() error
-	// CopyRange streams bytes [start, end] (inclusive), returning as soon as end has arrived. The
-	// caller validates the range first (e.g. via CachedBlobInfo).
-	CopyRange(start, end int64) error
+	// Copy streams the whole blob, returning when done, when the download fails, or when ctx (the
+	// client's request) ends.
+	Copy(ctx context.Context) error
+	// CopyRange streams bytes [start, end] (inclusive), returning as soon as end has arrived or ctx
+	// ends. The caller validates the range first (e.g. via CachedBlobInfo).
+	CopyRange(ctx context.Context, start, end int64) error
 	// Descriptor waits (bounded) for the download to start, or errors if it never starts, failed,
 	// or ctx (the request's) ends first. On error the caller must Close.
 	Descriptor(ctx context.Context) (descriptor.Descriptor, error)

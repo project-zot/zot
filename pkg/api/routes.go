@@ -1919,16 +1919,17 @@ func (rh *RouteHandler) streamBlobToClient(ctx context.Context, response http.Re
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.Header().Set("Content-Type", constants.BinaryMediaType)
 	response.WriteHeader(http.StatusOK)
+	_ = http.NewResponseController(response).Flush()
 
-	if err := copier.Copy(); err != nil {
-		rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
-			Msg("error while streaming blob to client")
+	if err := copier.Copy(ctx); err != nil {
+		rh.logStreamWaitErr(ctx, err, repo, digest, "error while streaming blob to client")
 	}
 
 	return true
 }
 
-// logStreamWaitErr logs a failed wait for a stream to start; a client leaving is debug-level.
+// logStreamWaitErr logs a failed wait for a stream to start, or a failed copy of one; a client
+// leaving is debug-level.
 func (rh *RouteHandler) logStreamWaitErr(ctx context.Context, err error, repo string, digest godigest.Digest,
 	msg string,
 ) {
@@ -1993,10 +1994,10 @@ func (rh *RouteHandler) streamBlobRangeToClient(ctx context.Context,
 	response.Header().Set("Content-Length", strconv.FormatInt(rng.length(), 10))
 	response.Header().Set("Content-Type", constants.BinaryMediaType)
 	response.WriteHeader(http.StatusPartialContent)
+	_ = http.NewResponseController(response).Flush()
 
-	if err := copier.CopyRange(rng.start, rng.end); err != nil {
-		rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
-			Msg("error while streaming blob range to client")
+	if err := copier.CopyRange(ctx, rng.start, rng.end); err != nil {
+		rh.logStreamWaitErr(ctx, err, repo, digest, "error while streaming blob range to client")
 	}
 
 	return true

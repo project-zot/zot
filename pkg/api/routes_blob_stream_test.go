@@ -108,7 +108,7 @@ func (c *fakeBlobCopier) Descriptor(ctx context.Context) (descriptor.Descriptor,
 	return c.desc, c.descErr
 }
 
-func (c *fakeBlobCopier) Copy() error {
+func (c *fakeBlobCopier) Copy(_ context.Context) error {
 	c.copied = true
 
 	if c.copyErr != nil {
@@ -120,7 +120,7 @@ func (c *fakeBlobCopier) Copy() error {
 	return err
 }
 
-func (c *fakeBlobCopier) CopyRange(start, end int64) error {
+func (c *fakeBlobCopier) CopyRange(_ context.Context, start, end int64) error {
 	c.copiedRange = true
 	c.rangeStart = start
 	c.rangeEnd = end
@@ -396,6 +396,45 @@ func TestGetBlobStreamingFallback(t *testing.T) {
 			So(copier.closed, ShouldBeTrue)
 		})
 
+		Convey("logs a copy that fails after the 200 was written", func() {
+			for _, copyErr := range []error{errFakeStreamManager, context.Canceled} {
+				copier := &fakeBlobCopier{desc: descriptor.Descriptor{Size: 4}, copyErr: copyErr}
+				streamMgr := &fakeStreamManager{
+					connectClientFn: func(_, _ string, writer io.Writer) (sync.BlobCopier, error) {
+						copier.writer = writer
+
+						return copier, nil
+					},
+				}
+				syncOnDemand := &mockSyncOnDemand{
+					isStreamingEnabledForRepoFn: func(_ string) bool { return true },
+					streamManager:               streamMgr,
+				}
+				handler := newSyncTestRouteHandler(t, notFoundStore, syncOnDemand)
+
+				// A client that left is logged at debug level; its request's context is done.
+				ctx, cancel := context.WithCancel(context.Background())
+				if errors.Is(copyErr, context.Canceled) {
+					cancel()
+				} else {
+					defer cancel()
+				}
+
+				req := newBlobStreamTestRouteHandlerRequest(http.MethodGet)
+				req = mux.SetURLVars(req.WithContext(ctx), mux.Vars(req))
+
+				rec := httptest.NewRecorder()
+				handler.GetBlob(rec, req)
+
+				resp := rec.Result()
+				_ = resp.Body.Close()
+
+				So(resp.StatusCode, ShouldEqual, http.StatusOK)
+				So(rec.Flushed, ShouldBeTrue)
+				So(copier.copied, ShouldBeTrue)
+			}
+		})
+
 		Convey("does not try the stream or retry storage on a storage outage", func() {
 			for storageErr, status := range map[error]int{
 				zerr.ErrStorageTransient: http.StatusServiceUnavailable,
@@ -661,6 +700,47 @@ func TestGetBlobRangeStreamingFallback(t *testing.T) {
 			So(respBody, ShouldResemble, body)
 			So(copier.copied, ShouldBeTrue)
 			So(copier.copiedRange, ShouldBeFalse)
+		})
+
+		Convey("logs a range copy that fails after the 206 was written", func() {
+			for _, copyErr := range []error{errFakeStreamManager, context.Canceled} {
+				copier := &fakeBlobCopier{desc: descriptor.Descriptor{Size: int64(len(body))}, copyErr: copyErr}
+				streamMgr := &fakeStreamManager{
+					cachedBlobInfoFn: func(_, _ string) (int64, string, error) {
+						return int64(len(body)), constants.BinaryMediaType, nil
+					},
+					connectClientFn: func(_, _ string, writer io.Writer) (sync.BlobCopier, error) {
+						copier.writer = writer
+
+						return copier, nil
+					},
+				}
+				syncOnDemand := &mockSyncOnDemand{
+					isStreamingEnabledForRepoFn: func(_ string) bool { return true },
+					streamManager:               streamMgr,
+				}
+				handler := newSyncTestRouteHandler(t, notFoundStore, syncOnDemand)
+
+				ctx, cancel := context.WithCancel(context.Background())
+				if errors.Is(copyErr, context.Canceled) {
+					cancel()
+				} else {
+					defer cancel()
+				}
+
+				req := newRangeRequest("bytes=0-3")
+				req = mux.SetURLVars(req.WithContext(ctx), mux.Vars(req))
+
+				rec := httptest.NewRecorder()
+				handler.GetBlob(rec, req)
+
+				resp := rec.Result()
+				_ = resp.Body.Close()
+
+				So(resp.StatusCode, ShouldEqual, http.StatusPartialContent)
+				So(rec.Flushed, ShouldBeTrue)
+				So(copier.copiedRange, ShouldBeTrue)
+			}
 		})
 
 		Convey("falls through to 404 when the digest is not staged for streaming either", func() {
