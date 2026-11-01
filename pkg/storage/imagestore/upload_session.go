@@ -147,15 +147,26 @@ func validateUploadSessionID(uuid string) error {
 type uploadSessionRegistry struct {
 	lock     sync.Mutex
 	sessions map[string]*uploadSession
+	// inProgress counts chunk copies and commits, which run before the bytes
+	// are a listed object. It changes only while lock is held.
+	inProgress map[string]int
+	// blocked prefixes refuse startInProgress until the matching repo delete
+	// finishes. Same lock as inProgress, so a session cannot become in progress
+	// between the idle check and the refusal.
+	blocked map[string]struct{}
+}
+
+func newUploadSessionRegistry() uploadSessionRegistry {
+	return uploadSessionRegistry{
+		sessions:   make(map[string]*uploadSession),
+		inProgress: make(map[string]int),
+		blocked:    make(map[string]struct{}),
+	}
 }
 
 func (registry *uploadSessionRegistry) get(key string) *uploadSession {
 	registry.lock.Lock()
 	defer registry.lock.Unlock()
-
-	if registry.sessions == nil {
-		registry.sessions = make(map[string]*uploadSession)
-	}
 
 	session, ok := registry.sessions[key]
 	if !ok {
@@ -173,4 +184,57 @@ func (registry *uploadSessionRegistry) delete(key string, session *uploadSession
 	if registry.sessions[key] == session {
 		delete(registry.sessions, key)
 	}
+}
+
+// startInProgress marks key until finishInProgress. A prefix already blocked
+// for deletion is refused, so the upload cannot start against a repo GC has
+// decided to remove.
+func (registry *uploadSessionRegistry) startInProgress(key string) error {
+	registry.lock.Lock()
+	defer registry.lock.Unlock()
+
+	for prefix := range registry.blocked {
+		if strings.HasPrefix(key, prefix) {
+			return zerr.ErrUploadNotFound
+		}
+	}
+
+	registry.inProgress[key]++
+
+	return nil
+}
+
+func (registry *uploadSessionRegistry) finishInProgress(key string) {
+	registry.lock.Lock()
+	defer registry.lock.Unlock()
+
+	registry.inProgress[key]--
+	if registry.inProgress[key] <= 0 {
+		delete(registry.inProgress, key)
+	}
+}
+
+// blockIfIdle reports whether prefix has no in-progress upload. When it does
+// not, startInProgress for that prefix fails until release runs. Both the
+// observation and the refusal happen before this method returns the lock, so
+// a session cannot become in progress while the caller is deciding to delete.
+func (registry *uploadSessionRegistry) blockIfIdle(prefix string) (func(), bool) {
+	registry.lock.Lock()
+	defer registry.lock.Unlock()
+
+	prefix = strings.TrimSuffix(prefix, "/") + "/"
+
+	for key, count := range registry.inProgress {
+		if count > 0 && strings.HasPrefix(key, prefix) {
+			return nil, false
+		}
+	}
+
+	registry.blocked[prefix] = struct{}{}
+
+	return func() {
+		registry.lock.Lock()
+		delete(registry.blocked, prefix)
+		registry.lock.Unlock()
+	}, true
 }

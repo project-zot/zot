@@ -112,6 +112,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		compat:      compat,
 		events:      recorder,
 		lifecycle:   newBlobLifecycle(storeDriver, rootDir, metrics),
+		uploads:     newUploadSessionRegistry(),
 	}
 
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
@@ -1403,6 +1404,11 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	if err := is.uploads.startInProgress(src); err != nil {
+		return -1, err
+	}
+	defer is.uploads.finishInProgress(src)
+
 	session := is.uploads.get(src)
 	total := int64(-1)
 
@@ -1436,6 +1442,11 @@ func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from,
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	if err := is.uploads.startInProgress(src); err != nil {
+		return -1, err
+	}
+	defer is.uploads.finishInProgress(src)
+
 	session := is.uploads.get(src)
 	total := int64(-1)
 
@@ -1499,6 +1510,11 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	if err := is.uploads.startInProgress(src); err != nil {
+		return err
+	}
+	defer is.uploads.finishInProgress(src)
+
 	session := is.uploads.get(src)
 
 	err := session.finalize(func() error {
@@ -1613,6 +1629,14 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 
 	uuid := u.String()
 	src := is.BlobUploadPath(repo, uuid)
+
+	// No partial session exists for a monolithic upload. Hold the in-progress mark
+	// from before the body read through the move, so an unlisted multipart keeps
+	// the repository until the bytes are in the blob store.
+	if err := is.uploads.startInProgress(src); err != nil {
+		return "", -1, err
+	}
+	defer is.uploads.finishInProgress(src)
 
 	// Do not InitRepo before reading the body: that store write lock races GC vs ReadTimeout.
 	// Create .uploads without the lock; initRepo runs after the copy, under the move lock.
@@ -2794,6 +2818,30 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 	}
 
 	if len(blobs) > 0 {
+		return false, nil
+	}
+
+	// Chunk copies and commits are in progress before the bytes are a listed
+	// object. Drivers that keep an open multipart upload off the object listing
+	// report no uploads for that whole window. Delete removes this directory
+	// and every repository nested under it, so blockIfIdle matches an in-progress
+	// upload anywhere in that tree. It refuses new copies and commits under the
+	// directory before it returns, under the same lock that observed none in
+	// progress, and that refusal lasts through the delete.
+	release, idle := is.uploads.blockIfIdle(dir)
+	if !idle {
+		return false, nil
+	}
+	defer release()
+
+	// A commit can finish and clear its in-progress count after the list above
+	// without taking the store lock. The object is listed now.
+	blobUploads, err = is.ListBlobUploads(repo)
+	if err != nil {
+		return false, err
+	}
+
+	if len(blobUploads) > 0 {
 		return false, nil
 	}
 
