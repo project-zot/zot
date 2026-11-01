@@ -3,6 +3,7 @@ package cache
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -695,5 +696,125 @@ func TestDynamoDBGetAllBlobsReadsConsistently(t *testing.T) {
 
 		_, err := driver.GetAllBlobs(godigest.FromString("missing"))
 		So(err, ShouldEqual, zerr.ErrCacheMiss)
+	})
+}
+
+// PutDuplicate must never create an origin, and ReplaceBlob must only move an origin that is
+// still the one the caller read.
+func TestDynamoDBPutDuplicateAndReplaceBlob(t *testing.T) {
+	digest := godigest.FromString("put-duplicate")
+
+	conditionFailed := scriptedDynamoResponse{http.StatusBadRequest,
+		`{"__type":"com.amazonaws.dynamodb.v20120810#ConditionalCheckFailedException","message":"failed"}`}
+
+	Convey("PutDuplicate adds the path only to a record that has an origin", t, func() {
+		driver, transport := newScriptedDynamoDriver(scriptedDynamoResponse{http.StatusOK, `{}`})
+
+		So(driver.PutDuplicate(digest, "/repo/copy"), ShouldBeNil)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem"})
+		So(transport.bodies[0], ShouldContainSubstring, "attribute_exists(OriginalBlobPath)")
+		So(transport.bodies[0], ShouldContainSubstring, "ADD DuplicateBlobPath")
+	})
+
+	Convey("PutDuplicate reports a cache miss when the record has no origin", t, func() {
+		driver, transport := newScriptedDynamoDriver(conditionFailed)
+
+		So(driver.PutDuplicate(digest, "/repo/copy"), ShouldEqual, zerr.ErrCacheMiss)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem"})
+	})
+
+	Convey("PutDuplicate rejects an empty path without calling DynamoDB", t, func() {
+		driver, transport := newScriptedDynamoDriver()
+
+		So(driver.PutDuplicate(digest, ""), ShouldEqual, zerr.ErrEmptyValue)
+		So(transport.targets, ShouldBeEmpty)
+	})
+
+	Convey("ReplaceBlob changes the origin conditionally", t, func() {
+		driver, transport := newScriptedDynamoDriver(scriptedDynamoResponse{http.StatusOK, `{}`})
+
+		So(driver.ReplaceBlob(digest, "/repo/origin", "/repo/copy"), ShouldBeNil)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem"})
+		So(transport.bodies[0], ShouldContainSubstring, "OriginalBlobPath = :old")
+		So(transport.bodies[0], ShouldContainSubstring, "contains(DuplicateBlobPath, :new)")
+	})
+
+	Convey("ReplaceBlob reports a conflict when the record has changed", t, func() {
+		driver, _ := newScriptedDynamoDriver(conditionFailed)
+
+		So(driver.ReplaceBlob(digest, "/repo/origin", "/repo/copy"), ShouldEqual, zerr.ErrCacheConflict)
+	})
+
+	Convey("ReplaceBlob rejects empty paths without calling DynamoDB", t, func() {
+		driver, transport := newScriptedDynamoDriver()
+
+		So(driver.ReplaceBlob(digest, "", "/repo/copy"), ShouldEqual, zerr.ErrEmptyValue)
+		So(driver.ReplaceBlob(digest, "/repo/origin", ""), ShouldEqual, zerr.ErrEmptyValue)
+		So(transport.targets, ShouldBeEmpty)
+	})
+}
+
+// A digest shared by enough repositories fills its item. The driver reports that as ErrCacheFull,
+// so that the image store can keep a full copy instead of failing the request.
+func TestDynamoDBItemSizeLimit(t *testing.T) {
+	digest := godigest.FromString("item-size-limit")
+
+	itemTooLarge := scriptedDynamoResponse{http.StatusBadRequest,
+		`{"__type":"com.amazon.coral.validate#ValidationException",` +
+			`"message":"Item size to update has exceeded the maximum allowed size"}`}
+
+	otherValidationError := scriptedDynamoResponse{http.StatusBadRequest,
+		`{"__type":"com.amazon.coral.validate#ValidationException","message":"The provided key element is invalid"}`}
+
+	Convey("PutDuplicate reports a full record", t, func() {
+		driver, _ := newScriptedDynamoDriver(itemTooLarge)
+
+		err := driver.PutDuplicate(digest, "/repo/copy")
+		So(errors.Is(err, zerr.ErrCacheFull), ShouldBeTrue)
+	})
+
+	Convey("PutBlob reports a full record", t, func() {
+		driver, _ := newScriptedDynamoDriver(
+			scriptedDynamoResponse{http.StatusOK, `{"Item":{"OriginalBlobPath":{"S":"/repo/origin"},` +
+				`"DuplicateBlobPath":{"SS":["/repo/origin"]}}}`},
+			itemTooLarge)
+
+		err := driver.PutBlob(digest, "/repo/copy")
+		So(errors.Is(err, zerr.ErrCacheFull), ShouldBeTrue)
+	})
+
+	Convey("Other validation errors are not reported as a full record", t, func() {
+		driver, _ := newScriptedDynamoDriver(otherValidationError)
+
+		err := driver.PutDuplicate(digest, "/repo/copy")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrCacheFull), ShouldBeFalse)
+	})
+}
+
+// A write that fails for any reason other than its condition is returned as it is, and not
+// read as a miss or a conflict.
+func TestDynamoDBPutDuplicateAndReplaceBlobErrors(t *testing.T) {
+	digest := godigest.FromString("write-failure")
+
+	serverError := scriptedDynamoResponse{http.StatusInternalServerError,
+		`{"__type":"com.amazonaws.dynamodb.v20120810#InternalServerError","message":"internal"}`}
+
+	Convey("PutDuplicate returns a failed write", t, func() {
+		driver, transport := newScriptedDynamoDriver(serverError)
+
+		err := driver.PutDuplicate(digest, "/repo/copy")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrCacheMiss), ShouldBeFalse)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem"})
+	})
+
+	Convey("ReplaceBlob returns a failed write", t, func() {
+		driver, transport := newScriptedDynamoDriver(serverError)
+
+		err := driver.ReplaceBlob(digest, "/repo/origin", "/repo/copy")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrCacheConflict), ShouldBeFalse)
+		So(transport.targets, ShouldResemble, []string{"UpdateItem"})
 	})
 }
