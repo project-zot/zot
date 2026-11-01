@@ -2838,9 +2838,23 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 
 	lastEntry := q.Get("last")
 
-	maxEntries, err := strconv.Atoi(q.Get("n"))
-	if err != nil {
-		maxEntries = -1
+	maxEntries := -1
+
+	if nQuery, ok := request.URL.Query()["n"]; ok {
+		if len(nQuery) != 1 {
+			response.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		numRepos, err := strconv.Atoi(nQuery[0])
+		if err != nil || numRepos < 0 {
+			response.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		maxEntries = numRepos
 	}
 
 	// authz context
