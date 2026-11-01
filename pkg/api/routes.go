@@ -520,6 +520,12 @@ type ImageManifest struct {
 	ispec.Manifest
 }
 
+type previousTagManifest struct {
+	body      []byte
+	digest    godigest.Digest
+	mediaType string
+}
+
 type ExtensionList struct {
 	extensions.ExtensionList
 }
@@ -783,6 +789,8 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 // @Failure 503 {string} string "storage temporarily unavailable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [put].
+//
+//nolint:gocyclo // Handles manifest validation, storage, quota, metadata, and rollback paths.
 func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	name, ok := vars["name"]
@@ -886,6 +894,32 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	var previousTag *previousTagManifest
+
+	if rh.c.MetaDB != nil && len(digestQueryTags) == 0 && !zcommon.IsDigest(reference) &&
+		!zcommon.IsReferrersTag(reference) {
+		previousBody, previousDigest, previousMediaType, previousErr := imgStore.GetImageManifest(name, reference)
+		switch {
+		case previousErr == nil:
+			previousTag = &previousTagManifest{
+				body:      previousBody,
+				digest:    previousDigest,
+				mediaType: previousMediaType,
+			}
+		case errors.Is(previousErr, zerr.ErrManifestNotFound), errors.Is(previousErr, zerr.ErrRepoNotFound):
+			// The tag is new, so there is no prior state to restore.
+		default:
+			rh.c.Log.Error().Err(previousErr).Str("repository", name).Str("reference", reference).
+				Msg("failed to snapshot existing manifest before tag overwrite")
+
+			if !writeStorageClassError(response, previousErr) {
+				response.WriteHeader(http.StatusInternalServerError)
+			}
+
+			return
+		}
+	}
+
 	digest, subjectDigest, err := imgStore.PutImageManifest(ctx, name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
 		rh.writePutImageManifestError(response, name, reference, err)
@@ -906,6 +940,20 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			err := meta.OnUpdateManifest(request.Context(), name, reference, mediaType,
 				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 			if err != nil {
+				if previousTag != nil {
+					_, _, restoreErr := imgStore.PutImageManifest(ctx, name, previousTag.digest.String(),
+						previousTag.mediaType, previousTag.body, []string{reference})
+					if restoreErr != nil {
+						rh.c.Log.Error().Err(restoreErr).Str("repository", name).Str("reference", reference).
+							Msg("failed to restore previous manifest after MetaDB update failure")
+					} else if restoreMetaErr := meta.SetImageMetaFromInput(request.Context(), name, reference,
+						previousTag.mediaType, previousTag.digest, previousTag.body, imgStore,
+						rh.c.MetaDB, rh.c.Log); restoreMetaErr != nil {
+						rh.c.Log.Error().Err(restoreMetaErr).Str("repository", name).Str("reference", reference).
+							Msg("failed to restore previous MetaDB manifest after update failure")
+					}
+				}
+
 				response.WriteHeader(http.StatusInternalServerError)
 
 				return

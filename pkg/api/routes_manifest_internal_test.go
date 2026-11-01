@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +27,33 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	image "zotregistry.dev/zot/v2/pkg/test/image-utils"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
+
+type failingManifestMetaDB struct {
+	mTypes.MetaDB
+
+	failDigest       godigest.Digest
+	failRef          string
+	failErr          error
+	commitBeforeFail bool
+}
+
+func (db *failingManifestMetaDB) SetRepoReference(ctx context.Context, repo, reference string,
+	imageMeta mTypes.ImageMeta, opts ...mTypes.SetRepoReferenceOption,
+) error {
+	if repo == "repo" && reference == db.failRef && imageMeta.Digest == db.failDigest {
+		if db.commitBeforeFail {
+			if err := db.MetaDB.SetRepoReference(ctx, repo, reference, imageMeta, opts...); err != nil {
+				return err
+			}
+		}
+
+		return db.failErr
+	}
+
+	return db.MetaDB.SetRepoReference(ctx, repo, reference, imageMeta, opts...)
+}
 
 func TestWritePutImageManifestErrorMissingBlob(t *testing.T) {
 	t.Parallel()
@@ -238,4 +265,101 @@ func TestManifestMutationsKeepMetaDBConsistent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestManifestMetaFailureRestoresPreviousTag(t *testing.T) {
+	rootDir := t.TempDir()
+	logger := log.NewTestLogger()
+	store := local.NewImageStore(rootDir, false, false, logger,
+		monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+	driver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, driver.Close()) })
+	metaDB, err := boltdb.New(driver, logger)
+	require.NoError(t, err)
+
+	controller := &Controller{
+		Config:          config.New(),
+		Log:             logger,
+		MetaDB:          metaDB,
+		StoreController: storage.StoreController{DefaultStore: store},
+	}
+	handler := &RouteHandler{c: controller}
+
+	firstImage := image.CreateRandomImage()
+	secondImage := image.CreateRandomImage()
+	require.NoError(t, image.WriteImageToFileSystem(firstImage, "repo", firstImage.DigestStr(), controller.StoreController))
+	require.NoError(t, image.WriteImageToFileSystem(secondImage, "repo", secondImage.DigestStr(), controller.StoreController))
+
+	put := func(body []byte) *httptest.ResponseRecorder {
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodPut,
+			"/v2/repo/manifests/latest", bytes.NewReader(body))
+		request = mux.SetURLVars(request, map[string]string{"name": "repo", "reference": "latest"})
+		request.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
+
+		response := httptest.NewRecorder()
+		handler.UpdateManifest(response, request)
+
+		return response
+	}
+
+	firstBody, err := json.Marshal(firstImage.Manifest)
+	require.NoError(t, err)
+	secondBody, err := json.Marshal(secondImage.Manifest)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusCreated, put(firstBody).Code)
+
+	controller.MetaDB = &failingManifestMetaDB{
+		MetaDB:           metaDB,
+		failDigest:       secondImage.Digest(),
+		failRef:          "latest",
+		failErr:          errors.New("injected manifest MetaDB update failure"), //nolint:err113 // test sentinel
+		commitBeforeFail: true,
+	}
+
+	response := put(secondBody)
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+
+	_, storedDigest, _, err := store.GetImageManifest("repo", "latest")
+	require.NoError(t, err)
+	require.Equal(t, firstImage.Digest(), storedDigest)
+
+	repoMeta, err := metaDB.GetRepoMeta(t.Context(), "repo")
+	require.NoError(t, err)
+	require.Equal(t, firstImage.DigestStr(), repoMeta.Tags["latest"].Digest)
+}
+
+func TestManifestMetaSnapshotFailureSkipsStorageWrite(t *testing.T) {
+	snapshotErr := errors.New("failed to read previous manifest") //nolint:err113 // test sentinel
+	putCalled := false
+
+	controller := &Controller{
+		Config: config.New(),
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{},
+		StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetImageManifestFn: func(string, string) ([]byte, godigest.Digest, string, error) {
+				return nil, "", "", snapshotErr
+			},
+			PutImageManifestFn: func(context.Context, string, string, string, []byte, []string) (
+				godigest.Digest, godigest.Digest, error,
+			) {
+				putCalled = true
+
+				return "", "", nil
+			},
+		}},
+	}
+	handler := &RouteHandler{c: controller}
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPut,
+		"/v2/repo/manifests/latest", bytes.NewReader([]byte(`{"schemaVersion":2}`)))
+	request = mux.SetURLVars(request, map[string]string{"name": "repo", "reference": "latest"})
+	request.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
+	response := httptest.NewRecorder()
+
+	handler.UpdateManifest(response, request)
+
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	require.False(t, putCalled)
 }
