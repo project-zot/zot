@@ -20,6 +20,28 @@ function wait_str() {
     return 1
 }
 
+# Waits for a fixed string to appear in a log at or after start_line, so a
+# test only matches entries it caused, not ones from earlier tests that
+# share the same zot log.
+# Args: $1 = log file, $2 = start line, $3 = expected string, $4 = timeout seconds (default 30)
+function wait_for_log_entry() {
+    local log_file="$1"
+    local start_line="$2"
+    local expected="$3"
+    local deadline=$((SECONDS + ${4:-30}))
+
+    while [ "${SECONDS}" -lt "${deadline}" ]; do
+        if tail -n +"${start_line}" "${log_file}" | grep -Fq "${expected}"; then
+            return 0
+        fi
+        sleep 0.5
+    done
+
+    echo "did not find '${expected}' in ${log_file}" >&3
+    tail -n 100 "${log_file}" >&3
+    return 1
+}
+
 function wait_file() {
     local file="$1"; shift
     local wait_seconds="${1:-60}"; shift
