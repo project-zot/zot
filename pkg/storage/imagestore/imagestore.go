@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -1120,6 +1121,102 @@ func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference s
 	}
 
 	return nil
+}
+
+// RetagManifest attaches reference to an existing digest in the repository index.
+// Used to restore a tag after a failed MetaDB update that followed a tag overwrite.
+func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, digest godigest.Digest) error {
+	if err := is.statRepoDir(repo); err != nil {
+		return err
+	}
+
+	if reference == "" || digest == "" {
+		return zerr.ErrBadManifest
+	}
+
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
+	index, err := common.GetIndex(is, repo, is.log)
+	if err != nil {
+		return err
+	}
+
+	// Pick an index row for digest to clone as the restored tag.
+	// Prefer an untagged row (the usual leftover after a tag overwrite) so we do not
+	// copy annotations from another tag that already points at the same digest.
+	var (
+		found         ispec.Descriptor // first matching row; used if no untagged row exists
+		foundUntagged ispec.Descriptor // untagged matching row, when present
+		haveMatch     bool             // any row with this digest
+		haveUntagged  bool             // specifically an untagged row with this digest
+	)
+
+	for _, manifest := range index.Manifests {
+		if manifest.Digest != digest {
+			continue
+		}
+
+		if !haveMatch {
+			found = manifest
+			haveMatch = true
+		}
+
+		_, hasTag := manifest.Annotations[ispec.AnnotationRefName]
+		if !hasTag {
+			foundUntagged = manifest
+			haveUntagged = true
+
+			break
+		}
+	}
+
+	if haveUntagged {
+		found = foundUntagged
+	}
+
+	if !haveMatch {
+		return zerr.ErrManifestNotFound
+	}
+
+	// Drop any current descriptor that already owns this tag name.
+	for midx := 0; midx < len(index.Manifests); {
+		manifest := index.Manifests[midx]
+		if tag, ok := manifest.Annotations[ispec.AnnotationRefName]; ok && tag == reference {
+			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+
+			continue
+		}
+
+		midx++
+	}
+
+	// Drop untagged rows for this digest so the index matches a normal tagged push.
+	for midx := 0; midx < len(index.Manifests); {
+		manifest := index.Manifests[midx]
+		_, hasTag := manifest.Annotations[ispec.AnnotationRefName]
+		if !hasTag && manifest.Digest == digest {
+			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+
+			continue
+		}
+
+		midx++
+	}
+
+	tagged := found
+	if tagged.Annotations == nil {
+		tagged.Annotations = map[string]string{}
+	} else {
+		tagged.Annotations = maps.Clone(tagged.Annotations)
+	}
+
+	tagged.Annotations[ispec.AnnotationRefName] = reference
+	index.Manifests = append(index.Manifests, tagged)
+
+	return is.PutIndexContent(repo, index)
 }
 
 func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
