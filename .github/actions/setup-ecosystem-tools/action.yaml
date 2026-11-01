@@ -31,6 +31,10 @@ inputs:
     description: 'Install valkey-tools (redis scale-out / redis bats helpers)'
     required: false
     default: 'false'
+  with-mitmproxy:
+    description: 'Install mitmproxy for eMudhra CA distrust tests'
+    required: false
+    default: 'false'
 runs:
   using: "composite"
   steps:
@@ -49,7 +53,20 @@ runs:
         if [ "${{ inputs.with-npm }}" = "true" ]; then
           pkgs+=(npm)
         fi
+        if [ "${{ inputs.with-mitmproxy }}" = "true" ]; then
+          pkgs+=(python3-venv netcat-openbsd)
+        fi
         sudo apt-get install -y "${pkgs[@]}"
+
+    - name: Install mitmproxy
+      if: ${{ inputs.with-mitmproxy == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -m venv "${RUNNER_TEMP}/mitmproxy"
+        "${RUNNER_TEMP}/mitmproxy/bin/python" -m pip install "mitmproxy==12.3.0"
+        "${RUNNER_TEMP}/mitmproxy/bin/mitmdump" --version
+        echo "${RUNNER_TEMP}/mitmproxy/bin" >> "$GITHUB_PATH"
 
     - name: Install CRI-O
       if: ${{ inputs.with-crio == 'true' }}
