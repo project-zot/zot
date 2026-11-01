@@ -1497,6 +1497,7 @@ Configure each registry sync:
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"platforms": ["linux/amd64"],       # periodic sync default: sparse-copy these OS/arch[/variant] children; omit/empty = all. Overridden by content[].platforms when set. On-demand ignores both. Extra slash tokens beyond three are ignored by platform.Parse (not rejected).
 				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream. Requires onDemand.
+				"skipUpstreamIfLocal": false,       # serve a tag stored locally without checking it upstream; tags not stored locally are still synced on demand; with content rules, only the repos and tags they match. Requires onDemand.
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
@@ -1587,6 +1588,36 @@ local. Notes:
  - requests by digest are unaffected, a locally present digest is already served without contacting upstream
  - a local miss, for instance after garbage collection, always falls back to a normal sync
  - the last check time is kept in memory, so the first request after a restart checks upstream again
+
+### Sync's skipUpstreamIfLocal option
+
+For tags that never change once pushed, such as release versions, the upstream check of each
+on-demand request only adds latency, and fails when the upstream is unreachable.
+`skipUpstreamIfLocal` serves a tag stored locally without contacting upstream, and still syncs a tag
+that is not stored locally on demand:
+
+```
+			"registries": [{
+				"urls": ["https://registry-1.docker.io"],
+				"onDemand": true,
+				"skipUpstreamIfLocal": true,
+				"content": [{
+					"prefix": "rancher/**",
+					"tags": {"semver": true}
+				}]
+			}]
+```
+
+With content rules, it applies only to the repos they match and to the tags that pass their tag
+filters (`regex`, `excludeRegex`, `semver`); other tags, like `latest` above, are still checked
+upstream on each request. Without content rules, it applies to all tags. Notes:
+
+ - it requires `onDemand`, since it only affects on-demand requests, never periodic sync
+ - a tag that changes upstream is not updated while it is stored locally
+ - the tag filters only select which tags skip the check: on-demand sync applies content rules to
+   repos, not to tags
+ - unlike `onDemandInBackground`, which also serves local tags without checking upstream, a tag not
+   stored locally is synced before the request returns, so zot can be the client's only source
 
 ### On-demand sync in the background
 

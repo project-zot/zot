@@ -1800,6 +1800,16 @@ func validateRegistryManifestCheckInterval(regCfg syncconf.RegistryConfig) error
 	return nil
 }
 
+// validateRegistrySkipUpstreamIfLocal rejects skipUpstreamIfLocal without onDemand, as only
+// on-demand requests check tags upstream.
+func validateRegistrySkipUpstreamIfLocal(regCfg syncconf.RegistryConfig) error {
+	if regCfg.SkipUpstreamIfLocal && !regCfg.OnDemand {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "skipUpstreamIfLocal requires onDemand to be enabled")
+	}
+
+	return nil
+}
+
 // validateRegistryOnDemandInBackground rejects onDemandInBackground settings that cannot
 // take effect or conflict with blocking on-demand refresh semantics.
 func validateRegistryOnDemandInBackground(regCfg syncconf.RegistryConfig) error {
@@ -1963,6 +1973,13 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 			regCfg).Msg("invalid config for manifestCheckInterval")
 
 		return intervalValidationErr
+	}
+
+	if skipValidationErr := validateRegistrySkipUpstreamIfLocal(regCfg); skipValidationErr != nil {
+		logger.Error().Err(skipValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg("invalid config for skipUpstreamIfLocal")
+
+		return skipValidationErr
 	}
 
 	if streamValidationErr := validateRegistryStreamingSyncConfig(regCfg); streamValidationErr != nil {
