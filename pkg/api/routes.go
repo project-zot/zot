@@ -2153,6 +2153,8 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		// CheckBlob looks for the digest under dest first, then the dedupe cache; on a
 		// cache hit it hard-links into dest. On failure (or if canMount denied), fall
 		// through to a new blob upload.
+		// Mount requests carry only the digest (no Content-Length); skip blob-byte
+		// quota here and rely on the manifest gate.
 		if userCanMount {
 			_, _, err = imgStore.CheckBlob(ctx, name, mountDigest)
 		}
@@ -2251,6 +2253,10 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
+			return
+		}
+
+		if rh.checkRepoBlobQuota(response, request, name, digest, contentLength) {
 			return
 		}
 
@@ -2588,6 +2594,14 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 	var from, to int64
 
+	// Blob quota size comes only from this request's headers (no GetBlobUpload).
+	// Monolithic: Content-Length. Chunked: inclusive Content-Range end + 1.
+	// Finish with neither header (empty complete-after-PATCH): skip blob quota; manifest gate remains.
+	var (
+		blobQuotaSize     int64
+		haveBlobQuotaSize bool
+	)
+
 	if shouldPutBlobChunk {
 		contentLen, err := strconv.ParseInt(contentLenHeader, 10, 64)
 		if err != nil || contentLen < 0 {
@@ -2611,9 +2625,12 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 			if contentLen > 0 {
 				to = contentLen
+				blobQuotaSize = contentLen
+				haveBlobQuotaSize = true
 			} else {
-				// Zero-length monolithic upload (e.g. empty blob): skip
-				// PutBlobChunk and go straight to FinishBlobUpload below.
+				// Content-Length 0 is used both for empty blobs and for
+				// complete-after-PATCH (no body). Total size is not in this
+				// request; skip blob quota and rely on the manifest gate.
 				shouldPutBlobChunk = false
 			}
 		} else if from, to, err = getContentRange(request); err != nil { // finish chunked upload
@@ -2623,6 +2640,9 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
 
 			return
+		} else {
+			blobQuotaSize = to + 1
+			haveBlobQuotaSize = true
 		}
 	}
 
@@ -2666,6 +2686,17 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		}
 
 		return
+	}
+
+	if haveBlobQuotaSize {
+		if rh.checkRepoBlobQuota(response, request, name, digest, blobQuotaSize) {
+			if delErr := imgStore.DeleteBlobUpload(name, sessionID); delErr != nil {
+				rh.c.Log.Error().Err(delErr).Str("blobUpload", sessionID).Str("repository", name).
+					Msg("failed to remove blobUpload after quota reject")
+			}
+
+			return
+		}
 	}
 
 	// blob chunks already transferred, just finish

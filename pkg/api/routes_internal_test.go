@@ -198,6 +198,88 @@ func TestCheckRepoByteQuotaInvalidMetadataFailsClosed(t *testing.T) {
 	require.Contains(t, response.Body.String(), "repository size metadata is invalid")
 }
 
+func TestCheckRepoByteQuotaExceededMapsTo413(t *testing.T) {
+	conf := config.New()
+	conf.Storage.MaxRepoBytes = 15
+
+	controller := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetRepoSizeWithCandidateFn: func(context.Context, string, []string, mTypes.ImageMeta) (int64, int64, error) {
+				return 10, 20, nil
+			},
+		},
+		StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+	}
+	handler := &RouteHandler{c: controller}
+	body := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+		`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
+		`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
+		`"size":2},"layers":[]}`)
+	request := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/v1", nil)
+	response := httptest.NewRecorder()
+
+	rejected := handler.checkRepoByteQuota(response, request, "repo", "v1", ispec.MediaTypeImageManifest,
+		body, nil)
+
+	require.True(t, rejected)
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	require.Contains(t, response.Body.String(), `"current":"10"`)
+	require.Contains(t, response.Body.String(), `"projected":"20"`)
+	require.Contains(t, response.Body.String(), `"limit":"15"`)
+}
+
+func TestCheckRepoBlobQuotaRejectsGrowthAndAllowsReuse(t *testing.T) {
+	conf := config.New()
+	conf.Storage.MaxRepoBytes = 100
+	digest := godigest.FromString("quota-blob")
+
+	t.Run("rejects when size would exceed", func(t *testing.T) {
+		controller := &Controller{
+			Config: conf,
+			Log:    log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+					int64, int64, error,
+				) {
+					return 90, 110, nil
+				},
+			},
+			StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+		}
+		handler := &RouteHandler{c: controller}
+		request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/?digest="+digest.String(), nil)
+		response := httptest.NewRecorder()
+
+		rejected := handler.checkRepoBlobQuota(response, request, "repo", digest, 20)
+		require.True(t, rejected)
+		require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	})
+
+	t.Run("allows when digest already known (projected equals current)", func(t *testing.T) {
+		controller := &Controller{
+			Config: conf,
+			Log:    log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+					int64, int64, error,
+				) {
+					return 90, 90, nil
+				},
+			},
+			StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+		}
+		handler := &RouteHandler{c: controller}
+		request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+		response := httptest.NewRecorder()
+
+		rejected := handler.checkRepoBlobQuota(response, request, "repo", digest, 1000)
+		require.False(t, rejected)
+		require.Equal(t, http.StatusOK, response.Code)
+	})
+}
+
 func TestDeleteManifestHoldsRepoByteQuotaLock(t *testing.T) {
 	conf := config.New()
 	conf.Storage.MaxRepoBytes = 1

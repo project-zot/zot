@@ -727,6 +727,33 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 			So(repoMeta.Size, ShouldEqual, firstSize)
 		})
 
+		Convey("GetRepoSizeWithBlobCandidate projects new digests and reuses known ones", func() {
+			repo := "blob-candidate-repo"
+			img := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+			imgMeta := img.AsImageMeta()
+			imgSize := img.ManifestDescriptor.Size + img.ConfigDescriptor.Size + 10
+
+			current, projected, err := metaDB.GetRepoSizeWithBlobCandidate(ctx, repo,
+				img.ManifestDescriptor.Digest, img.ManifestDescriptor.Size)
+			So(err, ShouldBeNil)
+			So(current, ShouldEqual, 0)
+			So(projected, ShouldEqual, img.ManifestDescriptor.Size)
+
+			So(metaDB.SetRepoReference(ctx, repo, "latest", imgMeta), ShouldBeNil)
+
+			current, projected, err = metaDB.GetRepoSizeWithBlobCandidate(ctx, repo,
+				img.ManifestDescriptor.Digest, img.ManifestDescriptor.Size)
+			So(err, ShouldBeNil)
+			So(current, ShouldEqual, imgSize)
+			So(projected, ShouldEqual, imgSize)
+
+			newLayer := godigest.FromString("new-layer-blob")
+			current, projected, err = metaDB.GetRepoSizeWithBlobCandidate(ctx, repo, newLayer, 50)
+			So(err, ShouldBeNil)
+			So(current, ShouldEqual, imgSize)
+			So(projected, ShouldEqual, imgSize+50)
+		})
+
 		Convey("Test SetRepoReference", func() {
 			var (
 				repo1 = "repo1"

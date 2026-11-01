@@ -114,6 +114,7 @@ var (
 	ErrImageMetaNotFound                = errors.New("image meta not found")
 	ErrInvalidRepoSize                  = errors.New("invalid repository size")
 	ErrInvalidRepoSizeCandidate         = errors.New("invalid repository size candidate")
+	ErrRepoByteQuotaExceeded            = errors.New("repository byte quota exceeded")
 	ErrUnexpectedMediaType              = errors.New("unexpected media type")
 	ErrRepoMetaNotFound                 = errors.New("repo metadata not found for given repo name")
 	ErrTagMetaNotFound                  = errors.New("tag metadata not found for given repo and tag names")

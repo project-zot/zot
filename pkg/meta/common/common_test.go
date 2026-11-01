@@ -838,3 +838,44 @@ func TestProjectRepoSizeReconcilesExistingBlobSizes(t *testing.T) {
 		So(repoBlobs.Blobs[layerDigest.String()].Size, ShouldEqual, 30)
 	})
 }
+
+func TestEnforceByteQuota(t *testing.T) {
+	Convey("EnforceByteQuota", t, func() {
+		So(common.EnforceByteQuota(100, 150, 0), ShouldBeNil)
+		So(common.EnforceByteQuota(100, 90, 50), ShouldBeNil)
+		So(common.EnforceByteQuota(100, 100, 50), ShouldBeNil)
+		So(common.EnforceByteQuota(100, 80, 50), ShouldBeNil)
+		So(common.EnforceByteQuota(100, 120, 150), ShouldBeNil)
+
+		err := common.EnforceByteQuota(100, 200, 150)
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrRepoByteQuotaExceeded), ShouldBeTrue)
+		So(zerr.GetDetails(err)["current"], ShouldEqual, "100")
+		So(zerr.GetDetails(err)["projected"], ShouldEqual, "200")
+		So(zerr.GetDetails(err)["limit"], ShouldEqual, "150")
+	})
+}
+
+func TestProjectRepoSizeWithBlob(t *testing.T) {
+	Convey("ProjectRepoSizeWithBlob", t, func() {
+		known := godigest.FromString("known")
+		repoBlobs := &proto_go.RepoBlobs{
+			Blobs: map[string]*proto_go.BlobInfo{
+				known.String(): {Size: 10},
+			},
+		}
+
+		current, projected, err := common.ProjectRepoSizeWithBlob(100, repoBlobs, known, 999)
+		So(err, ShouldBeNil)
+		So(current, ShouldEqual, 100)
+		So(projected, ShouldEqual, 100)
+
+		current, projected, err = common.ProjectRepoSizeWithBlob(100, repoBlobs, godigest.FromString("new"), 25)
+		So(err, ShouldBeNil)
+		So(current, ShouldEqual, 100)
+		So(projected, ShouldEqual, 125)
+
+		_, _, err = common.ProjectRepoSizeWithBlob(100, repoBlobs, godigest.FromString("bad"), -1)
+		So(errors.Is(err, zerr.ErrInvalidRepoSizeCandidate), ShouldBeTrue)
+	})
+}
