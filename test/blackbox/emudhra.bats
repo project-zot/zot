@@ -129,8 +129,12 @@ function teardown_file() {
         "docker://127.0.0.1:${zot_port}/emudhra:latest"
     [ "${status}" -eq 0 ]
 
+    # The per-sink failure record is the one that carries the TLS error; the
+    # "event publish failed" summary has no error field.
+    wait_for_log_record "${log_file}" "${start_line}" \
+        '.message == "failed to publish event" and
+         ((.error // "") | contains("certificate signed by unknown authority"))'
     wait_for_log_entry "${log_file}" "${start_line}" "event publish failed"
-    wait_for_log_entry "${log_file}" "${start_line}" "certificate signed by unknown authority"
 }
 
 @test "upstream sync rejects a certificate signed by the eMudhra CA" {
@@ -146,6 +150,12 @@ function teardown_file() {
         "http://127.0.0.1:${zot_port}/v2/upstream-emudhra/manifests/latest")
     [ "${status_code}" = "503" ]
 
-    wait_for_log_entry "${log_file}" "${start_line}" "on-demand image sync failed"
-    wait_for_log_entry "${log_file}" "${start_line}" "certificate signed by unknown authority"
+    # Match the TLS error on the sync failure record itself: the event sink
+    # also fails TLS, asynchronously, so a separate search for the TLS error
+    # could match a late event-publish record while the 503 came from
+    # something else (e.g. the proxy failing to reach its backend).
+    wait_for_log_record "${log_file}" "${start_line}" \
+        '.message == "on-demand image sync failed" and
+         .repo == "upstream-emudhra" and .reference == "latest" and
+         ((.error // "") | contains("certificate signed by unknown authority"))'
 }

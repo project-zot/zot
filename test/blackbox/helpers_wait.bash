@@ -42,6 +42,31 @@ function wait_for_log_entry() {
     return 1
 }
 
+# Like wait_for_log_entry, but matches one JSON log record against a jq
+# predicate, so fields that must appear together (message, error, repo...) are
+# checked on the same record instead of anywhere in the log. Non-JSON lines are
+# skipped.
+# Args: $1 = log file, $2 = start line, $3 = jq predicate, $4 = timeout seconds (default 30)
+function wait_for_log_record() {
+    local log_file="$1"
+    local start_line="$2"
+    local predicate="$3"
+    local deadline=$((SECONDS + ${4:-30}))
+
+    while [ "${SECONDS}" -lt "${deadline}" ]; do
+        # -e: exit 0 only if select() emitted a record.
+        if tail -n +"${start_line}" "${log_file}" |
+            jq -R -e "fromjson? | select(${predicate})" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.5
+    done
+
+    echo "no log record in ${log_file} matched: ${predicate}" >&3
+    tail -n 100 "${log_file}" >&3
+    return 1
+}
+
 function wait_file() {
     local file="$1"; shift
     local wait_seconds="${1:-60}"; shift
