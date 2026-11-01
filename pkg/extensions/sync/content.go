@@ -94,12 +94,17 @@ func (cm ContentManager) FilterTags(repo string, tags []string) ([]string, error
 	return tags, nil
 }
 
-// MatchesTagFilters reports whether tag passes the tag rules (regex, excludeRegex, semver) of the
-// content matching the upstream repo. Unlike FilterTags it doesn't log, since it runs on every
-// on-demand request; a rule that fails to compile (rejected when the config loads) never matches.
-func (cm ContentManager) MatchesTagFilters(repo, tag string) bool {
-	content := cm.getContentByUpstreamRepo(repo)
-	if content == nil || content.Tags == nil {
+// MatchesTagFilters reports whether the local repo matches a content rule and tag passes that
+// rule's tag filters (regex, excludeRegex, semver). Unlike FilterTags it doesn't log, since it runs
+// on every on-demand request; a rule that fails to compile (rejected when the config loads) never
+// matches.
+func (cm ContentManager) MatchesTagFilters(localRepo, tag string) bool {
+	content := cm.GetContentByLocalRepo(localRepo)
+	if content == nil {
+		return false
+	}
+
+	if content.Tags == nil {
 		return true
 	}
 

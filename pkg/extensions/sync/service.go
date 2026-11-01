@@ -390,12 +390,7 @@ func (service *BaseService) skipsUpstreamCheck(repo, reference string) bool {
 		return true
 	}
 
-	remoteRepo := service.contentManager.GetRepoSource(repo)
-	if remoteRepo == "" {
-		return false
-	}
-
-	return service.contentManager.MatchesTagFilters(remoteRepo, reference)
+	return service.contentManager.MatchesTagFilters(repo, reference)
 }
 
 // IsOnDemandInBackgroundForRepo reports whether this registry should use
