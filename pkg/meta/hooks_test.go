@@ -460,6 +460,44 @@ func TestOnUpdateManifest_setRepoReferenceFailsKeepsExistingProtectedManifest(t 
 	})
 }
 
+func TestOnUpdateManifest_setRepoReferenceFailsKeepsProtectedManifestWhenRepoMetaLookupFails(t *testing.T) {
+	Convey("OnUpdateManifest preserves a protected tag when prior metadata cannot be read", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		matcher, err := protectedtags.Compile(protectedtags.Config{Exact: []string{"prod"}})
+		So(err, ShouldBeNil)
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil, matcher)
+
+		image := CreateDefaultImage()
+		mediaType := image.ManifestDescriptor.MediaType
+		if mediaType == "" {
+			mediaType = ispec.MediaTypeImageManifest
+		}
+
+		err = WriteImageToFileSystem(image, "repo", "prod", storeController)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{
+			GetRepoMetaFn: func(context.Context, string) (mTypes.RepoMeta, error) {
+				return mTypes.RepoMeta{}, errGetRepoMetaForDigestTags
+			},
+			SetRepoReferenceFn: func(context.Context, string, string, mTypes.ImageMeta) error {
+				return errSetRepoRefForHookTest
+			},
+		}
+
+		err = meta.OnUpdateManifest(context.Background(), "repo", "prod", mediaType, image.Digest(),
+			image.ManifestDescriptor.Data, storeController, metaDB, log)
+		So(errors.Is(err, errSetRepoRefForHookTest), ShouldBeTrue)
+
+		_, _, _, err = storeController.GetImageStore("repo").GetImageManifest("repo", "prod")
+		So(err, ShouldBeNil)
+	})
+}
+
 func TestOnUpdateManifestDigestTags_rollbackKeepsExistingProtectedTag(t *testing.T) {
 	Convey("digest tag rollback keeps an existing protected tag with the same digest", t, func() {
 		rootDir := t.TempDir()

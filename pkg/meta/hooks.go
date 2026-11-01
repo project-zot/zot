@@ -177,7 +177,15 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 	if err != nil {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
-		if tagAlreadyPointsToDigest(ctx, metaDB, repo, reference, digest) {
+		tagAlreadyPoints, lookupErr := tagAlreadyPointsToDigest(ctx, metaDB, repo, reference, digest)
+		if lookupErr != nil {
+			log.Error().Err(lookupErr).Str("tag", reference).Str("repository", repo).
+				Msg("failed to inspect existing tag after metadata failure; leaving image store unchanged")
+
+			return err
+		}
+
+		if tagAlreadyPoints {
 			return err
 		}
 
@@ -200,19 +208,23 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 
 func tagAlreadyPointsToDigest(ctx context.Context, metaDB mTypes.MetaDB, repo, reference string,
 	digest godigest.Digest,
-) bool {
+) (bool, error) {
 	if zcommon.IsDigest(reference) {
-		return false
+		return false, nil
 	}
 
 	repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
 	if err != nil {
-		return false
+		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			return false, nil
+		}
+
+		return false, err
 	}
 
 	desc, ok := repoMeta.Tags[reference]
 
-	return ok && desc.Digest == digest.String()
+	return ok && desc.Digest == digest.String(), nil
 }
 
 // OnUpdateManifestDigestTags updates metadb for each tag from a digest-addressed manifest push that used

@@ -169,6 +169,16 @@ func (gc GarbageCollect) isProtectedDescriptor(desc ispec.Descriptor) bool {
 	return ok && gc.opts.ProtectedTags != nil && gc.opts.ProtectedTags.Matches(tag)
 }
 
+func (gc GarbageCollect) hasProtectedUnknownMediaType(index ispec.Index) bool {
+	for _, desc := range index.Manifests {
+		if gc.isProtectedDescriptor(desc) && !isKnownManifestMediaType(desc.MediaType) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	// removeUnreferencedBlobs deletes blobs one at a time, and with dedupe each delete may
 	// move or remove content other repositories link to; the store knows what that takes.
@@ -268,10 +278,18 @@ func (gc GarbageCollect) cleanRepoLocked(ctx context.Context, repo string) error
 			return err
 		}
 
-		// delete unreferenced blobs from storage
-		blobsDeleted, err = gc.deleteUnreferencedBlobs(ctx, repo, gc.opts.Delay, gc.log)
-		if err != nil {
-			return err
+		// An unknown protected media type may contain config and layer references that
+		// GC cannot safely traverse. Keep the whole blob set until the descriptor can
+		// be interpreted, rather than deleting dependencies behind the protected tag.
+		if gc.hasProtectedUnknownMediaType(index) {
+			gc.log.Warn().Str("module", "gc").Str("repository", repo).
+				Msg("skipping orphan blob cleanup while a protected unknown media type is present")
+		} else {
+			// delete unreferenced blobs from storage
+			blobsDeleted, err = gc.deleteUnreferencedBlobs(ctx, repo, gc.opts.Delay, gc.log)
+			if err != nil {
+				return err
+			}
 		}
 
 		/* remove the repo layout once nothing is left: no manifests, no blobs, no uploads.

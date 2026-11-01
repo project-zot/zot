@@ -755,6 +755,35 @@ func TestStorageRejectsConflictingProtectedTagsForSharedRoot(t *testing.T) {
 	})
 }
 
+func TestStorageRejectsConflictingProtectedTagsForSharedRemoteTarget(t *testing.T) {
+	Convey("shared remote storage targets cannot use different protected tag rules", t, func() {
+		conf := config.New()
+		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.StorageDriver = map[string]any{
+			"name":           "s3",
+			"bucket":         "shared-bucket",
+			"rootdirectory":  "/zot",
+			"regionendpoint": "http://localhost:4566",
+		}
+		conf.Storage.ProtectedTags = protectedtags.Config{Exact: []string{"prod"}}
+		conf.Storage.SubPaths = map[string]config.StorageConfig{
+			"/team": {
+				RootDirectory: t.TempDir(),
+				StorageDriver: map[string]any{
+					"name":           "s3",
+					"bucket":         "shared-bucket",
+					"rootdirectory":  "/zot",
+					"regionendpoint": "http://localhost:4566",
+				},
+				ProtectedTags: protectedtags.Config{Exact: []string{"release"}},
+			},
+		}
+
+		_, err := storage.New(conf, nil, nil, zlog.NewTestLogger(), nil)
+		So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+	})
+}
+
 // TestTagOverwriteRetainsDigestAccess covers issue #4444: overwriting the last tag that
 // references a digest must leave that digest pullable (same as delete-by-tag).
 func TestTagOverwriteRetainsDigestAccess(t *testing.T) {

@@ -172,6 +172,49 @@ func TestProtectedTagRetention(t *testing.T) {
 	})
 }
 
+func TestProtectedUnknownMediaTypeSkipsBlobCleanup(t *testing.T) {
+	Convey("protected unknown media types keep their dependent blobs", t, func() {
+		matcher, err := protectedtags.Compile(protectedtags.Config{Exact: []string{"prod"}})
+		So(err, ShouldBeNil)
+
+		manifestDigest := godigest.FromString("protected-unknown-manifest")
+		configDigest := godigest.FromString("protected-unknown-config")
+		layerDigest := godigest.FromString("protected-unknown-layer")
+		index := ispec.Index{Manifests: []ispec.Descriptor{
+			{
+				Digest:    manifestDigest,
+				MediaType: "application/vnd.unknown.manifest",
+				Annotations: map[string]string{
+					ispec.AnnotationRefName: "prod",
+				},
+			},
+		}}
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		cleanupCalled := false
+		imgStore := mocks.MockedImageStore{
+			GetIndexContentFn: func(string) ([]byte, error) {
+				return indexBuf, nil
+			},
+			GetAllBlobsFn: func(string) ([]godigest.Digest, error) {
+				return []godigest.Digest{manifestDigest, configDigest, layerDigest}, nil
+			},
+			CleanupRepoFn: func(string, []godigest.Digest) (int, error) {
+				cleanupCalled = true
+
+				return 0, nil
+			},
+		}
+
+		gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, Options{ProtectedTags: matcher}, nil,
+			zlog.NewTestLogger(), monitoring.NewNopMetricServer())
+
+		So(gc.cleanRepo(context.Background(), "repo"), ShouldBeNil)
+		So(cleanupCalled, ShouldBeFalse)
+	})
+}
+
 func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 	trueVal := true
 
