@@ -22,6 +22,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	"zotregistry.dev/zot/v2/pkg/retention"
 	rTypes "zotregistry.dev/zot/v2/pkg/retention/types"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
@@ -55,6 +56,9 @@ type Options struct {
 	// StagingRoot is the local filesystem root whose <repo>/.sync/<uuid> trees block
 	// idle-repository removal during GC for this image store. Populated by RunGCTasks.
 	StagingRoot string
+
+	// ProtectedTags prevents GC from removing or retargeting protected tag rows.
+	ProtectedTags *protectedtags.Matcher
 }
 
 type GarbageCollect struct {
@@ -159,6 +163,22 @@ func (gc GarbageCollect) memo(repo string) *common.WalkMemo {
 	return nil
 }
 
+func (gc GarbageCollect) isProtectedDescriptor(desc ispec.Descriptor) bool {
+	tag, ok := getDescriptorTag(desc)
+
+	return ok && gc.opts.ProtectedTags != nil && gc.opts.ProtectedTags.Matches(tag)
+}
+
+func (gc GarbageCollect) hasProtectedUnknownMediaType(index ispec.Index) bool {
+	for _, desc := range index.Manifests {
+		if gc.isProtectedDescriptor(desc) && !isKnownManifestMediaType(desc.MediaType) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	// removeUnreferencedBlobs deletes blobs one at a time, and with dedupe each delete may
 	// move or remove content other repositories link to; the store knows what that takes.
@@ -258,10 +278,18 @@ func (gc GarbageCollect) cleanRepoLocked(ctx context.Context, repo string) error
 			return err
 		}
 
-		// delete unreferenced blobs from storage
-		blobsDeleted, err = gc.deleteUnreferencedBlobs(ctx, repo, gc.opts.Delay, gc.log)
-		if err != nil {
-			return err
+		// An unknown protected media type may contain config and layer references that
+		// GC cannot safely traverse. Keep the whole blob set until the descriptor can
+		// be interpreted, rather than deleting dependencies behind the protected tag.
+		if gc.hasProtectedUnknownMediaType(index) {
+			gc.log.Warn().Str("module", "gc").Str("repository", repo).
+				Msg("skipping orphan blob cleanup while a protected unknown media type is present")
+		} else {
+			// delete unreferenced blobs from storage
+			blobsDeleted, err = gc.deleteUnreferencedBlobs(ctx, repo, gc.opts.Delay, gc.log)
+			if err != nil {
+				return err
+			}
 		}
 
 		/* remove the repo layout once nothing is left: no manifests, no blobs, no uploads.
@@ -315,6 +343,12 @@ func (gc GarbageCollect) removeUnknownMediaTypeManifestEntries(repo string, inde
 	kept := make([]ispec.Descriptor, 0, len(index.Manifests))
 
 	for _, desc := range index.Manifests {
+		if gc.isProtectedDescriptor(desc) {
+			kept = append(kept, desc)
+
+			continue
+		}
+
 		if isKnownManifestMediaType(desc.MediaType) {
 			kept = append(kept, desc)
 
@@ -368,6 +402,12 @@ func (gc GarbageCollect) removeStaleManifestEntries(repo string, index *ispec.In
 	kept := make([]ispec.Descriptor, 0, len(index.Manifests))
 
 	for _, desc := range index.Manifests {
+		if gc.isProtectedDescriptor(desc) {
+			kept = append(kept, desc)
+
+			continue
+		}
+
 		if !existingBlobs[desc.Digest.String()] {
 			missing, err := gc.confirmBlobMissing(repo, desc.Digest)
 			if err != nil {
@@ -986,6 +1026,10 @@ func (gc GarbageCollect) removeManifestIfOlderThan(repo string, index *ispec.Ind
 func (gc GarbageCollect) removeManifest(repo string, index *ispec.Index,
 	desc ispec.Descriptor, reference string, signatureType string, subjectDigest godigest.Digest,
 ) (bool, error) {
+	if gc.isProtectedDescriptor(desc) {
+		return false, nil
+	}
+
 	_, err := common.RemoveManifestDescByReference(index, reference, true)
 	if err != nil {
 		if errors.Is(err, zerr.ErrManifestConflict) || errors.Is(err, zerr.ErrManifestNotFound) {

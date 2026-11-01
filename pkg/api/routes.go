@@ -773,6 +773,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 // @Header  201 {string} OCI-Tag "Echoed tag= value; this header is repeatable (one field per tag= query parameter)"
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
+// @Failure 409 {string} string "protected tag conflict"
 // @Failure 413 {string} string "request entity too large"
 // @Failure 414 {string} string "too many tag query parameters"
 // @Failure 503 {string} string "storage temporarily unavailable"
@@ -877,6 +878,21 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 
+	storePath := rh.c.StoreController.GetStorePath(name)
+	if rh.c.MetaDB != nil && rh.c.Config.MaxRepoBytesForStore(storePath) > 0 {
+		if checker, ok := imgStore.(interface {
+			CheckProtectedTagWrite(repo, reference, mediaType string, body []byte, extraTags []string) error
+		}); ok {
+			if err := checker.CheckProtectedTagWrite(name, reference, mediaType, body, digestQueryTags); errors.Is(
+				err, zerr.ErrProtectedTag,
+			) {
+				rh.writePutImageManifestError(response, name, reference, err)
+
+				return
+			}
+		}
+	}
+
 	if rh.checkRepoByteQuota(response, request, name, reference, mediaType, body, digestQueryTags) {
 		return
 	}
@@ -946,6 +962,9 @@ func (rh *RouteHandler) writePutImageManifestError(
 		details["reference"] = reference
 		e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrProtectedTag) {
+		e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusConflict, apiErr.NewErrorList(e))
 	} else if errors.Is(err, zerr.ErrManifestCacheLookup) {
 		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
 			Msg("failed to look up manifest cache before manifest write")
@@ -1095,6 +1114,9 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 			details["reference"] = reference
 			e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+		} else if errors.Is(err, zerr.ErrProtectedTag) {
+			e := apiErr.NewError(apiErr.DENIED).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusConflict, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrManifestConflict) {
 			details["reference"] = reference
 			e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)

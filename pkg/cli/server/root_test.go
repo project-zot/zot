@@ -475,6 +475,7 @@ func TestSchema(t *testing.T) {
 		So(ok, ShouldBeTrue)
 		storageProperties, ok := storageSchema["properties"].(map[string]any)
 		So(ok, ShouldBeTrue)
+		So(storageProperties, ShouldContainKey, "protectedTags")
 		So(storageProperties, ShouldContainKey, "rootDirectory")
 		So(storageProperties, ShouldContainKey, "maxRepoBytes")
 		So(storageProperties, ShouldContainKey, "gcDelay")
@@ -2999,6 +3000,24 @@ func TestServeAPIKey(t *testing.T) {
 }
 
 func TestLoadConfig(t *testing.T) {
+	Convey("Test protected tags config", t, func(c C) {
+		conf := config.New()
+		content := `{"storage":{"rootDirectory":"/tmp/zot","protectedTags":` +
+			`{"exact":["prod"],"wildcard":["release-*"],"regex":["^v[0-9]+\\.[0-9]+\\.[0-9]+$"]}},` +
+			`"http":{"port":"0"}}`
+		tmpfile := MakeTempFileWithContent(t, "protected-tags.json", content)
+
+		err := cli.LoadConfiguration(conf, tmpfile)
+		So(err, ShouldBeNil)
+		So(conf.Storage.ProtectedTags.Exact, ShouldResemble, []string{"prod"})
+		So(conf.Storage.ProtectedTags.Wildcard, ShouldResemble, []string{"release-*"})
+		So(conf.Storage.ProtectedTags.Regex, ShouldResemble, []string{`^v[0-9]+\.[0-9]+\.[0-9]+$`})
+
+		invalid := `{"storage":{"rootDirectory":"/tmp/zot","protectedTags":{"regex":["["]}},"http":{"port":"0"}}`
+		So(os.WriteFile(tmpfile, []byte(invalid), 0o0600), ShouldBeNil)
+		So(cli.LoadConfiguration(conf, tmpfile), ShouldNotBeNil)
+	})
+
 	Convey("Test viper load config", t, func(c C) {
 		config := config.New()
 		err := cli.LoadConfiguration(config, "../../../examples/config-policy.json")
