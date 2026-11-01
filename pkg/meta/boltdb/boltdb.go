@@ -31,6 +31,7 @@ type BoltDB struct {
 	DB            *bbolt.DB
 	Patches       []func(DB *bbolt.DB) error
 	imgTrustStore mTypes.ImageTrustStore
+	quotaLimits   mTypes.QuotaLimits
 	Log           log.Logger
 }
 
@@ -116,6 +117,10 @@ func (bdw *BoltDB) CountRepos(_ context.Context) (int, error) {
 	})
 
 	return count, err
+}
+
+func (bdw *BoltDB) SetQuotaLimits(limits mTypes.QuotaLimits) {
+	bdw.quotaLimits = limits
 }
 
 func (bdw *BoltDB) GetRepoLastUpdated(repo string) time.Time {
@@ -217,7 +222,8 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 		}
 
 		protoRepoMeta, err := getProtoRepoMeta(repo, repoBuck)
-		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+		isNewRepo := errors.Is(err, zerr.ErrRepoMetaNotFound)
+		if err != nil && !isNewRepo {
 			return err
 		}
 
@@ -253,28 +259,8 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 			protoRepoMeta.Referrers[subject.Digest.String()] = refInfo
 		}
 
-		// 3. Update tag
-		if !common.ReferenceIsDigest(reference) {
-			// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
-			// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
-			var taggedTimestamp *timestamppb.Timestamp
-			if existingTag, exists := protoRepoMeta.Tags[reference]; exists {
-				// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
-				if existingTag.GetTaggedTimestamp() != nil {
-					taggedTimestamp = existingTag.GetTaggedTimestamp()
-				}
-				// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
-			} else {
-				// New tag - set timestamp to now
-				taggedTimestamp = timestamppb.Now()
-			}
-			protoRepoMeta.Tags[reference] = &proto_go.TagDescriptor{
-				Digest:          imageMeta.Digest.String(),
-				MediaType:       imageMeta.MediaType,
-				TaggedTimestamp: taggedTimestamp,
-			}
-		}
-
+		// 3. Statistics / signature / referrer placeholders (before tag mutation so quota
+		// projection sees the pre-update tag set).
 		digestStr := imageMeta.Digest.String()
 		stats, ok := protoRepoMeta.Statistics[digestStr]
 
@@ -315,6 +301,27 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 		if err != nil {
 			return err
 		}
+
+		// 5. Check quotas against the final tag set before mutating Tags
+		tagRefs := common.TagReferencesForQuota(reference, options.ExtraTags)
+
+		repoCount := 0
+		if isNewRepo && bdw.quotaLimits.MaxRepos > 0 {
+			repoCount = repoBuck.Stats().KeyN
+		}
+
+		if err := common.CheckRepoQuotasBeforeUpdate(bdw.quotaLimits, repo, isNewRepo,
+			repoCount, repoBlobs, imageMeta); err != nil {
+			return err
+		}
+
+		if err := common.EnforceProjectedByteQuota(bdw.quotaLimits, repo, protoRepoMeta, repoBlobs,
+			tagRefs, imageMeta); err != nil {
+			return err
+		}
+
+		// 6. Apply tags and persist the candidate size
+		common.ApplyTagReferences(protoRepoMeta, imageMeta, tagRefs)
 
 		protoRepoMeta, repoBlobs = common.AddImageMetaToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta)
 
@@ -978,6 +985,10 @@ func (bdw *BoltDB) AddManifestSignature(repo string, signedManifestDigest godige
 		repoMetaBlob := repoMetaBuck.Get([]byte(repo))
 
 		if len(repoMetaBlob) == 0 {
+			if err := common.EnforceMaxRepos(true, repoMetaBuck.Stats().KeyN, bdw.quotaLimits.MaxRepos); err != nil {
+				return err
+			}
+
 			var err error
 			// create a new object
 			repoMeta := proto_go.RepoMeta{

@@ -56,6 +56,7 @@ type RedisDB struct {
 	FastRestartStampKey string
 	UserAPIKeysKey      string
 	LocksKey            string
+	quotaLimits         mTypes.QuotaLimits
 }
 
 type DBDriverParameters struct {
@@ -769,160 +770,196 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 		return err
 	}
 
-	err = rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
-		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
-		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			return err
+	// RepoCount is a process-wide lock: taking it on every SetRepoReference would serialize
+	// unrelated pushes to existing repos. Only creators need it for maxRepos. Peek without
+	// locks; if the repo looks missing, take count then repo (stable order). The loop below
+	// handles the rare case where peek saw an existing repo but under the repo-only lock it is
+	// gone (deleted) — we cannot upgrade to RepoCount while holding the repo lock, so release
+	// and retry with both.
+	lockKeys := []string{rc.getRepoLockKey(repo)}
+	holdsCountLock := false
+
+	if rc.quotaLimits.MaxRepos > 0 {
+		_, peekErr := rc.getProtoRepoMeta(ctx, repo)
+		if errors.Is(peekErr, zerr.ErrRepoMetaNotFound) {
+			lockKeys = []string{rc.getRepoCountLockKey(), rc.getRepoLockKey(repo)}
+			holdsCountLock = true
+		} else if peekErr != nil {
+			return peekErr
 		}
+	}
 
-		// 2. Referrers
-		if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
-			refInfo := &proto_go.ReferrersInfo{}
-			if protoRepoMeta.Referrers[subject.Digest.String()] != nil {
-				refInfo = protoRepoMeta.Referrers[subject.Digest.String()]
+	for {
+		err = rc.withRSLocks(ctx, lockKeys, func() error {
+			protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
+			isNewRepo := errors.Is(err, zerr.ErrRepoMetaNotFound)
+			if err != nil && !isNewRepo {
+				return err
 			}
 
-			foundReferrer := false
+			if isNewRepo && rc.quotaLimits.MaxRepos > 0 && !holdsCountLock {
+				return zerr.ErrRetryWithRepoCountLock
+			}
 
-			for i := range refInfo.List {
-				if refInfo.List[i].Digest == mConvert.GetImageDigestStr(protoImageMeta) {
-					foundReferrer = true
-					refInfo.List[i].Count += 1
-
-					break
+			// 2. Referrers
+			if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
+				refInfo := &proto_go.ReferrersInfo{}
+				if protoRepoMeta.Referrers[subject.Digest.String()] != nil {
+					refInfo = protoRepoMeta.Referrers[subject.Digest.String()]
 				}
-			}
 
-			if !foundReferrer {
-				refInfo.List = append(refInfo.List, &proto_go.ReferrerInfo{
-					Count:        1,
-					MediaType:    protoImageMeta.MediaType,
-					Digest:       mConvert.GetImageDigestStr(protoImageMeta),
-					ArtifactType: mConvert.GetImageArtifactType(protoImageMeta),
-					Size:         mConvert.GetImageManifestSize(protoImageMeta),
-					Annotations:  mConvert.GetImageAnnotations(protoImageMeta),
-				})
-			}
+				foundReferrer := false
 
-			protoRepoMeta.Referrers[subject.Digest.String()] = refInfo
-		}
+				for i := range refInfo.List {
+					if refInfo.List[i].Digest == mConvert.GetImageDigestStr(protoImageMeta) {
+						foundReferrer = true
+						refInfo.List[i].Count += 1
 
-		// 3. Update tag
-		if !common.ReferenceIsDigest(reference) {
-			// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
-			// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
-			var taggedTimestamp *timestamppb.Timestamp
-			if existingTag, exists := protoRepoMeta.Tags[reference]; exists {
-				// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
-				if existingTag.GetTaggedTimestamp() != nil {
-					taggedTimestamp = existingTag.GetTaggedTimestamp()
+						break
+					}
 				}
-				// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
+
+				if !foundReferrer {
+					refInfo.List = append(refInfo.List, &proto_go.ReferrerInfo{
+						Count:        1,
+						MediaType:    protoImageMeta.MediaType,
+						Digest:       mConvert.GetImageDigestStr(protoImageMeta),
+						ArtifactType: mConvert.GetImageArtifactType(protoImageMeta),
+						Size:         mConvert.GetImageManifestSize(protoImageMeta),
+						Annotations:  mConvert.GetImageAnnotations(protoImageMeta),
+					})
+				}
+
+				protoRepoMeta.Referrers[subject.Digest.String()] = refInfo
+			}
+
+			// 3. Statistics / signature / referrer placeholders (before tag mutation)
+			digestStr := imageMeta.Digest.String()
+			stats, ok := protoRepoMeta.Statistics[digestStr]
+
+			if !ok {
+				stats = &proto_go.DescriptorStatistics{
+					DownloadCount:     0,
+					LastPullTimestamp: &timestamppb.Timestamp{},
+					PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
+					PushedBy:          userid,
+				}
+				protoRepoMeta.Statistics[digestStr] = stats
 			} else {
-				// New tag - set timestamp to now
-				taggedTimestamp = timestamppb.Now()
-			}
-			protoRepoMeta.Tags[reference] = &proto_go.TagDescriptor{
-				Digest:          imageMeta.Digest.String(),
-				MediaType:       imageMeta.MediaType,
-				TaggedTimestamp: taggedTimestamp,
-			}
-		}
+				if stats.PushTimestamp.AsTime().IsZero() {
+					stats.PushTimestamp = mConvert.GetProtoPushTimestamp(options.PushTimestamp)
+				}
 
-		digestStr := imageMeta.Digest.String()
-		stats, ok := protoRepoMeta.Statistics[digestStr]
-
-		if !ok {
-			stats = &proto_go.DescriptorStatistics{
-				DownloadCount:     0,
-				LastPullTimestamp: &timestamppb.Timestamp{},
-				PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
-				PushedBy:          userid,
-			}
-			protoRepoMeta.Statistics[digestStr] = stats
-		} else {
-			if stats.PushTimestamp.AsTime().IsZero() {
-				stats.PushTimestamp = mConvert.GetProtoPushTimestamp(options.PushTimestamp)
+				if userid != "" && stats.PushedBy == "" {
+					stats.PushedBy = userid
+				}
 			}
 
-			if userid != "" && stats.PushedBy == "" {
-				stats.PushedBy = userid
+			if _, ok := protoRepoMeta.Signatures[imageMeta.Digest.String()]; !ok {
+				protoRepoMeta.Signatures[imageMeta.Digest.String()] = &proto_go.ManifestSignatures{
+					Map: map[string]*proto_go.SignaturesInfo{"": {}},
+				}
 			}
-		}
 
-		if _, ok := protoRepoMeta.Signatures[imageMeta.Digest.String()]; !ok {
-			protoRepoMeta.Signatures[imageMeta.Digest.String()] = &proto_go.ManifestSignatures{
-				Map: map[string]*proto_go.SignaturesInfo{"": {}},
+			if _, ok := protoRepoMeta.Referrers[imageMeta.Digest.String()]; !ok {
+				protoRepoMeta.Referrers[imageMeta.Digest.String()] = &proto_go.ReferrersInfo{
+					List: []*proto_go.ReferrerInfo{},
+				}
 			}
-		}
 
-		if _, ok := protoRepoMeta.Referrers[imageMeta.Digest.String()]; !ok {
-			protoRepoMeta.Referrers[imageMeta.Digest.String()] = &proto_go.ReferrersInfo{
-				List: []*proto_go.ReferrerInfo{},
+			// 4. Blobs
+			repoBlobsBytes, err := rc.Client.HGet(ctx, rc.RepoBlobsKey, repo).Bytes()
+			if err != nil && !errors.Is(err, redis.Nil) {
+				rc.Log.Error().Err(err).Str("hget", rc.RepoBlobsKey).Str("repo", repo).
+					Msg("failed to get repo blobs record")
+
+				return fmt.Errorf("failed to get repo blobs record for repo %s: %w", repo, err)
 			}
-		}
 
-		// 4. Blobs
-		repoBlobsBytes, err := rc.Client.HGet(ctx, rc.RepoBlobsKey, repo).Bytes()
-		if err != nil && !errors.Is(err, redis.Nil) {
-			rc.Log.Error().Err(err).Str("hget", rc.RepoBlobsKey).Str("repo", repo).
-				Msg("failed to get repo blobs record")
+			repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+			if err != nil {
+				return err
+			}
 
-			return fmt.Errorf("failed to get repo blobs record for repo %s: %w", repo, err)
-		}
+			// 5. Check quotas against the final tag set before mutating Tags
+			tagRefs := common.TagReferencesForQuota(reference, options.ExtraTags)
 
-		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
-		if err != nil {
+			repoCount := 0
+			if isNewRepo && rc.quotaLimits.MaxRepos > 0 {
+				repoCount, err = rc.CountRepos(ctx)
+				if err != nil {
+					return err
+				}
+			}
+
+			if err := common.CheckRepoQuotasBeforeUpdate(rc.quotaLimits, repo, isNewRepo, repoCount,
+				repoBlobs, imageMeta); err != nil {
+				return err
+			}
+
+			if err := common.EnforceProjectedByteQuota(rc.quotaLimits, repo, protoRepoMeta, repoBlobs,
+				tagRefs, imageMeta); err != nil {
+				return err
+			}
+
+			// 6. Apply tags and persist the candidate size
+			common.ApplyTagReferences(protoRepoMeta, imageMeta, tagRefs)
+
+			protoRepoMeta, repoBlobs = common.AddImageMetaToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta)
+
+			protoTime := timestamppb.New(time.Now())
+
+			protoTimeBlob, err := proto.Marshal(protoTime)
+			if err != nil {
+				return err
+			}
+
+			repoBlobsBytes, err = proto.Marshal(repoBlobs)
+			if err != nil {
+				return err
+			}
+
+			repoMetaBlob, err := proto.Marshal(protoRepoMeta)
+			if err != nil {
+				return err
+			}
+
+			_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
+				if err := txrp.HSet(ctx, rc.RepoLastUpdatedKey, repo, protoTimeBlob).Err(); err != nil {
+					rc.Log.Error().Err(err).Str("hset", rc.RepoLastUpdatedKey).Str("repo", repo).
+						Msg("failed to put repo last updated timestamp")
+
+					return fmt.Errorf("failed to put repo last updated record for repo %s: %w", repo, err)
+				}
+
+				if err := txrp.HSet(ctx, rc.RepoBlobsKey, repo, repoBlobsBytes).Err(); err != nil {
+					rc.Log.Error().Err(err).Str("hset", rc.RepoBlobsKey).Str("repo", repo).
+						Msg("failed to put repo blobs record")
+
+					return fmt.Errorf("failed to set repo blobs record for repo %s: %w", repo, err)
+				}
+
+				if err := txrp.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+					rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
+						Msg("failed to put repo meta record")
+
+					return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
+				}
+
+				return nil
+			})
+
 			return err
-		}
-
-		protoRepoMeta, repoBlobs = common.AddImageMetaToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta)
-		protoTime := timestamppb.New(time.Now())
-
-		protoTimeBlob, err := proto.Marshal(protoTime)
-		if err != nil {
-			return err
-		}
-
-		repoBlobsBytes, err = proto.Marshal(repoBlobs)
-		if err != nil {
-			return err
-		}
-
-		repoMetaBlob, err := proto.Marshal(protoRepoMeta)
-		if err != nil {
-			return err
-		}
-
-		_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-			if err := txrp.HSet(ctx, rc.RepoLastUpdatedKey, repo, protoTimeBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", rc.RepoLastUpdatedKey).Str("repo", repo).
-					Msg("failed to put repo last updated timestamp")
-
-				return fmt.Errorf("failed to put repo last updated record for repo %s: %w", repo, err)
-			}
-
-			if err := txrp.HSet(ctx, rc.RepoBlobsKey, repo, repoBlobsBytes).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", rc.RepoBlobsKey).Str("repo", repo).
-					Msg("failed to put repo blobs record")
-
-				return fmt.Errorf("failed to set repo blobs record for repo %s: %w", repo, err)
-			}
-
-			if err := txrp.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
-					Msg("failed to put repo meta record")
-
-				return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
-			}
-
-			return nil
 		})
+		if errors.Is(err, zerr.ErrRetryWithRepoCountLock) {
+			lockKeys = []string{rc.getRepoCountLockKey(), rc.getRepoLockKey(repo)}
+			holdsCountLock = true
+
+			continue
+		}
 
 		return err
-	})
-
-	return err
+	}
 }
 
 // SearchRepos searches for repos given a search string.
@@ -1344,42 +1381,141 @@ func (rc *RedisDB) AddManifestSignature(repo string, signedManifestDigest godige
 ) error {
 	ctx := context.Background()
 
-	err := rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
-		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
-		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			return err
-		}
+	// Same RepoCount narrowing as SetRepoReference: only signature-only RepoMeta creation needs
+	// the global count lock; see comment there for peek / retry rationale.
+	lockKeys := []string{rc.getRepoLockKey(repo)}
+	holdsCountLock := false
 
-		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			var err error
-			// create a new object
-			repoMeta := proto_go.RepoMeta{
-				Name: repo,
-				Tags: map[string]*proto_go.TagDescriptor{"": {}},
-				Signatures: map[string]*proto_go.ManifestSignatures{
-					signedManifestDigest.String(): {
-						Map: map[string]*proto_go.SignaturesInfo{
-							sigMeta.SignatureType: {
-								List: []*proto_go.SignatureInfo{
-									{
-										SignatureManifestDigest: sigMeta.SignatureDigest,
-										LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
+	if rc.quotaLimits.MaxRepos > 0 {
+		_, peekErr := rc.getProtoRepoMeta(ctx, repo)
+		if errors.Is(peekErr, zerr.ErrRepoMetaNotFound) {
+			lockKeys = []string{rc.getRepoCountLockKey(), rc.getRepoLockKey(repo)}
+			holdsCountLock = true
+		} else if peekErr != nil {
+			return peekErr
+		}
+	}
+
+	for {
+		err := rc.withRSLocks(ctx, lockKeys, func() error {
+			protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
+			if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+				return err
+			}
+
+			if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+				if rc.quotaLimits.MaxRepos > 0 && !holdsCountLock {
+					return zerr.ErrRetryWithRepoCountLock
+				}
+
+				repoCount := 0
+				if rc.quotaLimits.MaxRepos > 0 {
+					repoCount, err = rc.CountRepos(ctx)
+					if err != nil {
+						return err
+					}
+				}
+
+				if err := common.EnforceMaxRepos(true, repoCount, rc.quotaLimits.MaxRepos); err != nil {
+					return err
+				}
+
+				// create a new object
+				repoMeta := proto_go.RepoMeta{
+					Name: repo,
+					Tags: map[string]*proto_go.TagDescriptor{"": {}},
+					Signatures: map[string]*proto_go.ManifestSignatures{
+						signedManifestDigest.String(): {
+							Map: map[string]*proto_go.SignaturesInfo{
+								sigMeta.SignatureType: {
+									List: []*proto_go.SignatureInfo{
+										{
+											SignatureManifestDigest: sigMeta.SignatureDigest,
+											LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
+										},
 									},
 								},
 							},
 						},
 					},
-				},
-				Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
-				Statistics: map[string]*proto_go.DescriptorStatistics{"": {}},
+					Referrers:  map[string]*proto_go.ReferrersInfo{"": {}},
+					Statistics: map[string]*proto_go.DescriptorStatistics{"": {}},
+				}
+
+				repoMetaBlob, err := proto.Marshal(&repoMeta)
+				if err != nil {
+					return err
+				}
+
+				if err := rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+					rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
+						Msg("failed to put repo meta record")
+
+					return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
+				}
+
+				return nil
 			}
 
-			repoMetaBlob, err := proto.Marshal(&repoMeta)
+			var (
+				manifestSignatures *proto_go.ManifestSignatures
+				found              bool
+			)
+
+			if manifestSignatures, found = protoRepoMeta.Signatures[signedManifestDigest.String()]; !found {
+				manifestSignatures = &proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
+			}
+
+			signatureSlice := &proto_go.SignaturesInfo{List: []*proto_go.SignatureInfo{}}
+			if sigSlice, found := manifestSignatures.Map[sigMeta.SignatureType]; found {
+				signatureSlice = sigSlice
+			}
+
+			if !common.ProtoSignatureAlreadyExists(signatureSlice.List, sigMeta) {
+				switch sigMeta.SignatureType {
+				case zcommon.NotationSignature:
+					signatureSlice.List = append(signatureSlice.List, &proto_go.SignatureInfo{
+						SignatureManifestDigest: sigMeta.SignatureDigest,
+						LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
+					})
+				case zcommon.CosignSignature:
+					newCosignSig := &proto_go.SignatureInfo{
+						SignatureManifestDigest: sigMeta.SignatureDigest,
+						LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
+					}
+
+					if zcommon.IsCosignTag(sigMeta.SignatureTag) {
+						// the entry for "sha256-{digest}.sig" signatures should be overwritten if
+						// it exists or added on the first position if it doesn't exist
+						if len(signatureSlice.GetList()) == 0 {
+							signatureSlice.List = []*proto_go.SignatureInfo{newCosignSig}
+						} else {
+							signatureSlice.List[0] = newCosignSig
+						}
+					} else {
+						// the first position should be reserved for "sha256-{digest}.sig" signatures
+						if len(signatureSlice.GetList()) == 0 {
+							signatureSlice.List = []*proto_go.SignatureInfo{{
+								SignatureManifestDigest: "",
+								LayersInfo:              []*proto_go.LayersInfo{},
+							}}
+						}
+
+						signatureSlice.List = append(signatureSlice.List, newCosignSig)
+					}
+				}
+			}
+
+			manifestSignatures.Map[sigMeta.SignatureType] = signatureSlice
+			protoRepoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
+
+			repoMetaBlob, err := proto.Marshal(protoRepoMeta)
 			if err != nil {
 				return err
 			}
 
-			if err := rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+			err = rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err()
+			if err != nil {
 				rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
 					Msg("failed to put repo meta record")
 
@@ -1387,77 +1523,16 @@ func (rc *RedisDB) AddManifestSignature(repo string, signedManifestDigest godige
 			}
 
 			return nil
+		})
+		if errors.Is(err, zerr.ErrRetryWithRepoCountLock) {
+			lockKeys = []string{rc.getRepoCountLockKey(), rc.getRepoLockKey(repo)}
+			holdsCountLock = true
+
+			continue
 		}
 
-		var (
-			manifestSignatures *proto_go.ManifestSignatures
-			found              bool
-		)
-
-		if manifestSignatures, found = protoRepoMeta.Signatures[signedManifestDigest.String()]; !found {
-			manifestSignatures = &proto_go.ManifestSignatures{Map: map[string]*proto_go.SignaturesInfo{"": {}}}
-		}
-
-		signatureSlice := &proto_go.SignaturesInfo{List: []*proto_go.SignatureInfo{}}
-		if sigSlice, found := manifestSignatures.Map[sigMeta.SignatureType]; found {
-			signatureSlice = sigSlice
-		}
-
-		if !common.ProtoSignatureAlreadyExists(signatureSlice.List, sigMeta) {
-			switch sigMeta.SignatureType {
-			case zcommon.NotationSignature:
-				signatureSlice.List = append(signatureSlice.List, &proto_go.SignatureInfo{
-					SignatureManifestDigest: sigMeta.SignatureDigest,
-					LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
-				})
-			case zcommon.CosignSignature:
-				newCosignSig := &proto_go.SignatureInfo{
-					SignatureManifestDigest: sigMeta.SignatureDigest,
-					LayersInfo:              mConvert.GetProtoLayersInfo(sigMeta.LayersInfo),
-				}
-
-				if zcommon.IsCosignTag(sigMeta.SignatureTag) {
-					// the entry for "sha256-{digest}.sig" signatures should be overwritten if
-					// it exists or added on the first position if it doesn't exist
-					if len(signatureSlice.GetList()) == 0 {
-						signatureSlice.List = []*proto_go.SignatureInfo{newCosignSig}
-					} else {
-						signatureSlice.List[0] = newCosignSig
-					}
-				} else {
-					// the first position should be reserved for "sha256-{digest}.sig" signatures
-					if len(signatureSlice.GetList()) == 0 {
-						signatureSlice.List = []*proto_go.SignatureInfo{{
-							SignatureManifestDigest: "",
-							LayersInfo:              []*proto_go.LayersInfo{},
-						}}
-					}
-
-					signatureSlice.List = append(signatureSlice.List, newCosignSig)
-				}
-			}
-		}
-
-		manifestSignatures.Map[sigMeta.SignatureType] = signatureSlice
-		protoRepoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
-
-		repoMetaBlob, err := proto.Marshal(protoRepoMeta)
-		if err != nil {
-			return err
-		}
-
-		err = rc.Client.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err()
-		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
-				Msg("failed to put repo meta record")
-
-			return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
-		}
-
-		return nil
-	})
-
-	return err
+		return err
+	}
 }
 
 // DeleteSignature deletes signature metadata to a given manifest from the database.
@@ -2140,6 +2215,10 @@ func (rc *RedisDB) CountRepos(ctx context.Context) (int, error) {
 	return int(count), nil
 }
 
+func (rc *RedisDB) SetQuotaLimits(limits mTypes.QuotaLimits) {
+	rc.quotaLimits = limits
+}
+
 // ResetDB will delete all data in the DB.
 // Ideally we would use locks here, but it would require a more complex logic to lock/unlock
 // everything, and this function is only used in testing, so let's not add that complexity.
@@ -2395,6 +2474,10 @@ func (rc *RedisDB) withRSLocks(ctx context.Context, lockNames []string, wrappedF
 
 func (rc *RedisDB) getRepoLockKey(name string) string {
 	return strings.Join([]string{rc.LocksKey, "Repo", name}, ":")
+}
+
+func (rc *RedisDB) getRepoCountLockKey() string {
+	return strings.Join([]string{rc.LocksKey, "RepoCount"}, ":")
 }
 
 func (rc *RedisDB) getImageLockKey(name string) string {

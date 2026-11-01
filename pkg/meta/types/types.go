@@ -99,6 +99,11 @@ type MetaDB interface { //nolint:interfacebloat
 	GetRepoSizeWithCandidate(ctx context.Context, repo string, references []string, imageMeta ImageMeta) (
 		current int64, projected int64, err error)
 
+	// SetQuotaLimits configures repository count and byte quotas enforced inside SetRepoReference.
+	// Limits of zero (or a nil MaxRepoBytes func) disable that quota. Call after ParseStorage so
+	// startup reparse is not rejected by a lowered limit.
+	SetQuotaLimits(limits QuotaLimits)
+
 	// GetFullImageMeta returns the full information about an image
 	GetFullImageMeta(ctx context.Context, repo string, tag string) (FullImageMeta, error)
 
@@ -257,12 +262,34 @@ type ImageMeta struct {
 	Manifests []ManifestMeta  // All manifests under the image, 1 for simple images and many for multiarch
 }
 
+// QuotaLimits are enforced by MetaDB.SetRepoReference when creating or growing a repository.
+type QuotaLimits struct {
+	// MaxRepos rejects creating a new RepoMeta when the current count is already at the limit.
+	// Zero disables the limit.
+	MaxRepos int
+	// MaxRepoBytes returns the logical byte limit for a repository name. Nil or a zero result
+	// disables the byte limit for that repository.
+	MaxRepoBytes func(repo string) int64
+}
+
+// RepoBytesLimit returns the configured byte quota for repo, or 0 when unlimited.
+func (q QuotaLimits) RepoBytesLimit(repo string) int64 {
+	if q.MaxRepoBytes == nil {
+		return 0
+	}
+
+	return q.MaxRepoBytes(repo)
+}
+
 // SetRepoReferenceOptions holds optional per-call hints for SetRepoReference.
 type SetRepoReferenceOptions struct {
 	// PushTimestamp is an optional hint for when the image was pushed, used only when a new statistics
 	// entry is created (e.g. the manifest blob storage mod time on a storage re-parse). Zero means
 	// unknown and the metaDB falls back to the current time.
 	PushTimestamp time.Time
+	// ExtraTags are additional tag names to point at the same imageMeta in this write. Used so
+	// digest-query multi-tag pushes project and enforce byte quota against the final tag set once.
+	ExtraTags []string
 }
 
 // SetRepoReferenceOption sets an optional hint on SetRepoReferenceOptions.
@@ -273,6 +300,14 @@ type SetRepoReferenceOption func(*SetRepoReferenceOptions)
 func WithPushTimestamp(pushTimestamp time.Time) SetRepoReferenceOption {
 	return func(opts *SetRepoReferenceOptions) {
 		opts.PushTimestamp = pushTimestamp
+	}
+}
+
+// WithExtraTags adds tag names that should be updated to imageMeta in the same SetRepoReference
+// call as the primary reference (quota projection sees the full set).
+func WithExtraTags(tags ...string) SetRepoReferenceOption {
+	return func(opts *SetRepoReferenceOptions) {
+		opts.ExtraTags = append(opts.ExtraTags, tags...)
 	}
 }
 

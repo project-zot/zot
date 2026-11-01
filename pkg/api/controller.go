@@ -479,6 +479,18 @@ func (c *Controller) InitMetaDB() error {
 			return err
 		}
 
+		// Apply quotas after ParseStorage so a lowered limit cannot reject the startup reparse.
+		if c.Config.IsQuotaEnabled() {
+			storeController := c.StoreController
+			cfg := c.Config
+			driver.SetQuotaLimits(mTypes.QuotaLimits{
+				MaxRepos: cfg.Storage.MaxRepos,
+				MaxRepoBytes: func(repo string) int64 {
+					return cfg.MaxRepoBytesForStore(storeController.GetStorePath(repo))
+				},
+			})
+		}
+
 		c.MetaDB = driver
 	}
 

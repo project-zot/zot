@@ -99,6 +99,8 @@ type MetaDBMock struct {
 	GetRepoSizeWithCandidateFn func(ctx context.Context, repo string, references []string,
 		imageMeta mTypes.ImageMeta) (int64, int64, error)
 
+	SetQuotaLimitsFn func(limits mTypes.QuotaLimits)
+
 	FilterImageMetaFn func(ctx context.Context, digests []string) (map[string]mTypes.ImageMeta, error)
 
 	RemoveRepoReferenceFn func(repo, reference string, manifestDigest godigest.Digest) error
@@ -374,6 +376,12 @@ func (sdm MetaDBMock) GetRepoSizeWithCandidate(ctx context.Context, repo string,
 	}
 
 	return 0, 0, nil
+}
+
+func (sdm MetaDBMock) SetQuotaLimits(limits mTypes.QuotaLimits) {
+	if sdm.SetQuotaLimitsFn != nil {
+		sdm.SetQuotaLimitsFn(limits)
+	}
 }
 
 func (sdm MetaDBMock) GetImageMeta(digest godigest.Digest) (mTypes.ImageMeta, error) {

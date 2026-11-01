@@ -64,6 +64,10 @@ func TestQuotaEnforcement(t *testing.T) {
 
 			Convey("Push to a third new repo is rejected with 413", func() {
 				img := CreateRandomImage()
+				So(UploadImage(img, baseURL, "repo3", "v1"), ShouldEqual, ErrPutBlob)
+
+				// Re-upload only the manifest after blobs from the failed push remain, to assert
+				// the MetaDB quota error shape (storage write succeeds, SetRepoReference rejects).
 				manifestBody, err := json.Marshal(img.Manifest)
 				So(err, ShouldBeNil)
 
@@ -250,12 +254,27 @@ func TestRepoByteQuotaRejectsInvalidDescriptorSize(t *testing.T) {
 		baseURL, stop := startByteQuotaServer(t, 1<<30)
 		defer stop()
 
+		// Upload the config blob so storage accepts the PUT; MetaDB then rejects the negative size.
+		configBlob := []byte("{}")
+		configDigest := godigest.FromBytes(configBlob).String()
+		resp, err := resty.R().Post(baseURL + "/v2/byte-quota/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := resp.Header().Get("Location")
+		resp, err = resty.R().
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", configDigest).
+			SetBody(configBlob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
 		manifestBody := []byte(`{"schemaVersion":2,` +
 			`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
 			`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
 			`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
 			`"size":-1},"layers":[]}`)
-		resp, err := resty.R().
+		resp, err = resty.R().
 			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 			SetBody(manifestBody).
 			Put(baseURL + "/v2/byte-quota/manifests/invalid-size")
@@ -542,22 +561,42 @@ func catalogRepos(t *testing.T, baseURL string) []string {
 	return catalog.Repositories
 }
 
-// pushNewRepoStatus reports how the quota answers a new-repo push. Only a refusal is meaningful: the
-// manifest is sent without blobs, so an allowed push fails later in the handler. Use uploadNewRepo to
-// assert acceptance.
+// pushNewRepoStatus reports how the quota answers a new-repo push. Blobs are uploaded first so the
+// request reaches MetaDB.SetRepoReference (quotas are enforced there). Use uploadNewRepo to assert
+// acceptance. On UploadImage failure the manifest is re-PUTed so the returned status is the real
+// HTTP code from the registry (not assumed 413).
 func pushNewRepoStatus(t *testing.T, baseURL, repo string) int {
 	t.Helper()
 
 	img := CreateRandomImage()
+	err := UploadImage(img, baseURL, repo, "v1")
+	if err == nil {
+		return http.StatusCreated
+	}
 
-	manifestBody, err := json.Marshal(img.Manifest)
-	So(err, ShouldBeNil)
+	So(err, ShouldEqual, ErrPutBlob)
 
-	resp, err := resty.R().
-		SetHeader("Content-Type", ispec.MediaTypeImageManifest).
-		SetBody(manifestBody).
+	manifestBlob := img.ManifestDescriptor.Data
+	if len(manifestBlob) == 0 {
+		var marshalErr error
+		manifestBlob, marshalErr = json.Marshal(img.Manifest)
+		So(marshalErr, ShouldBeNil)
+	}
+
+	mediaType := img.ManifestDescriptor.MediaType
+	if mediaType == "" {
+		mediaType = img.Manifest.MediaType
+	}
+
+	if mediaType == "" {
+		mediaType = ispec.MediaTypeImageManifest
+	}
+
+	resp, putErr := resty.R().
+		SetHeader("Content-Type", mediaType).
+		SetBody(manifestBlob).
 		Put(baseURL + "/v2/" + repo + "/manifests/v1")
-	So(err, ShouldBeNil)
+	So(putErr, ShouldBeNil)
 
 	return resp.StatusCode()
 }

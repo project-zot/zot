@@ -21,6 +21,28 @@ import (
 
 var ErrTestError = errors.New("test error")
 
+func TestEnforceQuotas(t *testing.T) {
+	Convey("EnforceMaxRepos", t, func() {
+		So(common.EnforceMaxRepos(false, 10, 1), ShouldBeNil)
+		So(common.EnforceMaxRepos(true, 0, 0), ShouldBeNil)
+		So(common.EnforceMaxRepos(true, 1, 2), ShouldBeNil)
+
+		err := common.EnforceMaxRepos(true, 2, 2)
+		So(errors.Is(err, zerr.ErrMaxReposExceeded), ShouldBeTrue)
+		So(zerr.GetDetails(err)["limit"], ShouldEqual, "2")
+	})
+
+	Convey("EnforceByteQuota", t, func() {
+		So(common.EnforceByteQuota(10, 20, 0), ShouldBeNil)
+		So(common.EnforceByteQuota(10, 20, 20), ShouldBeNil)
+		So(common.EnforceByteQuota(30, 25, 10), ShouldBeNil) // non-growing write
+
+		err := common.EnforceByteQuota(10, 25, 20)
+		So(errors.Is(err, zerr.ErrRepoByteQuotaExceeded), ShouldBeTrue)
+		So(zerr.GetDetails(err)["projected"], ShouldEqual, "25")
+	})
+}
+
 func TestUtils(t *testing.T) {
 	Convey("GetPartialImageMeta", t, func() {
 		So(func() { common.GetPartialImageMeta(mTypes.ImageMeta{}, mTypes.ImageMeta{}) }, ShouldNotPanic)

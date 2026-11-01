@@ -178,11 +178,12 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 	return nil
 }
 
-// OnUpdateManifestDigestTags updates metadb for each tag from a digest-addressed manifest push that used
+// OnUpdateManifestDigestTags updates metadb for tags from a digest-addressed manifest push that used
 // repeated `tag=` query parameters. It snapshots each tag's prior digest and media type from MetaDB
-// (GetRepoMeta) before updates, then calls OnUpdateManifest per tag; on the first failure it removes
-// every tag in tags from the image store, reverts MetaDB only for tags that had already completed
-// OnUpdateManifest successfully, and restores moved tags using the snapshot (see rollbackDigestManifestTags).
+// (GetRepoMeta), then applies all tags in one SetRepoReference (via WithExtraTags) so byte quota
+// projects the final tag set once. On failure it removes every tag in tags from the image store and
+// restores moved tags using the snapshot (see rollbackDigestManifestTags). MetaDB is left unchanged
+// when the single write fails.
 func OnUpdateManifestDigestTags(ctx context.Context, repo string, tags []string, mediaType string,
 	digest godigest.Digest, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
@@ -199,20 +200,22 @@ func OnUpdateManifestDigestTags(ctx context.Context, repo string, tags []string,
 		return err
 	}
 
-	applied := make([]string, 0, len(tags))
+	imgStore := storeController.GetImageStore(repo)
 
-	for _, tag := range tags {
-		if err := OnUpdateManifest(ctx, repo, tag, mediaType, digest, body, storeController, metaDB, log); err != nil {
-			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-				Msg("multi-tag digest push: meta update failed; rolling back tag query additions")
+	setOpts := make([]mTypes.SetRepoReferenceOption, 0, 1)
+	if len(tags) > 1 {
+		setOpts = append(setOpts, mTypes.WithExtraTags(tags[1:]...))
+	}
 
-			rollbackDigestManifestTags(ctx, repo, tags, applied, mediaType, digest, body, storeController, metaDB, log,
-				priorTagManifests)
+	err = SetImageMetaFromInput(ctx, repo, tags[0], mediaType, digest, body, imgStore, metaDB, log, setOpts...)
+	if err != nil {
+		log.Error().Err(err).Str("repository", repo).Strs("tags", tags).
+			Msg("multi-tag digest push: meta update failed; rolling back tag query additions")
 
-			return err
-		}
+		rollbackDigestManifestTags(ctx, repo, tags, nil, mediaType, digest, body, storeController, metaDB, log,
+			priorTagManifests)
 
-		applied = append(applied, tag)
+		return err
 	}
 
 	return nil

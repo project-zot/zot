@@ -39,6 +39,7 @@ type DynamoDB struct {
 	VersionTablename   string
 	Patches            []func(client *dynamodb.Client, tableNames map[string]string) error
 	imgTrustStore      mTypes.ImageTrustStore
+	quotaLimits        mTypes.QuotaLimits
 	Log                log.Logger
 }
 
@@ -142,6 +143,10 @@ func (dwr *DynamoDB) CountRepos(ctx context.Context) (int, error) {
 	}
 
 	return int(count), nil
+}
+
+func (dwr *DynamoDB) SetQuotaLimits(limits mTypes.QuotaLimits) {
+	dwr.quotaLimits = limits
 }
 
 func (dwr *DynamoDB) GetRepoLastUpdated(repo string) time.Time {
@@ -434,7 +439,8 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 	}
 
 	repoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
-	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+	isNewRepo := errors.Is(err, zerr.ErrRepoMetaNotFound)
+	if err != nil && !isNewRepo {
 		return err
 	}
 
@@ -470,28 +476,7 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 		repoMeta.Referrers[subject.Digest.String()] = refInfo
 	}
 
-	// 3. Update tag
-	if !common.ReferenceIsDigest(reference) {
-		// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
-		// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
-		var taggedTimestamp *timestamppb.Timestamp
-		if existingTag, exists := repoMeta.Tags[reference]; exists {
-			// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
-			if existingTag.GetTaggedTimestamp() != nil {
-				taggedTimestamp = existingTag.GetTaggedTimestamp()
-			}
-			// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
-		} else {
-			// New tag - set timestamp to now
-			taggedTimestamp = timestamppb.Now()
-		}
-		repoMeta.Tags[reference] = &proto_go.TagDescriptor{
-			Digest:          imageMeta.Digest.String(),
-			MediaType:       imageMeta.MediaType,
-			TaggedTimestamp: taggedTimestamp,
-		}
-	}
-
+	// 3. Statistics / signature / referrer placeholders (before tag mutation)
 	digestStr := imageMeta.Digest.String()
 	stats, ok := repoMeta.Statistics[digestStr]
 
@@ -530,6 +515,30 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 	if err != nil {
 		return err
 	}
+
+	// 5. Check quotas against the final tag set before mutating Tags
+	tagRefs := common.TagReferencesForQuota(reference, options.ExtraTags)
+
+	repoCount := 0
+	if isNewRepo && dwr.quotaLimits.MaxRepos > 0 {
+		repoCount, err = dwr.CountRepos(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := common.CheckRepoQuotasBeforeUpdate(dwr.quotaLimits, repo, isNewRepo, repoCount,
+		repoBlobs, imageMeta); err != nil {
+		return err
+	}
+
+	if err := common.EnforceProjectedByteQuota(dwr.quotaLimits, repo, repoMeta, repoBlobs,
+		tagRefs, imageMeta); err != nil {
+		return err
+	}
+
+	// 6. Apply tags and persist the candidate size
+	common.ApplyTagReferences(repoMeta, imageMeta, tagRefs)
 
 	repoMeta, repoBlobs = common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, reference, imageMeta)
 
@@ -1367,6 +1376,18 @@ func (dwr *DynamoDB) AddManifestSignature(repo string, signedManifestDigest godi
 	protoRepoMeta, err := dwr.getProtoRepoMeta(context.Background(), repo)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			repoCount := 0
+			if dwr.quotaLimits.MaxRepos > 0 {
+				repoCount, err = dwr.CountRepos(context.Background())
+				if err != nil {
+					return err
+				}
+			}
+
+			if err := common.EnforceMaxRepos(true, repoCount, dwr.quotaLimits.MaxRepos); err != nil {
+				return err
+			}
+
 			protoRepoMeta = &proto_go.RepoMeta{
 				Name:       repo,
 				Tags:       map[string]*proto_go.TagDescriptor{"": {}},

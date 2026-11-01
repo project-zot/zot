@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
@@ -17,6 +20,128 @@ import (
 	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 )
+
+// EnforceMaxRepos rejects creating a new repository when the live count is already at the limit.
+func EnforceMaxRepos(isNewRepo bool, repoCount, maxRepos int) error {
+	if !isNewRepo || maxRepos <= 0 || repoCount < maxRepos {
+		return nil
+	}
+
+	return zerr.NewError(zerr.ErrMaxReposExceeded).
+		AddDetail("current", strconv.Itoa(repoCount)).
+		AddDetail("projected", strconv.Itoa(repoCount+1)).
+		AddDetail("limit", strconv.Itoa(maxRepos))
+}
+
+// EnforceByteQuota rejects a size increase that would exceed limit. Writes that do not grow the
+// repository remain allowed so operators can recover after lowering a quota below current usage.
+func EnforceByteQuota(currentSize, projectedSize, limit int64) error {
+	if limit <= 0 || projectedSize <= limit || projectedSize <= currentSize {
+		return nil
+	}
+
+	return zerr.NewError(zerr.ErrRepoByteQuotaExceeded).
+		AddDetail("current", strconv.FormatInt(currentSize, 10)).
+		AddDetail("projected", strconv.FormatInt(projectedSize, 10)).
+		AddDetail("limit", strconv.FormatInt(limit, 10))
+}
+
+// CheckRepoQuotasBeforeUpdate validates a candidate image (when byte quotas are configured) and
+// enforces maxRepos before SetRepoReference mutates repository metadata.
+func CheckRepoQuotasBeforeUpdate(limits mTypes.QuotaLimits, repo string, isNewRepo bool, repoCount int,
+	repoBlobs *proto_go.RepoBlobs, imageMeta mTypes.ImageMeta,
+) error {
+	if limits.RepoBytesLimit(repo) > 0 {
+		if err := validateCandidateRepoSize(repoBlobs, imageMeta); err != nil {
+			return err
+		}
+	}
+
+	return EnforceMaxRepos(isNewRepo, repoCount, limits.MaxRepos)
+}
+
+// EnforceProjectedByteQuota projects the candidate with ProjectRepoSize (overflow-checked) and
+// enforces the byte quota. repoMeta and repoBlobs must reflect the repository before the new tags
+// are applied; they are not mutated.
+func EnforceProjectedByteQuota(limits mTypes.QuotaLimits, repo string,
+	repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs,
+	references []string, imageMeta mTypes.ImageMeta,
+) error {
+	limit := limits.RepoBytesLimit(repo)
+	if limit <= 0 {
+		return nil
+	}
+
+	metaClone, ok := proto.Clone(repoMeta).(*proto_go.RepoMeta)
+	if !ok || metaClone == nil {
+		metaClone = &proto_go.RepoMeta{Name: repo, Tags: map[string]*proto_go.TagDescriptor{}}
+	}
+
+	blobsClone, ok := proto.Clone(repoBlobs).(*proto_go.RepoBlobs)
+	if !ok || blobsClone == nil {
+		blobsClone = &proto_go.RepoBlobs{Blobs: map[string]*proto_go.BlobInfo{}}
+	}
+
+	if metaClone.Tags == nil {
+		metaClone.Tags = map[string]*proto_go.TagDescriptor{}
+	}
+
+	if blobsClone.Blobs == nil {
+		blobsClone.Blobs = map[string]*proto_go.BlobInfo{}
+	}
+
+	current, projected, err := ProjectRepoSize(metaClone, blobsClone, references, imageMeta)
+	if err != nil {
+		return err
+	}
+
+	return EnforceByteQuota(current, projected, limit)
+}
+
+// TagReferencesForQuota returns tag names that contribute to logical size for this SetRepoReference.
+func TagReferencesForQuota(reference string, extraTags []string) []string {
+	refs := make([]string, 0, 1+len(extraTags))
+
+	if !ReferenceIsDigest(reference) && !zcommon.IsReferrersTag(reference) {
+		refs = append(refs, reference)
+	}
+
+	for _, tag := range extraTags {
+		if ReferenceIsDigest(tag) || zcommon.IsReferrersTag(tag) {
+			continue
+		}
+
+		refs = append(refs, tag)
+	}
+
+	return refs
+}
+
+// ApplyTagReferences sets each tag on repoMeta to imageMeta, preserving TaggedTimestamp when the
+// tag already exists.
+func ApplyTagReferences(repoMeta *proto_go.RepoMeta, imageMeta mTypes.ImageMeta, tags []string) {
+	if repoMeta.Tags == nil {
+		repoMeta.Tags = map[string]*proto_go.TagDescriptor{}
+	}
+
+	for _, tag := range tags {
+		var taggedTimestamp *timestamppb.Timestamp
+
+		if existingTag, exists := repoMeta.Tags[tag]; exists {
+			if existingTag.GetTaggedTimestamp() != nil {
+				taggedTimestamp = existingTag.GetTaggedTimestamp()
+			}
+		} else {
+			taggedTimestamp = timestamppb.Now()
+		}
+
+		repoMeta.Tags[tag] = &proto_go.TagDescriptor{
+			Digest:          imageMeta.Digest.String(),
+			MediaType:       imageMeta.MediaType,
+			TaggedTimestamp: taggedTimestamp,
+		}
+	}
+}
 
 func SignatureAlreadyExists(signatureSlice []mTypes.SignatureInfo, sm mTypes.SignatureMetadata) bool {
 	return slices.ContainsFunc(signatureSlice, func(sigInfo mTypes.SignatureInfo) bool {

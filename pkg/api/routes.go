@@ -228,7 +228,6 @@ func (rh *RouteHandler) SetupRoutes() {
 	ext.SetupImageTrustRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
 	ext.SetupMgmtRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
 	ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedRouter, rh.c.MetaDB, rh.c.Log)
-	setupQuotaMiddleware(rh.c.Config, prefixedDistSpecRouter, rh.c.MetaDB, rh.c.Log)
 	// last should always be UI because it will setup a http.FileServer and paths will be resolved by this FileServer.
 	ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.Log)
 }
@@ -877,10 +876,6 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 
-	if rh.checkRepoByteQuota(response, request, name, reference, mediaType, body, digestQueryTags) {
-		return
-	}
-
 	digest, subjectDigest, err := imgStore.PutImageManifest(ctx, name, reference, mediaType, body, digestQueryTags)
 	if err != nil {
 		rh.writePutImageManifestError(response, name, reference, err)
@@ -893,6 +888,10 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			err := meta.OnUpdateManifestDigestTags(request.Context(), name, digestQueryTags, mediaType,
 				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 			if err != nil {
+				if writeManifestMetaError(response, err) {
+					return
+				}
+
 				response.WriteHeader(http.StatusInternalServerError)
 
 				return
@@ -901,6 +900,10 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			err := meta.OnUpdateManifest(request.Context(), name, reference, mediaType,
 				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 			if err != nil {
+				if writeManifestMetaError(response, err) {
+					return
+				}
+
 				response.WriteHeader(http.StatusInternalServerError)
 
 				return

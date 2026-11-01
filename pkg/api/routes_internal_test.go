@@ -123,9 +123,9 @@ func TestParseRangeHeader(t *testing.T) {
 	}
 }
 
-func TestUpdateManifestQuotaProjectionFailureFailsClosed(t *testing.T) {
-	projectionErr := errors.New("metadata projection unavailable")
+func TestUpdateManifestQuotaExceededMapsTo413(t *testing.T) {
 	putCalled := false
+	deleteCalled := false
 
 	conf := config.New()
 	conf.Storage.MaxRepoBytes = 1
@@ -136,7 +136,15 @@ func TestUpdateManifestQuotaProjectionFailureFailsClosed(t *testing.T) {
 		) {
 			putCalled = true
 
-			return "", "", nil
+			return godigest.FromString("manifest"), "", nil
+		},
+		GetBlobContentFn: func(string, godigest.Digest) ([]byte, error) {
+			return []byte(`{}`), nil
+		},
+		DeleteImageManifestFn: func(context.Context, string, string, bool) error {
+			deleteCalled = true
+
+			return nil
 		},
 	}
 
@@ -144,8 +152,11 @@ func TestUpdateManifestQuotaProjectionFailureFailsClosed(t *testing.T) {
 		Config: conf,
 		Log:    log.NewTestLogger(),
 		MetaDB: mocks.MetaDBMock{
-			GetRepoSizeWithCandidateFn: func(context.Context, string, []string, mTypes.ImageMeta) (int64, int64, error) {
-				return 0, 0, projectionErr
+			SetRepoReferenceFn: func(context.Context, string, string, mTypes.ImageMeta) error {
+				return zerr.NewError(zerr.ErrRepoByteQuotaExceeded).
+					AddDetail("current", "0").
+					AddDetail("projected", "10").
+					AddDetail("limit", "1")
 			},
 		},
 		StoreController: storage.StoreController{DefaultStore: imageStore},
@@ -163,42 +174,21 @@ func TestUpdateManifestQuotaProjectionFailureFailsClosed(t *testing.T) {
 
 	handler.UpdateManifest(response, request)
 
-	require.Equal(t, http.StatusServiceUnavailable, response.Code)
-	require.Contains(t, response.Body.String(), "quota accounting unavailable; retry later")
-	require.False(t, putCalled)
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	require.Contains(t, response.Body.String(), `"limit":"1"`)
+	require.True(t, putCalled)
+	require.True(t, deleteCalled)
 }
 
-func TestCheckRepoByteQuotaInvalidMetadataFailsClosed(t *testing.T) {
-	conf := config.New()
-	conf.Storage.MaxRepoBytes = 1
-
-	controller := &Controller{
-		Config: conf,
-		Log:    log.NewTestLogger(),
-		MetaDB: mocks.MetaDBMock{
-			GetRepoSizeWithCandidateFn: func(context.Context, string, []string, mTypes.ImageMeta) (int64, int64, error) {
-				return 0, 0, zerr.ErrInvalidRepoSize
-			},
-		},
-		StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
-	}
-	handler := &RouteHandler{c: controller}
-	body := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
-		`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
-		`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
-		`"size":2},"layers":[]}`)
-	request := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/v1", nil)
+func TestWriteManifestMetaErrorInvalidRepoSize(t *testing.T) {
 	response := httptest.NewRecorder()
 
-	rejected := handler.checkRepoByteQuota(response, request, "repo", "v1", ispec.MediaTypeImageManifest,
-		body, nil)
-
-	require.True(t, rejected)
+	require.True(t, writeManifestMetaError(response, zerr.ErrInvalidRepoSize))
 	require.Equal(t, http.StatusInternalServerError, response.Code)
 	require.Contains(t, response.Body.String(), "repository size metadata is invalid")
 }
 
-func TestDeleteManifestHoldsRepoByteQuotaLock(t *testing.T) {
+func TestDeleteManifestHoldsRepoMutationLock(t *testing.T) {
 	conf := config.New()
 	conf.Storage.MaxRepoBytes = 1
 
@@ -209,7 +199,7 @@ func TestDeleteManifestHoldsRepoByteQuotaLock(t *testing.T) {
 	manifestDigest := godigest.FromBytes(manifestBody)
 	deleteStarted := make(chan struct{})
 	allowDelete := make(chan struct{})
-	projectionStarted := make(chan struct{})
+	putStarted := make(chan struct{})
 
 	imageStore := mocks.MockedImageStore{
 		GetImageManifestFn: func(string, string) ([]byte, godigest.Digest, string, error) {
@@ -218,6 +208,8 @@ func TestDeleteManifestHoldsRepoByteQuotaLock(t *testing.T) {
 		PutImageManifestFn: func(context.Context, string, string, string, []byte, []string) (
 			godigest.Digest, godigest.Digest, error,
 		) {
+			close(putStarted)
+
 			return manifestDigest, "", nil
 		},
 		DeleteImageManifestFn: func(context.Context, string, string, bool) error {
@@ -228,15 +220,9 @@ func TestDeleteManifestHoldsRepoByteQuotaLock(t *testing.T) {
 		},
 	}
 	controller := &Controller{
-		Config: conf,
-		Log:    log.NewTestLogger(),
-		MetaDB: mocks.MetaDBMock{
-			GetRepoSizeWithCandidateFn: func(context.Context, string, []string, mTypes.ImageMeta) (int64, int64, error) {
-				close(projectionStarted)
-
-				return 0, 0, nil
-			},
-		},
+		Config:          conf,
+		Log:             log.NewTestLogger(),
+		MetaDB:          mocks.MetaDBMock{},
 		StoreController: storage.StoreController{DefaultStore: imageStore},
 	}
 	handler := &RouteHandler{c: controller}
@@ -265,11 +251,11 @@ func TestDeleteManifestHoldsRepoByteQuotaLock(t *testing.T) {
 	}()
 
 	select {
-	case <-projectionStarted:
+	case <-putStarted:
 		close(allowDelete)
 		<-deleteDone
 		<-updateDone
-		t.Fatal("manifest update entered quota projection while delete was in progress")
+		t.Fatal("manifest update entered PutImageManifest while delete was in progress")
 	case <-time.After(200 * time.Millisecond):
 	}
 

@@ -36,18 +36,20 @@ var (
 	errSetRepoRefForHookTest          = errors.New("set repo reference failed for hook test")
 )
 
-// setRepoRefFailMetaDB delegates to an inner MetaDB but fails SetRepoReference for one tag (used to
-// exercise multi-tag digest rollback after a partial OnUpdateManifest success).
-type setRepoRefFailMetaDB struct {
+// setRepoRefFailOnceMetaDB fails the first SetRepoReference then delegates (so multi-tag digest
+// rollback can still restore prior tags via a later SetRepoReference).
+type setRepoRefFailOnceMetaDB struct {
 	mTypes.MetaDB
 
-	failRef string
+	failed bool
 }
 
-func (w *setRepoRefFailMetaDB) SetRepoReference(
+func (w *setRepoRefFailOnceMetaDB) SetRepoReference(
 	ctx context.Context, repo, ref string, imageMeta mTypes.ImageMeta, opts ...mTypes.SetRepoReferenceOption,
 ) error {
-	if ref == w.failRef {
+	if !w.failed {
+		w.failed = true
+
 		return errDigestTagsSetRepoReferenceFail
 	}
 
@@ -79,7 +81,7 @@ func TestOnUpdateManifestDigestTags_emptyTags(t *testing.T) {
 }
 
 func TestOnUpdateManifestDigestTags_success(t *testing.T) {
-	Convey("OnUpdateManifestDigestTags updates metadb for each digest query tag", t, func() {
+	Convey("OnUpdateManifestDigestTags updates metadb for all digest query tags in one write", t, func() {
 		rootDir := t.TempDir()
 		storeController := storage.StoreController{}
 		log := log.NewTestLogger()
@@ -133,7 +135,7 @@ func TestOnUpdateManifestDigestTags_success(t *testing.T) {
 }
 
 func TestOnUpdateManifestDigestTags_rollbackPartialMeta(t *testing.T) {
-	Convey("OnUpdateManifestDigestTags rollback deletes all new index tags; meta rollback only for applied tags",
+	Convey("OnUpdateManifestDigestTags rollback deletes all new index tags when the single meta write fails",
 		t, func() {
 			rootDir := t.TempDir()
 			storeController := storage.StoreController{}
@@ -175,7 +177,7 @@ func TestOnUpdateManifestDigestTags_rollbackPartialMeta(t *testing.T) {
 			seedDigestBefore := repoMetaBefore.Tags["seed"].Digest
 			So(seedDigestBefore, ShouldEqual, manifestDigest.String())
 
-			wrapped := &setRepoRefFailMetaDB{MetaDB: metaDB, failRef: "tb"}
+			wrapped := &setRepoRefFailOnceMetaDB{MetaDB: metaDB}
 
 			err = meta.OnUpdateManifestDigestTags(context.Background(), "repo", []string{"ta", "tb"}, mediaType,
 				manifestDigest, manifestBody, storeController, wrapped, log)
@@ -255,7 +257,7 @@ func TestOnUpdateManifestDigestTags_rollbackRestoresMovedTag(t *testing.T) {
 				[]string{"movable", "onlyB"})
 			So(err, ShouldBeNil)
 
-			wrapped := &setRepoRefFailMetaDB{MetaDB: metaDB, failRef: "onlyB"}
+			wrapped := &setRepoRefFailOnceMetaDB{MetaDB: metaDB}
 
 			err = meta.OnUpdateManifestDigestTags(context.Background(), "repo", []string{"movable", "onlyB"}, mediaTypeB,
 				digestB, bodyB, storeController, wrapped, log)
