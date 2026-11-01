@@ -177,7 +177,7 @@ func UploadImageWithOpts(img Image, baseURL, repo, ref string, opts ...UploadOpt
 	}
 
 	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated || inject.ErrStatusCode(resp.StatusCode()) == -1 {
-		return ErrPostBlob
+		return ErrPutBlob
 	}
 
 	manifestBlob := img.ManifestDescriptor.Data

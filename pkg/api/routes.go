@@ -2158,6 +2158,8 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		// CheckBlob looks for the digest under dest first, then the dedupe cache; on a
 		// cache hit it hard-links into dest. On failure (or if canMount denied), fall
 		// through to a new blob upload.
+		// Mount requests carry only the digest (no Content-Length); skip blob-byte
+		// quota here and rely on the manifest gate.
 		if userCanMount {
 			_, _, err = imgStore.CheckBlob(ctx, name, mountDigest)
 		}
@@ -2204,93 +2206,8 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 	}
 
 	// a full blob upload if "digest" is present
-	digests, ok := request.URL.Query()["digest"]
-	if ok {
-		if len(digests) != 1 {
-			response.WriteHeader(http.StatusBadRequest)
-
-			return
-		}
-
-		if contentType := request.Header.Get("Content-Type"); contentType != constants.BinaryMediaType {
-			rh.c.Log.Warn().Str("actual", contentType).Str("expected", constants.BinaryMediaType).Msg("invalid media type")
-			response.WriteHeader(http.StatusUnsupportedMediaType)
-
-			return
-		}
-
-		digestStr := digests[0]
-
-		digest, err := godigest.Parse(digestStr)
-		if err != nil {
-			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{"digest": digestStr})
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-
-			return
-		}
-
-		if digestAlgorithm != "" && digestAlgorithm != digest.Algorithm() {
-			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{
-				"digest":           digest.String(),
-				"digest-algorithm": digestAlgorithm.String(),
-			})
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-
-			return
-		}
-
-		var contentLength int64
-
-		// request.ContentLength is pre-parsed by net/http: 0 for an explicit empty
-		// body, -1 when unknown/chunked. Reject only the unknown case (< 0); a
-		// Content-Length of 0 is a valid empty-blob upload.
-		contentLength = request.ContentLength
-		if contentLength < 0 {
-			rh.c.Log.Warn().Int64("actual", contentLength).Msg("invalid content length")
-
-			details := map[string]string{
-				"digest":         digest.String(),
-				"Content-Length": strconv.FormatInt(contentLength, 10),
-			}
-
-			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-
-			return
-		}
-
-		sessionID, size, err := imgStore.FullBlobUpload(ctx, name, request.Body, digest)
-		if err != nil {
-			if errors.Is(err, zerr.ErrBadBlobDigest) {
-				details := zerr.GetDetails(err)
-				details["digest"] = digest.String()
-				e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
-				zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
-
-				return
-			}
-
-			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
-				Msg("failed to full blob upload")
-			if writeStorageClassError(response, err) {
-				return
-			}
-
-			response.WriteHeader(http.StatusInternalServerError)
-
-			return
-		}
-
-		if size != contentLength {
-			rh.c.Log.Warn().Int64("actual", size).Int64("expected", contentLength).Msg("invalid content length")
-			response.WriteHeader(http.StatusInternalServerError)
-
-			return
-		}
-
-		response.Header().Set("Location", getBlobUploadLocation(request.URL, name, digest))
-		response.Header().Set(constants.BlobUploadUUID, sessionID)
-		response.WriteHeader(http.StatusCreated)
+	if digests, ok := request.URL.Query()["digest"]; ok {
+		rh.createFullBlobUpload(ctx, response, request, imgStore, name, digests, digestAlgorithm)
 
 		return
 	}
@@ -2319,6 +2236,99 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, upload))
 	response.Header().Set("Range", "0-0")
 	response.WriteHeader(http.StatusAccepted)
+}
+
+// createFullBlobUpload handles POST .../blobs/uploads/?digest=... monolithic uploads.
+func (rh *RouteHandler) createFullBlobUpload(ctx context.Context, response http.ResponseWriter, request *http.Request,
+	imgStore storageTypes.ImageStore, name string, digests []string, digestAlgorithm godigest.Algorithm,
+) {
+	if len(digests) != 1 {
+		response.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	if contentType := request.Header.Get("Content-Type"); contentType != constants.BinaryMediaType {
+		rh.c.Log.Warn().Str("actual", contentType).Str("expected", constants.BinaryMediaType).Msg("invalid media type")
+		response.WriteHeader(http.StatusUnsupportedMediaType)
+
+		return
+	}
+
+	digestStr := digests[0]
+
+	digest, err := godigest.Parse(digestStr)
+	if err != nil {
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{"digest": digestStr})
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+		return
+	}
+
+	if digestAlgorithm != "" && digestAlgorithm != digest.Algorithm() {
+		e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(map[string]string{
+			"digest":           digest.String(),
+			"digest-algorithm": digestAlgorithm.String(),
+		})
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+		return
+	}
+
+	// request.ContentLength is pre-parsed by net/http: 0 for an explicit empty
+	// body, -1 when unknown/chunked. Reject only the unknown case (< 0); a
+	// Content-Length of 0 is a valid empty-blob upload.
+	contentLength := request.ContentLength
+	if contentLength < 0 {
+		rh.c.Log.Warn().Int64("actual", contentLength).Msg("invalid content length")
+
+		details := map[string]string{
+			"digest":         digest.String(),
+			"Content-Length": strconv.FormatInt(contentLength, 10),
+		}
+
+		e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+		return
+	}
+
+	if rejected, _ := rh.checkRepoBlobQuota(response, request, name, digest, contentLength); rejected {
+		return
+	}
+
+	sessionID, size, err := imgStore.FullBlobUpload(ctx, name, request.Body, digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrBadBlobDigest) {
+			details := zerr.GetDetails(err)
+			details["digest"] = digest.String()
+			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
+			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+			return
+		}
+
+		rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).
+			Msg("failed to full blob upload")
+		if writeStorageClassError(response, err) {
+			return
+		}
+
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	if size != contentLength {
+		rh.c.Log.Warn().Int64("actual", size).Int64("expected", contentLength).Msg("invalid content length")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	response.Header().Set("Location", getBlobUploadLocation(request.URL, name, digest))
+	response.Header().Set(constants.BlobUploadUUID, sessionID)
+	response.WriteHeader(http.StatusCreated)
 }
 
 // parseDigestAlgorithmQuery returns the optional digest-algorithm query value.
@@ -2593,6 +2603,14 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 	var from, to int64
 
+	// Blob quota size comes only from this request's headers (no GetBlobUpload).
+	// Monolithic: Content-Length. Chunked: inclusive Content-Range end + 1.
+	// Finish with neither header (empty complete-after-PATCH): skip blob quota; manifest gate remains.
+	var (
+		blobQuotaSize     int64
+		haveBlobQuotaSize bool
+	)
+
 	if shouldPutBlobChunk {
 		contentLen, err := strconv.ParseInt(contentLenHeader, 10, 64)
 		if err != nil || contentLen < 0 {
@@ -2616,9 +2634,12 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 			if contentLen > 0 {
 				to = contentLen
+				blobQuotaSize = contentLen
+				haveBlobQuotaSize = true
 			} else {
-				// Zero-length monolithic upload (e.g. empty blob): skip
-				// PutBlobChunk and go straight to FinishBlobUpload below.
+				// Content-Length 0 is used both for empty blobs and for
+				// complete-after-PATCH (no body). Total size is not in this
+				// request; skip blob quota and rely on the manifest gate.
 				shouldPutBlobChunk = false
 			}
 		} else if from, to, err = getContentRange(request); err != nil || (to-from)+1 != contentLen { // finish chunked upload
@@ -2626,6 +2647,25 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
+
+			return
+		} else {
+			blobQuotaSize = to + 1
+			haveBlobQuotaSize = true
+		}
+	}
+
+	// Gate before PutBlobChunk so MetaDB/503 leaves the session at the same
+	// offset and the client can retry the same Content-Range.
+	if haveBlobQuotaSize {
+		rejected, deleteUpload := rh.checkRepoBlobQuota(response, request, name, digest, blobQuotaSize)
+		if rejected {
+			if deleteUpload {
+				if delErr := imgStore.DeleteBlobUpload(name, sessionID); delErr != nil {
+					rh.c.Log.Error().Err(delErr).Str("blobUpload", sessionID).Str("repository", name).
+						Msg("failed to remove blobUpload after quota reject")
+				}
+			}
 
 			return
 		}

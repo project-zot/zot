@@ -1,12 +1,16 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -196,6 +200,596 @@ func TestCheckRepoByteQuotaInvalidMetadataFailsClosed(t *testing.T) {
 	require.True(t, rejected)
 	require.Equal(t, http.StatusInternalServerError, response.Code)
 	require.Contains(t, response.Body.String(), "repository size metadata is invalid")
+}
+
+func TestCheckRepoByteQuotaExceededMapsTo413(t *testing.T) {
+	conf := config.New()
+	conf.Storage.MaxRepoBytes = 15
+
+	controller := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetRepoSizeWithCandidateFn: func(context.Context, string, []string, mTypes.ImageMeta) (int64, int64, error) {
+				return 10, 20, nil
+			},
+		},
+		StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+	}
+	handler := &RouteHandler{c: controller}
+	body := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+		`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
+		`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",` +
+		`"size":2},"layers":[]}`)
+	request := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/v1", nil)
+	response := httptest.NewRecorder()
+
+	rejected := handler.checkRepoByteQuota(response, request, "repo", "v1", ispec.MediaTypeImageManifest,
+		body, nil)
+
+	require.True(t, rejected)
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	require.Contains(t, response.Body.String(), `"current":"10"`)
+	require.Contains(t, response.Body.String(), `"projected":"20"`)
+	require.Contains(t, response.Body.String(), `"limit":"15"`)
+}
+
+func TestCheckRepoBlobQuotaRejectsGrowthAndAllowsReuse(t *testing.T) {
+	conf := config.New()
+	conf.Storage.MaxRepoBytes = 100
+	digest := godigest.FromString("quota-blob")
+
+	t.Run("rejects when size would exceed", func(t *testing.T) {
+		controller := &Controller{
+			Config: conf,
+			Log:    log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+					int64, int64, error,
+				) {
+					return 90, 110, nil
+				},
+			},
+			StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+		}
+		handler := &RouteHandler{c: controller}
+		request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/?digest="+digest.String(), nil)
+		response := httptest.NewRecorder()
+
+		rejected, deleteUpload := handler.checkRepoBlobQuota(response, request, "repo", digest, 20)
+		require.True(t, rejected)
+		require.True(t, deleteUpload)
+		require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	})
+
+	t.Run("allows when digest already known (projected equals current)", func(t *testing.T) {
+		controller := &Controller{
+			Config: conf,
+			Log:    log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+					int64, int64, error,
+				) {
+					return 90, 90, nil
+				},
+			},
+			StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+		}
+		handler := &RouteHandler{c: controller}
+		request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+		response := httptest.NewRecorder()
+
+		rejected, deleteUpload := handler.checkRepoBlobQuota(response, request, "repo", digest, 1000)
+		require.False(t, rejected)
+		require.False(t, deleteUpload)
+		require.Equal(t, http.StatusOK, response.Code)
+	})
+
+	t.Run("MetaDB error rejects without deleteUpload", func(t *testing.T) {
+		controller := &Controller{
+			Config: conf,
+			Log:    log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+					int64, int64, error,
+				) {
+					return 0, 0, errors.New("metadb unavailable")
+				},
+			},
+			StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+		}
+		handler := &RouteHandler{c: controller}
+		request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+		response := httptest.NewRecorder()
+
+		rejected, deleteUpload := handler.checkRepoBlobQuota(response, request, "repo", digest, 20)
+		require.True(t, rejected)
+		require.False(t, deleteUpload)
+		require.Equal(t, http.StatusServiceUnavailable, response.Code)
+	})
+}
+
+func TestCheckRepoBlobQuotaHoldsRepoMutationLock(t *testing.T) {
+	conf := config.New()
+	conf.Storage.MaxRepoBytes = 100
+	digest := godigest.FromString("quota-blob-lock")
+	projectionStarted := make(chan struct{})
+
+	controller := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+				int64, int64, error,
+			) {
+				close(projectionStarted)
+
+				return 0, 0, nil
+			},
+		},
+		StoreController: storage.StoreController{DefaultStore: mocks.MockedImageStore{}},
+	}
+	handler := &RouteHandler{c: controller}
+
+	releaseRepoMutationLock := handler.acquireRepoMutationLock("repo")
+
+	request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		_, _ = handler.checkRepoBlobQuota(response, request, "repo", digest, 10)
+		close(done)
+	}()
+
+	select {
+	case <-projectionStarted:
+		releaseRepoMutationLock()
+		<-done
+		t.Fatal("blob quota projection ran while mutation lock held")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	releaseRepoMutationLock()
+	<-done
+
+	select {
+	case <-projectionStarted:
+	case <-time.After(time.Second):
+		t.Fatal("blob quota projection did not run after lock released")
+	}
+
+	require.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestBlobUploadHandlersEnforceAndSkipByteQuota(t *testing.T) {
+	digest := godigest.FromString("handler-blob-quota")
+	blob := []byte("0123456789") // 10 bytes
+
+	t.Run("monolithic POST rejects before FullBlobUpload", func(t *testing.T) {
+		var fullUploads atomic.Int32
+		var projectedSize atomic.Int64
+
+		controller := &Controller{
+			Config: func() *config.Config {
+				conf := config.New()
+				conf.Storage.MaxRepoBytes = 5
+
+				return conf
+			}(),
+			Log: log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(_ context.Context, _ string, _ godigest.Digest, size int64) (
+					int64, int64, error,
+				) {
+					projectedSize.Store(size)
+
+					return 0, size, nil
+				},
+			},
+			StoreController: storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					FullBlobUploadFn: func(context.Context, string, io.Reader, godigest.Digest) (string, int64, error) {
+						fullUploads.Add(1)
+
+						return "session", int64(len(blob)), nil
+					},
+				},
+			},
+		}
+		handler := &RouteHandler{c: controller}
+
+		request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/?digest="+digest.String(),
+			bytes.NewReader(blob))
+		request.Header.Set("Content-Type", constants.BinaryMediaType)
+		request.ContentLength = int64(len(blob))
+		request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+		response := httptest.NewRecorder()
+
+		handler.CreateBlobUpload(response, request)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+		require.Equal(t, int64(len(blob)), projectedSize.Load())
+		require.Equal(t, int32(0), fullUploads.Load())
+	})
+
+	t.Run("finish PUT with Content-Range projects end+1 and deletes session on exceed", func(t *testing.T) {
+		var (
+			finishCalls   atomic.Int32
+			deleteCalls   atomic.Int32
+			putChunkCalls atomic.Int32
+			projected     atomic.Int64
+		)
+
+		controller := &Controller{
+			Config: func() *config.Config {
+				conf := config.New()
+				conf.Storage.MaxRepoBytes = 50
+
+				return conf
+			}(),
+			Log: log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(_ context.Context, _ string, _ godigest.Digest, size int64) (
+					int64, int64, error,
+				) {
+					projected.Store(size)
+
+					return 0, size, nil
+				},
+			},
+			StoreController: storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					PutBlobChunkFn: func(context.Context, string, string, int64, int64, io.Reader) (int64, error) {
+						putChunkCalls.Add(1)
+
+						return 100, nil
+					},
+					FinishBlobUploadFn: func(string, string, io.Reader, godigest.Digest) error {
+						finishCalls.Add(1)
+
+						return nil
+					},
+					DeleteBlobUploadFn: func(string, string) error {
+						deleteCalls.Add(1)
+
+						return nil
+					},
+				},
+			},
+		}
+		handler := &RouteHandler{c: controller}
+
+		// Prior chunks 0-89; this finish chunk is 90-99 (10 bytes). Quota size is to+1 == 100.
+		body := make([]byte, 10)
+		request := httptest.NewRequest(http.MethodPut,
+			"/v2/repo/blobs/uploads/sess?digest="+digest.String(), bytes.NewReader(body))
+		request.Header.Set("Content-Type", constants.BinaryMediaType)
+		request.Header.Set("Content-Length", strconv.Itoa(len(body)))
+		request.Header.Set("Content-Range", "90-99")
+		request = mux.SetURLVars(request, map[string]string{"name": "repo", "session_id": "sess"})
+		response := httptest.NewRecorder()
+
+		handler.UpdateBlobUpload(response, request)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+		require.Equal(t, int64(100), projected.Load())
+		require.Equal(t, int32(0), putChunkCalls.Load())
+		require.Equal(t, int32(1), deleteCalls.Load())
+		require.Equal(t, int32(0), finishCalls.Load())
+	})
+
+	t.Run("MetaDB error on finish preserves upload session", func(t *testing.T) {
+		var (
+			deleteCalls   atomic.Int32
+			finishCalls   atomic.Int32
+			putChunkCalls atomic.Int32
+		)
+
+		controller := &Controller{
+			Config: func() *config.Config {
+				conf := config.New()
+				conf.Storage.MaxRepoBytes = 100
+
+				return conf
+			}(),
+			Log: log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+					int64, int64, error,
+				) {
+					return 0, 0, errors.New("metadb unavailable")
+				},
+			},
+			StoreController: storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					PutBlobChunkFn: func(context.Context, string, string, int64, int64, io.Reader) (int64, error) {
+						putChunkCalls.Add(1)
+
+						return 10, nil
+					},
+					FinishBlobUploadFn: func(string, string, io.Reader, godigest.Digest) error {
+						finishCalls.Add(1)
+
+						return nil
+					},
+					DeleteBlobUploadFn: func(string, string) error {
+						deleteCalls.Add(1)
+
+						return nil
+					},
+				},
+			},
+		}
+		handler := &RouteHandler{c: controller}
+
+		body := make([]byte, 10)
+		request := httptest.NewRequest(http.MethodPut,
+			"/v2/repo/blobs/uploads/sess?digest="+digest.String(), bytes.NewReader(body))
+		request.Header.Set("Content-Type", constants.BinaryMediaType)
+		request.Header.Set("Content-Length", strconv.Itoa(len(body)))
+		request.Header.Set("Content-Range", "0-9")
+		request = mux.SetURLVars(request, map[string]string{"name": "repo", "session_id": "sess"})
+		response := httptest.NewRecorder()
+
+		handler.UpdateBlobUpload(response, request)
+
+		require.Equal(t, http.StatusServiceUnavailable, response.Code)
+		require.Equal(t, int32(0), putChunkCalls.Load())
+		require.Equal(t, int32(0), deleteCalls.Load())
+		require.Equal(t, int32(0), finishCalls.Load())
+	})
+
+	t.Run("complete-after-PATCH with Content-Length 0 skips blob quota", func(t *testing.T) {
+		var (
+			quotaCalls  atomic.Int32
+			finishCalls atomic.Int32
+		)
+
+		controller := &Controller{
+			Config: func() *config.Config {
+				conf := config.New()
+				conf.Storage.MaxRepoBytes = 1
+
+				return conf
+			}(),
+			Log: log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+					int64, int64, error,
+				) {
+					quotaCalls.Add(1)
+
+					return 0, 0, nil
+				},
+			},
+			StoreController: storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					FinishBlobUploadFn: func(string, string, io.Reader, godigest.Digest) error {
+						finishCalls.Add(1)
+
+						return nil
+					},
+				},
+			},
+		}
+		handler := &RouteHandler{c: controller}
+
+		request := httptest.NewRequest(http.MethodPut,
+			"/v2/repo/blobs/uploads/sess?digest="+digest.String(), http.NoBody)
+		request.Header.Set("Content-Length", "0")
+		request.ContentLength = 0
+		request = mux.SetURLVars(request, map[string]string{"name": "repo", "session_id": "sess"})
+		response := httptest.NewRecorder()
+
+		handler.UpdateBlobUpload(response, request)
+
+		require.Equal(t, http.StatusCreated, response.Code)
+		require.Equal(t, int32(0), quotaCalls.Load())
+		require.Equal(t, int32(1), finishCalls.Load())
+	})
+
+	t.Run("mount skips blob quota", func(t *testing.T) {
+		var quotaCalls atomic.Int32
+		mountDigest := godigest.FromString("mount-blob")
+
+		controller := &Controller{
+			Config: func() *config.Config {
+				conf := config.New()
+				conf.Storage.MaxRepoBytes = 1
+
+				return conf
+			}(),
+			Log: log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+					int64, int64, error,
+				) {
+					quotaCalls.Add(1)
+
+					return 0, 0, nil
+				},
+			},
+			StoreController: storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					CheckBlobFn: func(context.Context, string, godigest.Digest) (bool, int64, error) {
+						return true, 10, nil
+					},
+				},
+			},
+		}
+		handler := &RouteHandler{c: controller}
+
+		request := httptest.NewRequest(http.MethodPost,
+			"/v2/repo/blobs/uploads/?mount="+mountDigest.String(), http.NoBody)
+		request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SaveOnRequest(request)
+		response := httptest.NewRecorder()
+
+		handler.CreateBlobUpload(response, request)
+
+		require.Equal(t, http.StatusCreated, response.Code)
+		require.Equal(t, int32(0), quotaCalls.Load())
+	})
+
+	t.Run("monolithic POST rejects unknown Content-Length", func(t *testing.T) {
+		var fullUploads atomic.Int32
+
+		controller := &Controller{
+			Config: config.New(),
+			Log:    log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{},
+			StoreController: storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					FullBlobUploadFn: func(context.Context, string, io.Reader, godigest.Digest) (string, int64, error) {
+						fullUploads.Add(1)
+
+						return "session", 0, nil
+					},
+				},
+			},
+		}
+		controller.Config.Storage.MaxRepoBytes = 100
+		handler := &RouteHandler{c: controller}
+
+		request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/?digest="+digest.String(),
+			http.NoBody)
+		request.Header.Set("Content-Type", constants.BinaryMediaType)
+		request.ContentLength = -1
+		request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+		response := httptest.NewRecorder()
+
+		handler.CreateBlobUpload(response, request)
+
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Equal(t, int32(0), fullUploads.Load())
+	})
+
+	t.Run("monolithic POST maps FullBlobUpload failure to 500", func(t *testing.T) {
+		controller := &Controller{
+			Config: func() *config.Config {
+				conf := config.New()
+				conf.Storage.MaxRepoBytes = 100
+
+				return conf
+			}(),
+			Log: log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(context.Context, string, godigest.Digest, int64) (
+					int64, int64, error,
+				) {
+					return 0, 10, nil
+				},
+			},
+			StoreController: storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					FullBlobUploadFn: func(context.Context, string, io.Reader, godigest.Digest) (string, int64, error) {
+						return "", 0, errors.New("disk full")
+					},
+				},
+			},
+		}
+		handler := &RouteHandler{c: controller}
+
+		request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/?digest="+digest.String(),
+			bytes.NewReader(blob))
+		request.Header.Set("Content-Type", constants.BinaryMediaType)
+		request.ContentLength = int64(len(blob))
+		request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+		response := httptest.NewRecorder()
+
+		handler.CreateBlobUpload(response, request)
+
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+	})
+
+	t.Run("finish PUT still returns 413 when DeleteBlobUpload fails", func(t *testing.T) {
+		var (
+			finishCalls   atomic.Int32
+			putChunkCalls atomic.Int32
+		)
+
+		controller := &Controller{
+			Config: func() *config.Config {
+				conf := config.New()
+				conf.Storage.MaxRepoBytes = 50
+
+				return conf
+			}(),
+			Log: log.NewTestLogger(),
+			MetaDB: mocks.MetaDBMock{
+				GetRepoSizeWithBlobCandidateFn: func(_ context.Context, _ string, _ godigest.Digest, size int64) (
+					int64, int64, error,
+				) {
+					return 0, size, nil
+				},
+			},
+			StoreController: storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					PutBlobChunkFn: func(context.Context, string, string, int64, int64, io.Reader) (int64, error) {
+						putChunkCalls.Add(1)
+
+						return 100, nil
+					},
+					FinishBlobUploadFn: func(string, string, io.Reader, godigest.Digest) error {
+						finishCalls.Add(1)
+
+						return nil
+					},
+					DeleteBlobUploadFn: func(string, string) error {
+						return errors.New("cleanup failed")
+					},
+				},
+			},
+		}
+		handler := &RouteHandler{c: controller}
+
+		body := make([]byte, 10)
+		request := httptest.NewRequest(http.MethodPut,
+			"/v2/repo/blobs/uploads/sess?digest="+digest.String(), bytes.NewReader(body))
+		request.Header.Set("Content-Type", constants.BinaryMediaType)
+		request.Header.Set("Content-Length", strconv.Itoa(len(body)))
+		request.Header.Set("Content-Range", "90-99")
+		request = mux.SetURLVars(request, map[string]string{"name": "repo", "session_id": "sess"})
+		response := httptest.NewRecorder()
+
+		handler.UpdateBlobUpload(response, request)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+		require.Equal(t, int32(0), putChunkCalls.Load())
+		require.Equal(t, int32(0), finishCalls.Load())
+	})
+}
+
+func TestWriteRepoByteQuotaMetaErrorMappings(t *testing.T) {
+	conf := config.New()
+	conf.Storage.MaxRepoBytes = 10
+	handler := &RouteHandler{c: &Controller{Config: conf, Log: log.NewTestLogger()}}
+
+	t.Run("quota exceeded without limit detail falls back to configured limit", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		err := zerr.NewError(zerr.ErrRepoByteQuotaExceeded).
+			AddDetail("current", "8").
+			AddDetail("projected", "12")
+
+		require.True(t, handler.writeRepoByteQuotaMetaError(response, "repo", 10, err, "unused"))
+		require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+		require.Contains(t, response.Body.String(), `"limit":"10"`)
+	})
+
+	t.Run("invalid candidate size", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		require.True(t, handler.writeRepoByteQuotaMetaError(response, "repo", 10,
+			zerr.ErrInvalidRepoSizeCandidate, "unused"))
+		require.Equal(t, http.StatusBadRequest, response.Code)
+	})
+
+	t.Run("invalid stored size", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		require.True(t, handler.writeRepoByteQuotaMetaError(response, "repo", 10,
+			zerr.ErrInvalidRepoSize, "unused"))
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+	})
 }
 
 func TestDeleteManifestHoldsRepoByteQuotaLock(t *testing.T) {
