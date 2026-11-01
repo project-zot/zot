@@ -3183,36 +3183,36 @@ func TestManifestCheckTracker(t *testing.T) {
 	Convey("A reference that was never checked is due for an upstream check", t, func() {
 		tracker := newManifestCheckTracker(time.Hour)
 
-		So(tracker.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+		So(tracker.ShouldCheckUpstream(context.Background(), "repo", "latest"), ShouldBeTrue)
 	})
 
 	Convey("A reference checked within the interval is served locally", t, func() {
 		tracker := newManifestCheckTracker(time.Hour)
-		tracker.MarkChecked("repo", "latest")
+		tracker.MarkChecked(context.Background(), "repo", "latest")
 
-		So(tracker.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
+		So(tracker.ShouldCheckUpstream(context.Background(), "repo", "latest"), ShouldBeFalse)
 
 		Convey("Only the marked reference is throttled", func() {
-			So(tracker.ShouldCheckUpstream("repo", "v1"), ShouldBeTrue)
-			So(tracker.ShouldCheckUpstream("other", "latest"), ShouldBeTrue)
+			So(tracker.ShouldCheckUpstream(context.Background(), "repo", "v1"), ShouldBeTrue)
+			So(tracker.ShouldCheckUpstream(context.Background(), "other", "latest"), ShouldBeTrue)
 		})
 	})
 
 	Convey("A reference checked before the interval elapsed is due again and dropped", t, func() {
 		tracker := newManifestCheckTracker(time.Millisecond)
-		tracker.MarkChecked("repo", "latest")
+		tracker.MarkChecked(context.Background(), "repo", "latest")
 
 		time.Sleep(5 * time.Millisecond)
 
-		So(tracker.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+		So(tracker.ShouldCheckUpstream(context.Background(), "repo", "latest"), ShouldBeTrue)
 		So(tracker.store, ShouldNotContainKey, trackerKey("repo", "latest"))
 	})
 
 	Convey("Keys of different repo and reference pairs never collide", t, func() {
 		tracker := newManifestCheckTracker(time.Hour)
-		tracker.MarkChecked("a", "b/c")
+		tracker.MarkChecked(context.Background(), "a", "b/c")
 
-		So(tracker.ShouldCheckUpstream("a/b", "c"), ShouldBeTrue)
+		So(tracker.ShouldCheckUpstream(context.Background(), "a/b", "c"), ShouldBeTrue)
 	})
 
 	Convey("The sweep period is never shorter than the minimum", t, func() {
@@ -3224,7 +3224,7 @@ func TestManifestCheckTracker(t *testing.T) {
 		tracker := newManifestCheckTracker(time.Millisecond)
 
 		for i := range 100 {
-			tracker.MarkChecked("repo", "tag"+strconv.Itoa(i))
+			tracker.MarkChecked(context.Background(), "repo", "tag"+strconv.Itoa(i))
 		}
 
 		So(len(tracker.store), ShouldEqual, 100)
@@ -3233,7 +3233,7 @@ func TestManifestCheckTracker(t *testing.T) {
 
 		// force the sweep to be due, then mark one more reference
 		tracker.lastEvict = time.Now().Add(-2 * minEvictPeriod)
-		tracker.MarkChecked("repo", "fresh")
+		tracker.MarkChecked(context.Background(), "repo", "fresh")
 
 		So(len(tracker.store), ShouldEqual, 1)
 		So(tracker.store, ShouldContainKey, trackerKey("repo", "fresh"))
@@ -3249,12 +3249,12 @@ func TestManifestCheckTracker(t *testing.T) {
 
 			go func(idx int) {
 				defer waitGroup.Done()
-				tracker.MarkChecked("repo", "tag"+strconv.Itoa(idx))
+				tracker.MarkChecked(context.Background(), "repo", "tag"+strconv.Itoa(idx))
 			}(i)
 
 			go func(idx int) {
 				defer waitGroup.Done()
-				tracker.ShouldCheckUpstream("repo", "tag"+strconv.Itoa(idx))
+				tracker.ShouldCheckUpstream(context.Background(), "repo", "tag"+strconv.Itoa(idx))
 			}(i)
 		}
 
@@ -3264,7 +3264,54 @@ func TestManifestCheckTracker(t *testing.T) {
 	})
 }
 
+// countingCheckStore is a manifestCheckStore that reports every reference as recently checked
+// and counts how often it is read.
+type countingCheckStore struct {
+	reads atomic.Int32
+}
+
+func (s *countingCheckStore) ShouldCheckUpstream(context.Context, string, string) bool {
+	s.reads.Add(1)
+
+	return false
+}
+
+func (s *countingCheckStore) MarkChecked(context.Context, string, string) {}
+
 func TestBaseServiceShouldCheckUpstream(t *testing.T) {
+	Convey("A repository excluded by the content rules never reads the store", t, func() {
+		logger := log.NewTestLogger()
+		excludedStore := &countingCheckStore{}
+		matchingStore := &countingCheckStore{}
+
+		excludedContent := []syncconf.Content{{Prefix: "other/**"}}
+		excluded := &BaseService{
+			config:         syncconf.RegistryConfig{Content: excludedContent},
+			contentManager: NewContentManager(excludedContent, logger),
+			checkTracker:   excludedStore,
+			log:            logger,
+		}
+
+		matchingContent := []syncconf.Content{{Prefix: "repo"}}
+		matching := &BaseService{
+			config:         syncconf.RegistryConfig{Content: matchingContent},
+			contentManager: NewContentManager(matchingContent, logger),
+			checkTracker:   matchingStore,
+			log:            logger,
+		}
+
+		So(excluded.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
+		So(excludedStore.reads.Load(), ShouldEqual, 0)
+
+		onDemand := NewOnDemand(logger)
+		onDemand.Add(excluded)
+		onDemand.Add(matching)
+
+		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeFalse)
+		So(excludedStore.reads.Load(), ShouldEqual, 0)
+		So(matchingStore.reads.Load(), ShouldEqual, 1)
+	})
+
 	Convey("Without manifestCheckInterval every request checks upstream", t, func() {
 		service := &BaseService{config: syncconf.RegistryConfig{}}
 
@@ -3272,7 +3319,7 @@ func TestBaseServiceShouldCheckUpstream(t *testing.T) {
 		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
 
 		Convey("Marking a check is a no-op", func() {
-			service.markUpstreamChecked("repo", "latest")
+			service.markUpstreamChecked(context.Background(), "repo", "latest")
 			So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
 		})
 	})
@@ -3282,7 +3329,7 @@ func TestBaseServiceShouldCheckUpstream(t *testing.T) {
 
 		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
 
-		service.markUpstreamChecked("repo", "latest")
+		service.markUpstreamChecked(context.Background(), "repo", "latest")
 		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
 	})
 
@@ -3417,6 +3464,164 @@ func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 		onDemand.Add(&mockCheckService{})
 
 		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
+	})
+}
+
+func TestNewManifestCheckStore(t *testing.T) {
+	Convey("A nil store config keeps the in-process tracker", t, func() {
+		store, err := newManifestCheckStore(syncconf.RegistryConfig{ManifestCheckInterval: time.Hour}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		_, ok := store.(*manifestCheckTracker)
+		So(ok, ShouldBeTrue)
+	})
+
+	Convey("An unsupported store name is rejected", t, func() {
+		_, err := newManifestCheckStore(syncconf.RegistryConfig{
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore:    &syncconf.ManifestCheckStoreConfig{Name: "not-a-backend"},
+		}, log.NewTestLogger())
+		So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+	})
+
+	Convey("dynamodb builds a shared tracker without contacting AWS", t, func() {
+		store, err := newManifestCheckStore(syncconf.RegistryConfig{
+			URLs:                  []string{"https://registry-1.docker.io"},
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore: &syncconf.ManifestCheckStoreConfig{
+				Name:      "dynamodb",
+				TableName: "test-table",
+				Region:    "us-west-2",
+			},
+		}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		tracker, ok := store.(*dynamoManifestCheckTracker)
+		So(ok, ShouldBeTrue)
+		So(tracker.tableName, ShouldEqual, "test-table")
+		So(tracker.interval, ShouldEqual, time.Hour)
+		So(tracker.keyPrefix, ShouldEqual,
+			manifestCheckKeyPrefix+manifestCheckNamespace(syncconf.RegistryConfig{
+				URLs: []string{"https://registry-1.docker.io"},
+			})+"#")
+	})
+
+	Convey("New fails when the store cannot be built", t, func() {
+		_, err := New(syncconf.RegistryConfig{
+			URLs:                  []string{"localhost:9999"},
+			OnDemand:              true,
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore:    &syncconf.ManifestCheckStoreConfig{Name: "not-a-backend"},
+		}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(errors.Is(err, zerr.ErrBadConfig), ShouldBeTrue)
+	})
+
+	Convey("A service built with a store config uses that store", t, func() {
+		service, err := New(syncconf.RegistryConfig{
+			URLs:                  []string{"localhost:9999"},
+			OnDemand:              true,
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore: &syncconf.ManifestCheckStoreConfig{
+				Name:      "dynamodb",
+				TableName: "test-table",
+				Region:    "us-west-2",
+			},
+		}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{},
+			log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		_, ok := service.checkTracker.(*dynamoManifestCheckTracker)
+		So(ok, ShouldBeTrue)
+		So(service.syncLease, ShouldBeNil)
+	})
+
+	Convey("coordinateOnDemand wires a lease coordinator on the same table", t, func() {
+		service, err := New(syncconf.RegistryConfig{
+			URLs:                  []string{"localhost:9999"},
+			OnDemand:              true,
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore: &syncconf.ManifestCheckStoreConfig{
+				Name:               "dynamodb",
+				TableName:          "test-table",
+				Region:             "us-west-2",
+				CoordinateOnDemand: true,
+			},
+		}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{},
+			log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.syncLease, ShouldNotBeNil)
+		So(service.syncLease.owner, ShouldNotBeEmpty)
+
+		leaseStore, ok := service.syncLease.store.(*dynamoSyncLeaseStore)
+		So(ok, ShouldBeTrue)
+		So(leaseStore.tableName, ShouldEqual, "test-table")
+		So(leaseStore.keyPrefix, ShouldEqual,
+			syncLeaseKeyPrefix+manifestCheckNamespace(syncconf.RegistryConfig{URLs: []string{"localhost:9999"}})+"#")
+	})
+}
+
+func TestNewManifestCheckStoreAWSConfigError(t *testing.T) {
+	t.Setenv("AWS_PROFILE", "zot-no-such-profile")
+	t.Setenv("AWS_CONFIG_FILE", "/nonexistent/config")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent/credentials")
+
+	Convey("dynamodb is rejected when the AWS configuration cannot be loaded", t, func() {
+		_, err := newManifestCheckStore(syncconf.RegistryConfig{
+			ManifestCheckInterval: time.Hour,
+			ManifestCheckStore: &syncconf.ManifestCheckStoreConfig{
+				Name:      "dynamodb",
+				TableName: "test-table",
+				Region:    "us-west-2",
+			},
+		}, log.NewTestLogger())
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "zot-no-such-profile")
+	})
+}
+
+func TestManifestCheckDigestKey(t *testing.T) {
+	newContentTracker := func(content []syncconf.Content, urls ...string) *dynamoManifestCheckTracker {
+		namespace := manifestCheckNamespace(syncconf.RegistryConfig{URLs: urls, Content: content})
+
+		return &dynamoManifestCheckTracker{keyPrefix: manifestCheckKeyPrefix + namespace + "#"}
+	}
+
+	newTracker := func(urls ...string) *dynamoManifestCheckTracker {
+		return newContentTracker(nil, urls...)
+	}
+
+	Convey("Distinct repo:reference pairs get distinct keys that cannot match a digest", t, func() {
+		tracker := newTracker("https://registry-1.docker.io")
+		a := tracker.key("repoA", "latest")
+
+		So(a, ShouldNotEqual, tracker.key("repoA", "v2"))
+		So(a, ShouldNotEqual, tracker.key("repoB", "latest"))
+		So(strings.HasPrefix(a, manifestCheckKeyPrefix), ShouldBeTrue)
+		So(strings.HasPrefix(godigest.FromString("anything").String(), manifestCheckKeyPrefix), ShouldBeFalse)
+	})
+
+	Convey("Registries with the same URLs share keys, others do not", t, func() {
+		primary := newTracker("https://registry-1.docker.io", "https://mirror.example")
+		replica := newTracker("https://registry-1.docker.io", "https://mirror.example")
+		fallback := newTracker("https://fallback.example")
+
+		So(primary.key("repo", "latest"), ShouldEqual, replica.key("repo", "latest"))
+		So(primary.key("repo", "latest"), ShouldNotEqual, fallback.key("repo", "latest"))
+		So(len(manifestCheckNamespace(syncconf.RegistryConfig{})), ShouldEqual, manifestCheckNamespaceLen)
+	})
+
+	Convey("Remapping the content rules changes the keys, restarting with the same rules does not", t, func() {
+		upstream := "https://registry-1.docker.io"
+		oldRules := []syncconf.Content{{Prefix: "old/**", Destination: "/mirror", StripPrefix: true}}
+		newRules := []syncconf.Content{{Prefix: "new/**", Destination: "/mirror", StripPrefix: true}}
+		sameRules := []syncconf.Content{{Prefix: "old/**", Destination: "/mirror", StripPrefix: true}}
+
+		before := newContentTracker(oldRules, upstream)
+		remapped := newContentTracker(newRules, upstream)
+		restarted := newContentTracker(sameRules, upstream)
+
+		So(before.key("mirror/app", "latest"), ShouldNotEqual, remapped.key("mirror/app", "latest"))
+		So(before.key("mirror/app", "latest"), ShouldEqual, restarted.key("mirror/app", "latest"))
+		So(before.key("mirror/app", "latest"), ShouldNotEqual, newTracker(upstream).key("mirror/app", "latest"))
 	})
 }
 
