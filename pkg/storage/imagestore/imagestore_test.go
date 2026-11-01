@@ -3,6 +3,7 @@ package imagestore_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -1744,5 +1745,225 @@ func TestFullBlobUploadStagingCleanup(t *testing.T) {
 		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
 		So(len(deleted), ShouldEqual, 1)
 		So(strings.Contains(deleted[0], ".uploads"), ShouldBeTrue)
+	})
+}
+
+func TestRetagManifest(t *testing.T) {
+	Convey("RetagManifest", t, func() {
+		newStore := func(rootDir string) storageTypes.ImageStore {
+			return imagestore.NewImageStore(rootDir, "", false, false, zlog.NewTestLogger(),
+				monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+		}
+
+		Convey("rejects empty reference or digest", func() {
+			rootDir := t.TempDir()
+			store := newStore(rootDir)
+			ctx := context.Background()
+			So(store.InitRepo(ctx, "repo"), ShouldBeNil)
+
+			digest := godigest.FromString("manifest")
+			So(errors.Is(store.RetagManifest(ctx, "repo", "", digest), zerr.ErrBadManifest), ShouldBeTrue)
+			So(errors.Is(store.RetagManifest(ctx, "repo", "latest", ""), zerr.ErrBadManifest), ShouldBeTrue)
+		})
+
+		Convey("returns repo error when the repository layout is missing", func() {
+			rootDir := t.TempDir()
+			store := newStore(rootDir)
+			ctx := context.Background()
+
+			err := store.RetagManifest(ctx, "missing", "latest", godigest.FromString("manifest"))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("returns an error when index.json cannot be read", func() {
+			rootDir := t.TempDir()
+			store := newStore(rootDir)
+			ctx := context.Background()
+			So(store.InitRepo(ctx, "repo"), ShouldBeNil)
+			So(os.WriteFile(path.Join(rootDir, "repo", ispec.ImageIndexFile), []byte("{"), 0o600), ShouldBeNil)
+
+			err := store.RetagManifest(ctx, "repo", "latest", godigest.FromString("manifest"))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("returns ErrManifestNotFound when the digest is absent", func() {
+			rootDir := t.TempDir()
+			store := newStore(rootDir)
+			ctx := context.Background()
+			So(store.InitRepo(ctx, "repo"), ShouldBeNil)
+
+			err := store.RetagManifest(ctx, "repo", "latest", godigest.FromString("missing"))
+			So(errors.Is(err, zerr.ErrManifestNotFound), ShouldBeTrue)
+		})
+
+		indexByTag := func(store storageTypes.ImageStore, repo, tag string) (ispec.Descriptor, bool) {
+			buf, err := store.GetIndexContent(repo)
+			So(err, ShouldBeNil)
+
+			var index ispec.Index
+			So(json.Unmarshal(buf, &index), ShouldBeNil)
+
+			for _, desc := range index.Manifests {
+				if name, ok := desc.Annotations[ispec.AnnotationRefName]; ok && name == tag {
+					return desc, true
+				}
+			}
+
+			return ispec.Descriptor{}, false
+		}
+
+		Convey("reattaches a tag to an untagged digest left by overwrite", func() {
+			rootDir := t.TempDir()
+			store := newStore(rootDir)
+			ctx := context.Background()
+			So(store.InitRepo(ctx, "repo"), ShouldBeNil)
+
+			prior := godigest.FromString("prior")
+			newer := godigest.FromString("newer")
+			index := ispec.Index{
+				SchemaVersion: 2,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    prior,
+						Size:      1,
+					},
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    newer,
+						Size:      1,
+						Annotations: map[string]string{
+							ispec.AnnotationRefName: "latest",
+						},
+					},
+				},
+			}
+			So(store.PutIndexContent("repo", index), ShouldBeNil)
+
+			So(store.DeleteImageManifest(ctx, "repo", "latest", false), ShouldBeNil)
+			So(store.RetagManifest(ctx, "repo", "latest", prior), ShouldBeNil)
+
+			desc, ok := indexByTag(store, "repo", "latest")
+			So(ok, ShouldBeTrue)
+			So(desc.Digest, ShouldEqual, prior)
+		})
+
+		Convey("prefers an untagged row when the digest is also tagged elsewhere", func() {
+			rootDir := t.TempDir()
+			store := newStore(rootDir)
+			ctx := context.Background()
+			So(store.InitRepo(ctx, "repo"), ShouldBeNil)
+
+			shared := godigest.FromString("shared")
+			index := ispec.Index{
+				SchemaVersion: 2,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    shared,
+						Size:      1,
+						Annotations: map[string]string{
+							ispec.AnnotationRefName: "v1",
+							"extra":                 "from-tagged",
+						},
+					},
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    shared,
+						Size:      1,
+						Annotations: map[string]string{
+							"extra": "from-untagged",
+						},
+					},
+				},
+			}
+			So(store.PutIndexContent("repo", index), ShouldBeNil)
+
+			So(store.RetagManifest(ctx, "repo", "latest", shared), ShouldBeNil)
+
+			latest, ok := indexByTag(store, "repo", "latest")
+			So(ok, ShouldBeTrue)
+			So(latest.Digest, ShouldEqual, shared)
+			So(latest.Annotations["extra"], ShouldEqual, "from-untagged")
+
+			v1, ok := indexByTag(store, "repo", "v1")
+			So(ok, ShouldBeTrue)
+			So(v1.Digest, ShouldEqual, shared)
+		})
+
+		Convey("drops an existing tag owner and clones a nil-annotation descriptor", func() {
+			rootDir := t.TempDir()
+			store := newStore(rootDir)
+			ctx := context.Background()
+			So(store.InitRepo(ctx, "repo"), ShouldBeNil)
+
+			prior := godigest.FromString("prior")
+			newer := godigest.FromString("newer")
+			index := ispec.Index{
+				SchemaVersion: 2,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    prior,
+						Size:      1,
+					},
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    newer,
+						Size:      1,
+						Annotations: map[string]string{
+							ispec.AnnotationRefName: "latest",
+						},
+					},
+				},
+			}
+			So(store.PutIndexContent("repo", index), ShouldBeNil)
+
+			// Retag without deleting first: drop the current latest owner, then attach prior.
+			So(store.RetagManifest(ctx, "repo", "latest", prior), ShouldBeNil)
+
+			latest, ok := indexByTag(store, "repo", "latest")
+			So(ok, ShouldBeTrue)
+			So(latest.Digest, ShouldEqual, prior)
+			So(latest.Annotations[ispec.AnnotationRefName], ShouldEqual, "latest")
+		})
+
+		Convey("clones a tagged-only digest when no untagged row exists", func() {
+			rootDir := t.TempDir()
+			store := newStore(rootDir)
+			ctx := context.Background()
+			So(store.InitRepo(ctx, "repo"), ShouldBeNil)
+
+			shared := godigest.FromString("shared-tagged-only")
+			index := ispec.Index{
+				SchemaVersion: 2,
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    shared,
+						Size:      1,
+						Annotations: map[string]string{
+							ispec.AnnotationRefName: "v1",
+						},
+					},
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    godigest.FromString("other"),
+						Size:      1,
+					},
+				},
+			}
+			So(store.PutIndexContent("repo", index), ShouldBeNil)
+
+			So(store.RetagManifest(ctx, "repo", "latest", shared), ShouldBeNil)
+
+			latest, ok := indexByTag(store, "repo", "latest")
+			So(ok, ShouldBeTrue)
+			So(latest.Digest, ShouldEqual, shared)
+
+			v1, ok := indexByTag(store, "repo", "v1")
+			So(ok, ShouldBeTrue)
+			So(v1.Digest, ShouldEqual, shared)
+		})
 	})
 }
