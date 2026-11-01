@@ -1,4 +1,4 @@
-# Optional eMudhra CA distrust tests. Run with:
+# eMudhra CA distrust tests (included in the host-deps CI shard). Run with:
 # make run-blackbox-tests BATS_TEST_FILE_PATH=test/blackbox/emudhra.bats
 
 load helpers_zot
@@ -57,6 +57,7 @@ function setup_file() {
     HOME="${BATS_FILE_TMPDIR}/mitmproxy-home" mitmdump \
         --mode "reverse:http://127.0.0.1:1@${mitm_port}" \
         --listen-host 127.0.0.1 \
+        --set connection_strategy=lazy \
         --emudhra \
         > "${BATS_FILE_TMPDIR}/mitmproxy.log" 2>&1 &
     echo "$!" > "${BATS_FILE_TMPDIR}/mitmproxy.pid"

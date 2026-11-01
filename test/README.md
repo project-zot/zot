@@ -29,8 +29,13 @@ replace `FILENAME` with the name of the test file along with its extension e.g. 
 
 A test file may have multiple services defined by a unique key. You can use any key for the service identifier, however, ensure that the same key is used in the BATS test file as an argument to the `get_free_port_for_service` function.
 
-The optional eMudhra CA distrust test is not part of the default blackbox CI shards. Run it with mitmproxy 12.3 or newer installed:
+The eMudhra CA distrust test runs in the default `host-deps` blackbox CI shard.
+CI automatically installs mitmproxy 12.3.0 in an isolated Python environment.
+To run the test locally, install mitmproxy with Python 3.12 or newer, then select the test:
 
 ```sh
+python3 -m venv /tmp/zot-mitmproxy
+/tmp/zot-mitmproxy/bin/python -m pip install "mitmproxy==12.3.0"
+export PATH="/tmp/zot-mitmproxy/bin:$PATH"
 make run-blackbox-tests BATS_TEST_FILE_PATH=test/blackbox/emudhra.bats
 ```

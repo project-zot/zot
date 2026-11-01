@@ -15,7 +15,7 @@ PATH=$PATH:${SCRIPTPATH}/../../hack/tools/bin
 # Shards are CI-oriented (deps / theme), not zot build-tag "extensions":
 #   registry  — dist-spec / auth / client push-pull style suites (+ systemd)
 #   sync      — sync and related GC/scrub suites
-#   host-deps — needs Docker helper images, npm OIDC provider, and/or stacker userns
+#   host-deps — needs Docker helper images, npm OIDC provider, stacker userns, or mitmproxy
 #   upgrade   — release→new binary upgrade matrix (needs CRI-O)
 # "all" is the ordered reunion of those shards.
 shard_registry=("pushpull" "pushpull_authn" "pushpull_mount" "pushpull_mount_hydrate"
@@ -27,7 +27,7 @@ shard_sync=("sync" "sync_streaming" "sync_docker" "sync_replica_cluster" "sync_o
 shard_host_deps=("annotations" "redis_local" "redis_session_store"
       "events_nats" "events_http" "events_nats_lint_failure" "events_http_lint_failure"
       "events_sink_failure" "events_config_decoding" "openid_claim_mapping"
-      "events_http_scan")
+      "events_http_scan" "emudhra")
 shard_upgrade=("upgrade" "upgrade_minimal")
 
 case "${BLACKBOX_CI_SHARD:-all}" in
