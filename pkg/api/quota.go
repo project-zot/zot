@@ -18,6 +18,7 @@ import (
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta/common"
 	"zotregistry.dev/zot/v2/pkg/meta/convert"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -244,39 +245,79 @@ func (rh *RouteHandler) checkRepoByteQuota(response http.ResponseWriter, request
 
 	current, projected, err := rh.c.MetaDB.GetRepoSizeWithCandidate(request.Context(), repo, references, imageMeta)
 	if err != nil {
-		if errors.Is(err, zerr.ErrInvalidRepoSizeCandidate) {
-			rh.c.Log.Warn().Err(err).Str("repo", repo).
-				Msg("manifest descriptor size is invalid, rejecting push")
-			writeInvalidRepoSize(response)
+		return rh.writeRepoByteQuotaMetaError(response, repo, limit, err, "failed to project repository size for quota")
+	}
 
-			return true
+	if err := common.EnforceByteQuota(current, projected, limit); err != nil {
+		return rh.writeRepoByteQuotaMetaError(response, repo, limit, err, "repository byte quota limit reached")
+	}
+
+	return false
+}
+
+// checkRepoBlobQuota rejects a new blob when Size+size would exceed the repo limit.
+// Digests already present in MetaDB RepoBlobs are treated as reuse (no charge).
+// It returns true when the request was rejected.
+func (rh *RouteHandler) checkRepoBlobQuota(response http.ResponseWriter, request *http.Request,
+	repo string, digest godigest.Digest, size int64,
+) bool {
+	storePath := rh.c.StoreController.GetStorePath(repo)
+	limit := rh.c.Config.MaxRepoBytesForStore(storePath)
+	if limit <= 0 || rh.c.MetaDB == nil {
+		return false
+	}
+
+	current, projected, err := rh.c.MetaDB.GetRepoSizeWithBlobCandidate(request.Context(), repo, digest, size)
+	if err != nil {
+		return rh.writeRepoByteQuotaMetaError(response, repo, limit, err, "failed to project blob size for quota")
+	}
+
+	if err := common.EnforceByteQuota(current, projected, limit); err != nil {
+		return rh.writeRepoByteQuotaMetaError(response, repo, limit, err, "repository byte quota limit reached")
+	}
+
+	return false
+}
+
+// writeRepoByteQuotaMetaError maps MetaDB/enforce quota errors to HTTP. Returns true (rejected).
+func (rh *RouteHandler) writeRepoByteQuotaMetaError(response http.ResponseWriter, repo string, limit int64,
+	err error, unavailableMsg string,
+) bool {
+	if errors.Is(err, zerr.ErrRepoByteQuotaExceeded) {
+		details := zerr.GetDetails(err)
+		current, _ := strconv.ParseInt(details["current"], 10, 64)
+		projected, _ := strconv.ParseInt(details["projected"], 10, 64)
+		exceededLimit, _ := strconv.ParseInt(details["limit"], 10, 64)
+		if exceededLimit == 0 {
+			exceededLimit = limit
 		}
 
-		if errors.Is(err, zerr.ErrInvalidRepoSize) {
-			rh.c.Log.Error().Err(err).Str("repo", repo).
-				Msg("repository size metadata is invalid, rejecting push")
-			writeQuotaMetadataInvalid(response)
-
-			return true
-		}
-
-		rh.c.Log.Error().Err(err).Str("repo", repo).
-			Msg("failed to project repository size for quota, rejecting push")
-		writeQuotaUnavailable(response)
+		rh.c.Log.Warn().Err(err).Str("repo", repo).Int64("current", current).
+			Int64("projected", projected).Int64("limit", exceededLimit).
+			Msg("repository byte quota limit reached, rejecting push")
+		writeQuotaExceeded(response, current, projected, exceededLimit)
 
 		return true
 	}
 
-	// A write which does not increase usage remains useful for recovering from a
-	// quota lowered below an already-existing repository size.
-	if projected <= limit || projected <= current {
-		return false
+	if errors.Is(err, zerr.ErrInvalidRepoSizeCandidate) {
+		rh.c.Log.Warn().Err(err).Str("repo", repo).
+			Msg("manifest descriptor size is invalid, rejecting push")
+		writeInvalidRepoSize(response)
+
+		return true
 	}
 
-	rh.c.Log.Warn().Str("repo", repo).Int64("current", current).
-		Int64("projected", projected).Int64("limit", limit).
-		Msg("repository byte quota limit reached, rejecting push")
-	writeQuotaExceeded(response, current, projected, limit)
+	if errors.Is(err, zerr.ErrInvalidRepoSize) {
+		rh.c.Log.Error().Err(err).Str("repo", repo).
+			Msg("repository size metadata is invalid, rejecting push")
+		writeQuotaMetadataInvalid(response)
+
+		return true
+	}
+
+	rh.c.Log.Error().Err(err).Str("repo", repo).Msg(unavailableMsg + ", rejecting push")
+	writeQuotaUnavailable(response)
 
 	return true
 }
