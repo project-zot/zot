@@ -20,6 +20,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	extconf "zotregistry.dev/zot/v2/pkg/extensions/config"
 	eventsconf "zotregistry.dev/zot/v2/pkg/extensions/config/events"
+	"zotregistry.dev/zot/v2/pkg/extensions/events"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
@@ -169,23 +170,29 @@ func TestEventRecorderReload(t *testing.T) {
 	})
 
 	Convey("An unchanged events config keeps the same recorder", t, func() {
-		sinkURL, sink, opened := countingEventSink(t)
+		sinkURL, sink := eventSink(t)
 
 		ctlr := NewController(eventsConfig(sinkURL))
 		ctlr.Log = log.NewTestLogger()
 		So(ctlr.InitEventRecorder(), ShouldBeNil)
 
-		// deliver first, so a keep-alive connection is open when the reload lands
+		// Swap hands back the installed delegate, so a round trip reads it without changing it
+		currentRecorder := func() events.Recorder {
+			recorder := ctlr.eventReloader.Swap(nil)
+			ctlr.eventReloader.Swap(recorder)
+
+			return recorder
+		}
+
 		ctlr.EventRecorder.RepositoryCreated("repo", nil)
 		So(awaitEvent(sink), ShouldNotBeNil)
-		So(opened.Load(), ShouldEqual, 1)
 
+		before := currentRecorder()
 		ctlr.LoadNewConfig(eventsConfig(sinkURL))
+		So(currentRecorder(), ShouldPointTo, before)
 
-		// a rebuild would have dialled a second connection
 		ctlr.EventRecorder.RepositoryCreated("repo", nil)
 		So(awaitEvent(sink), ShouldNotBeNil)
-		So(opened.Load(), ShouldEqual, 1)
 	})
 }
 
