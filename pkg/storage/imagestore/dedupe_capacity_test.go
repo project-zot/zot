@@ -13,6 +13,7 @@ import (
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -20,6 +21,7 @@ import (
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
+	common "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
@@ -600,5 +602,127 @@ func TestKeepFullCopyUnderReadLockExcludesOtherCheckBlobs(t *testing.T) {
 		uploads, err := imgStore.ListBlobUploads("repo-copy")
 		So(err, ShouldBeNil)
 		So(uploads, ShouldBeEmpty)
+	})
+}
+
+// ensureDirFailDriver fails EnsureDir for one directory once armed.
+type ensureDirFailDriver struct {
+	storageTypes.Driver
+
+	armed   bool
+	failDir string
+}
+
+func (d *ensureDirFailDriver) EnsureDir(path string) error {
+	if d.armed && path == d.failDir {
+		return errStagingFailed
+	}
+
+	return d.Driver.EnsureDir(path)
+}
+
+func TestKeepFullCopyAfterRepositoryRemoved(t *testing.T) {
+	content := []byte("dedupe-capacity-idle-repo-content")
+	digest := godigest.FromBytes(content)
+
+	type fixture struct {
+		imgStore  storageTypes.ImageStore
+		racing    *racingReadDriver
+		ensureDir *ensureDirFailDriver
+		rootDir   string
+		dest      string
+	}
+
+	setup := func() fixture {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		racing := &racingReadDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}}
+		ensureDir := &ensureDirFailDriver{Driver: racing}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			ensureDir, &fullCache{Cache: cacheDriver}, nil, nil)
+
+		So(imgStore.InitRepo(context.Background(), "repo-origin"), ShouldBeNil)
+
+		origin := imgStore.BlobPath("repo-origin", digest)
+		So(os.MkdirAll(path.Dir(origin), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(origin, content, storageConstants.DefaultFilePerms), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, origin), ShouldBeNil)
+
+		racing.origin = origin
+
+		return fixture{
+			imgStore: imgStore, racing: racing, ensureDir: ensureDir, rootDir: dir,
+			dest: imgStore.BlobPath("repo-copy", digest),
+		}
+	}
+
+	// the repository is emptied and reclaimed while the copy is staged without the lock
+	removeIdle := func(fix fixture) {
+		err := fix.imgStore.WithRepoLock("repo-copy", func() error {
+			removed, err := fix.imgStore.RemoveIdleRepository("repo-copy", 0)
+			So(removed, ShouldBeTrue)
+
+			return err
+		})
+		So(err, ShouldBeNil)
+		So(fix.imgStore.DirExists(path.Join(fix.rootDir, "repo-copy")), ShouldBeFalse)
+	}
+
+	Convey("The repository layout is restored before the copy is moved into place", t, func() {
+		fix := setup()
+		fix.racing.onRead = func() { removeIdle(fix) }
+
+		ok, size, err := fix.imgStore.CheckBlob(context.Background(), "repo-copy", digest)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, len(content))
+
+		data, err := os.ReadFile(fix.dest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		for _, file := range []string{ispec.ImageLayoutFile, ispec.ImageIndexFile} {
+			_, err := os.Stat(path.Join(fix.rootDir, "repo-copy", file))
+			So(err, ShouldBeNil)
+		}
+
+		index, err := common.GetIndex(fix.imgStore, "repo-copy", zlog.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(index.Manifests, ShouldBeEmpty)
+	})
+
+	Convey("A layout that cannot be restored fails the copy and leaves nothing behind", t, func() {
+		for _, failDir := range []string{ispec.ImageBlobsDir, path.Join(ispec.ImageBlobsDir, digest.Algorithm().String())} {
+			Convey("when "+failDir+" cannot be created", func() {
+				fix := setup()
+				fix.ensureDir.failDir = path.Join(fix.rootDir, "repo-copy", failDir)
+				fix.racing.onRead = func() {
+					removeIdle(fix)
+					fix.ensureDir.armed = true
+				}
+
+				ok, _, err := fix.imgStore.CheckBlob(context.Background(), "repo-copy", digest)
+				So(errors.Is(err, errStagingFailed), ShouldBeTrue)
+				So(ok, ShouldBeFalse)
+
+				_, err = os.Stat(fix.dest)
+				So(os.IsNotExist(err), ShouldBeTrue)
+
+				fix.ensureDir.armed = false
+
+				uploads, err := fix.imgStore.ListBlobUploads("repo-copy")
+				So(err, ShouldBeNil)
+				So(uploads, ShouldBeEmpty)
+			})
+		}
 	})
 }

@@ -3,6 +3,7 @@ package imagestore
 import (
 	"context"
 	"io"
+	"path"
 	"time"
 
 	guuid "github.com/gofrs/uuid"
@@ -21,7 +22,9 @@ import (
 // held again on return, so that a large copy does not block every repository. While the lock is
 // released, a push or another CheckBlob can put a full copy at blobPath; once the lock is held
 // again, such a copy is kept and the staged one dropped. Only a placeholder that is still
-// without content is replaced, or removed when staging failed.
+// without content is replaced, or removed when staging failed. The repository layout can also
+// have been removed as idle in the meantime, as it can under a monolithic upload, so it is
+// initialized again, under the lock, before the copy is moved into place.
 //
 // writeLocked tells which kind of lock the caller holds, and the same kind is held again on
 // return. The revalidation, the move and the cleanup always run under the write lock: under a
@@ -68,6 +71,18 @@ func (is *ImageStore) keepFullCopy(ctx context.Context, repo, blobPath, origin s
 		_ = is.storeDriver.Delete(blobPath)
 
 		return stageErr
+	}
+
+	if err := is.initRepo(ctx, repo); err != nil {
+		_ = is.storeDriver.Delete(staged)
+
+		return err
+	}
+
+	if err := is.storeDriver.EnsureDir(path.Dir(blobPath)); err != nil {
+		_ = is.storeDriver.Delete(staged)
+
+		return mapStorageErr(err)
 	}
 
 	if err := is.storeDriver.Move(staged, blobPath); err != nil {
