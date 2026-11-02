@@ -1125,6 +1125,26 @@ func TestGetNextRepositoriesLastRepoProbe(t *testing.T) {
 
 		acceptAll := func(_ string) (bool, error) { return true, nil }
 
+		Convey("A last that is not a repository name is not looked up in storage", func() {
+			statted := []string{}
+			storeMock := &mocks.StorageDriverMock{
+				WalkFn: func(_ context.Context, _ string, _ driver.WalkFn, _ ...func(*driver.WalkOptions)) error {
+					return nil
+				},
+				StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+					statted = append(statted, statPath)
+
+					return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
+				},
+			}
+			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				gcs.New(storeMock), nil, nil, nil)
+
+			_, _, err := store.GetNextRepositories("../outside", 10, acceptAll)
+			So(err, ShouldBeNil)
+			So(statted, ShouldBeEmpty)
+		})
+
 		Convey("Missing last stays quiet and uses lexical after-last", func() {
 			repos, more, err := newStore(driver.PathNotFoundError{Path: lastRepo}).
 				GetNextRepositories(lastRepo, 10, acceptAll)

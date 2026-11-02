@@ -379,7 +379,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 // into false. Missing stays quiet (no ValidateRepo List error log for a deleted
 // cursor). Outages fall back to lexical missing-last mode with Warn.
 func (is *ImageStore) catalogLastExists(lastRepo string) bool {
-	if lastRepo == "" {
+	if lastRepo == "" || !zreg.FullNameRegexp.MatchString(lastRepo) {
 		return false
 	}
 
