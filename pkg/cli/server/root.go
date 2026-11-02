@@ -1168,6 +1168,12 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper, logge
 				config.Extensions.Trust.Enable = &defaultVal
 			}
 		}
+
+		if config.Extensions.Lint != nil {
+			if config.Extensions.Lint.Enable == nil {
+				config.Extensions.Lint.Enable = &defaultVal
+			}
+		}
 	}
 
 	// set default values in case GC is disabled
