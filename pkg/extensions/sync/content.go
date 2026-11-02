@@ -94,6 +94,48 @@ func (cm ContentManager) FilterTags(repo string, tags []string) ([]string, error
 	return tags, nil
 }
 
+// MatchesTagFilters reports whether the local repo matches a content rule and tag passes that
+// rule's tag filters (regex, excludeRegex, semver). Unlike FilterTags it doesn't log, since it runs
+// on every on-demand request; a rule that fails to compile (rejected when the config loads) never
+// matches.
+func (cm ContentManager) MatchesTagFilters(localRepo, tag string) bool {
+	content := cm.GetContentByLocalRepo(localRepo)
+	if content == nil {
+		return false
+	}
+
+	if content.Tags == nil {
+		return true
+	}
+
+	// as in FilterTags, an empty regex keeps no tag, while an empty excludeRegex drops none
+	if content.Tags.Regex != nil {
+		if *content.Tags.Regex == "" {
+			return false
+		}
+
+		tagReg, err := regexp.Compile(*content.Tags.Regex)
+		if err != nil || !tagReg.MatchString(tag) {
+			return false
+		}
+	}
+
+	if content.Tags.ExcludeRegex != nil && *content.Tags.ExcludeRegex != "" {
+		tagReg, err := regexp.Compile(*content.Tags.ExcludeRegex)
+		if err != nil || tagReg.MatchString(tag) {
+			return false
+		}
+	}
+
+	if content.Tags.Semver != nil && *content.Tags.Semver {
+		if _, err := semver.NewVersion(tag); err != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
 /*
 GetRepoDestination applies content destination config rule and returns the final repo namespace.
 - used by periodically sync.

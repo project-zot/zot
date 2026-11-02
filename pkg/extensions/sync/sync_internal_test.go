@@ -3264,6 +3264,34 @@ func TestManifestCheckTracker(t *testing.T) {
 	})
 }
 
+func TestMatchesTagFiltersAgreesWithFilterTags(t *testing.T) {
+	Convey("MatchesTagFilters keeps exactly the tags FilterTags keeps for a matched repo", t, func() {
+		semver := true
+		regex := "^v[0-9]"
+		excludeRegex := "-rc$"
+		emptyRegex := ""
+		content := []syncconf.Content{
+			{Prefix: "semver/**", Tags: &syncconf.Tags{Semver: &semver}},
+			{Prefix: "regex/**", Tags: &syncconf.Tags{Regex: &regex, ExcludeRegex: &excludeRegex}},
+			{Prefix: "all/**", Tags: &syncconf.Tags{Regex: &regex, ExcludeRegex: &excludeRegex, Semver: &semver}},
+			{Prefix: "empty/**", Tags: &syncconf.Tags{Regex: &emptyRegex, ExcludeRegex: &emptyRegex}},
+			{Prefix: "notags/**"},
+		}
+		cm := NewContentManager(content, log.NewTestLogger())
+
+		for _, repo := range []string{"semver/app", "regex/app", "all/app", "empty/app", "notags/app"} {
+			for _, tag := range []string{"v1.2.3", "v1.2.3-rc", "1.2.3", "latest", "v2"} {
+				filtered, err := cm.FilterTags(repo, []string{tag})
+				So(err, ShouldBeNil)
+				So(cm.MatchesTagFilters(repo, tag), ShouldEqual, len(filtered) == 1)
+			}
+		}
+
+		// a repo no rule matches isn't covered
+		So(cm.MatchesTagFilters("other/app", "v1.2.3"), ShouldBeFalse)
+	})
+}
+
 func TestBaseServiceShouldCheckUpstream(t *testing.T) {
 	Convey("Without manifestCheckInterval every request checks upstream", t, func() {
 		service := &BaseService{config: syncconf.RegistryConfig{}}
@@ -3284,6 +3312,75 @@ func TestBaseServiceShouldCheckUpstream(t *testing.T) {
 
 		service.markUpstreamChecked("repo", "latest")
 		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
+	})
+
+	Convey("With skipUpstreamIfLocal and no content rules, no request checks upstream", t, func() {
+		service := &BaseService{
+			config:         syncconf.RegistryConfig{SkipUpstreamIfLocal: true},
+			contentManager: NewContentManager(nil, log.NewTestLogger()),
+		}
+
+		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
+		So(service.ShouldCheckUpstream("a/b", "v1.2.3"), ShouldBeFalse)
+	})
+
+	Convey("With skipUpstreamIfLocal, only tags matched by the content rules skip the check", t, func() {
+		semver := true
+		regex := "^v[0-9]"
+		excludeRegex := "-rc$"
+		content := []syncconf.Content{
+			{Prefix: "rancher/**", Tags: &syncconf.Tags{Semver: &semver}},
+			{Prefix: "regex/**", Tags: &syncconf.Tags{Regex: &regex, ExcludeRegex: &excludeRegex}},
+			{Prefix: "upstream/**", Destination: "/local", StripPrefix: true},
+		}
+		logBuf := &bytes.Buffer{}
+		service := &BaseService{
+			config:         syncconf.RegistryConfig{SkipUpstreamIfLocal: true, Content: content},
+			contentManager: NewContentManager(content, log.NewLoggerWithWriter("debug", logBuf)),
+		}
+
+		So(service.ShouldCheckUpstream("rancher/app", "v1.2.3"), ShouldBeFalse)
+		So(service.ShouldCheckUpstream("rancher/app", "latest"), ShouldBeTrue)
+
+		So(service.ShouldCheckUpstream("regex/app", "v2"), ShouldBeFalse)
+		So(service.ShouldCheckUpstream("regex/app", "v2-rc"), ShouldBeTrue)
+		So(service.ShouldCheckUpstream("regex/app", "stable"), ShouldBeTrue)
+
+		// local repos are mapped back to their upstream repo before the rules apply
+		So(service.ShouldCheckUpstream("local/app", "latest"), ShouldBeFalse)
+
+		So(service.ShouldCheckUpstream("other/app", "v1.2.3"), ShouldBeTrue)
+
+		// like a pull by digest, the per-pull check adds nothing to the log
+		So(logBuf.String(), ShouldBeEmpty)
+	})
+
+	Convey("With skipUpstreamIfLocal, the tag filters come from the rule matching the local repo", t, func() {
+		latestOnly := "^latest$"
+		versions := "^v[0-9]"
+		content := []syncconf.Content{
+			{Prefix: "upstream/app", Destination: "/mirror", Tags: &syncconf.Tags{Regex: &latestOnly}},
+			{Prefix: "upstream/app", Destination: "/local", Tags: &syncconf.Tags{Regex: &versions}},
+		}
+		service := &BaseService{
+			config:         syncconf.RegistryConfig{SkipUpstreamIfLocal: true, Content: content},
+			contentManager: NewContentManager(content, log.NewTestLogger()),
+		}
+
+		So(service.ShouldCheckUpstream("mirror/upstream/app", "latest"), ShouldBeFalse)
+		So(service.ShouldCheckUpstream("mirror/upstream/app", "v1"), ShouldBeTrue)
+		So(service.ShouldCheckUpstream("local/upstream/app", "v1"), ShouldBeFalse)
+		So(service.ShouldCheckUpstream("local/upstream/app", "latest"), ShouldBeTrue)
+	})
+
+	Convey("Without skipUpstreamIfLocal, content rules don't skip the check", t, func() {
+		content := []syncconf.Content{{Prefix: "**"}}
+		service := &BaseService{
+			config:         syncconf.RegistryConfig{Content: content},
+			contentManager: NewContentManager(content, log.NewTestLogger()),
+		}
+
+		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeTrue)
 	})
 
 	Convey("New wires the tracker only when the interval is configured", t, func() {

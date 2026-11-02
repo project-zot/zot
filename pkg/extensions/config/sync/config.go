@@ -66,10 +66,14 @@ type RegistryConfig struct {
 	// with ManifestCheckInterval. Default is false when unset.
 	OnDemandInBackground  *bool
 	ManifestCheckInterval time.Duration
-	CertDir               string
-	MaxRetries            *int
-	RetryDelay            *time.Duration
-	MaxRetryDelay         *time.Duration // max HTTP retry backoff; when unset defaults to retryDelay (fixed delay)
+	// SkipUpstreamIfLocal serves a tag stored locally without checking it upstream; tags not
+	// stored locally are still synced on demand. With content rules, it applies only to repos and
+	// tags they match. Requires OnDemand.
+	SkipUpstreamIfLocal bool
+	CertDir             string
+	MaxRetries          *int
+	RetryDelay          *time.Duration
+	MaxRetryDelay       *time.Duration // max HTTP retry backoff; when unset defaults to retryDelay (fixed delay)
 	// OnlySigned: tag sync requires remote signatures; on-demand digest pulls skip that check
 	// (see examples/README.md).
 	OnlySigned             *bool
