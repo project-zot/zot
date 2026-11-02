@@ -126,7 +126,7 @@ func TestChunkingStreamManagerPriorityDownload(t *testing.T) {
 	copier, err := sm.ConnectClient("repo-a", layer.Digest.String(), &clientBuf)
 	require.NoError(t, err)
 
-	require.NoError(t, copier.Copy())
+	require.NoError(t, copier.Copy(context.Background()))
 	assert.Equal(t, layer.Digest, godigest.FromBytes(clientBuf.Bytes()))
 	assert.Equal(t, map[godigest.Digest]int{layer.Digest: 1}, priority.counts(),
 		"only the blob a client waits on is downloaded with priority")
@@ -166,7 +166,7 @@ func TestChunkingStreamManagerPriorityDownloadEarlyClient(t *testing.T) {
 
 	clientDone := make(chan error, 1)
 
-	go func() { clientDone <- copier.Copy() }()
+	go func() { clientDone <- copier.Copy(context.Background()) }()
 
 	bulk := newGatedFetcher(storeCtrl, "repo-a", layer.Digest)
 	priority := newStoreBlobFetcher(storeCtrl, "repo-a")
@@ -213,7 +213,7 @@ func TestChunkingStreamManagerPriorityDownloadCancelledWhenBulkWins(t *testing.T
 
 	clientDone := make(chan error, 1)
 
-	go func() { clientDone <- copier.Copy() }()
+	go func() { clientDone <- copier.Copy(context.Background()) }()
 
 	// Both gated: the bulk download must not finish, and clear the priority fetch, before the
 	// priority download has been seen queued. The priority gate is never released.
@@ -274,7 +274,7 @@ func TestChunkingStreamManagerPriorityDownloadOpenFails(t *testing.T) {
 
 	clientDone := make(chan error, 1)
 
-	go func() { clientDone <- copier.Copy() }()
+	go func() { clientDone <- copier.Copy(context.Background()) }()
 
 	close(bulk.release)
 
@@ -311,7 +311,7 @@ func TestChunkingStreamManagerPriorityDownloadOnlyOnce(t *testing.T) {
 		copier, err := sm.ConnectClient("repo-a", layer.Digest.String(), &clientBuf)
 		require.NoError(t, err)
 
-		require.NoError(t, copier.Copy())
+		require.NoError(t, copier.Copy(context.Background()))
 		assert.Equal(t, layer.Digest, godigest.FromBytes(clientBuf.Bytes()))
 	}
 
