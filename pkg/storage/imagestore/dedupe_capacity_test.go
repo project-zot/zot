@@ -726,3 +726,165 @@ func TestKeepFullCopyAfterRepositoryRemoved(t *testing.T) {
 		}
 	})
 }
+
+// fullRecordCache rejects every copy of a digest that already has an origin, as a record that
+// cannot grow does, whichever way it is added.
+type fullRecordCache struct {
+	storageTypes.Cache
+}
+
+func (c *fullRecordCache) PutBlob(digest godigest.Digest, path string) error {
+	record, err := c.Cache.GetBlob(digest)
+	if err == nil && record != "" && record != path {
+		return zerr.ErrCacheFull
+	}
+
+	return c.Cache.PutBlob(digest, path)
+}
+
+func (c *fullRecordCache) PutDuplicate(_ godigest.Digest, _ string) error {
+	return zerr.ErrCacheFull
+}
+
+func TestDedupeRebuildKeepsCopiesTheRecordCannotTake(t *testing.T) {
+	content := []byte("dedupe-capacity-rebuild-content")
+	digest := godigest.FromBytes(content)
+
+	Convey("A rebuild leaves a full copy alone when the record cannot take it", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			&remoteNamedDriver{Driver: local.New(true)}, &fullRecordCache{Cache: cacheDriver}, nil, nil)
+
+		ctx := context.Background()
+
+		plant := func(repo string, body []byte) string {
+			So(imgStore.InitRepo(ctx, repo), ShouldBeNil)
+
+			blobPath := imgStore.BlobPath(repo, digest)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+			return blobPath
+		}
+
+		origin := plant("repo-origin", content)
+		So(cacheDriver.PutBlob(digest, origin), ShouldBeNil)
+
+		// a full copy kept by a push, and one kept by a pull, after the record filled up; a
+		// placeholder the record never took either
+		pushed := plant("repo-pushed", content)
+		pulled := plant("repo-pulled", content)
+		placeholder := plant("repo-placeholder", []byte{})
+
+		So(imgStore.RunDedupeForDigest(ctx, digest, true, []string{origin, pushed, placeholder, pulled}), ShouldBeNil)
+
+		for _, blobPath := range []string{origin, pushed, pulled} {
+			data, err := os.ReadFile(blobPath)
+			So(err, ShouldBeNil)
+			So(data, ShouldResemble, content)
+		}
+
+		binfo, err := os.Stat(placeholder)
+		So(err, ShouldBeNil)
+		So(binfo.Size(), ShouldEqual, 0)
+
+		record, err := cacheDriver.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, origin)
+
+		for _, blobPath := range []string{pushed, pulled, placeholder} {
+			So(cacheDriver.HasBlob(digest, blobPath), ShouldBeFalse)
+		}
+
+		// every copy stays readable
+		for _, repo := range []string{"repo-origin", "repo-pushed", "repo-pulled", "repo-placeholder"} {
+			ok, size, err := imgStore.CheckBlob(ctx, repo, digest)
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeTrue)
+			So(size, ShouldEqual, len(content))
+		}
+	})
+
+	Convey("A rebuild records a full copy before linking over it", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		order := &callOrderCache{Cache: cacheDriver}
+		linker := &linkOrderDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}, order: order}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			linker, order, nil, nil)
+
+		ctx := context.Background()
+
+		plant := func(repo string, body []byte) string {
+			So(imgStore.InitRepo(ctx, repo), ShouldBeNil)
+
+			blobPath := imgStore.BlobPath(repo, digest)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+			return blobPath
+		}
+
+		origin := plant("repo-origin", content)
+		copied := plant("repo-copy", content)
+
+		So(imgStore.RunDedupeForDigest(ctx, digest, true, []string{origin, copied}), ShouldBeNil)
+
+		So(order.events, ShouldResemble, []string{"put " + origin, "put " + copied, "link " + copied})
+		So(cacheDriver.HasBlob(digest, copied), ShouldBeTrue)
+
+		binfo, err := os.Stat(copied)
+		So(err, ShouldBeNil)
+		So(binfo.Size(), ShouldEqual, 0)
+	})
+}
+
+// callOrderCache records the paths PutBlob and SetOrigin record, in order.
+type callOrderCache struct {
+	storageTypes.Cache
+
+	events []string
+}
+
+func (c *callOrderCache) PutBlob(digest godigest.Digest, path string) error {
+	c.events = append(c.events, "put "+path)
+
+	return c.Cache.PutBlob(digest, path)
+}
+
+func (c *callOrderCache) SetOrigin(digest godigest.Digest, path string) error {
+	c.events = append(c.events, "put "+path)
+
+	return c.Cache.SetOrigin(digest, path)
+}
+
+// linkOrderDriver records links in the same order.
+type linkOrderDriver struct {
+	storageTypes.Driver
+
+	order *callOrderCache
+}
+
+func (d *linkOrderDriver) Link(src, dest string) error {
+	d.order.events = append(d.order.events, "link "+dest)
+
+	return d.Driver.Link(src, dest)
+}

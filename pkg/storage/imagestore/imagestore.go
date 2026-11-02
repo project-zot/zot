@@ -3735,10 +3735,8 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			}
 
 			// cache dedupe blob
-			if ok := is.cache.HasBlob(digest, blobPath); !ok {
-				if err := is.cache.PutBlob(digest, blobPath); err != nil {
-					return err
-				}
+			if _, err := is.recordRebuiltCopy(digest, blobPath); err != nil {
+				return err
 			}
 
 		// A copy without content that is not a placeholder is corrupt: it can be neither the
@@ -3763,22 +3761,37 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			// if we have an original blob cached then we can safely dedupe the rest of them
 			// (LinkBlob skips the original itself)
 			if originalBlob != "" {
+				/* Record the copy before linking over it: on remote storage the link leaves a
+				placeholder, which only the cache leads to. A copy the record cannot take, because
+				it is full, keeps its content instead; CheckBlob and DedupeBlob leave such copies
+				too, and a later rebuild sees them again. */
+				recorded, err := is.recordRebuiltCopy(digest, blobPath)
+				if err != nil {
+					return err
+				}
+
+				if !recorded {
+					continue
+				}
+
 				if err := is.lifecycle.LinkBlob(originalBlob, blobPath); err != nil {
 					is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to dedupe blob")
 
 					return err
 				}
-			} else {
-				// First content-bearing path is the preserved origin. Do not reassign
-				// after linking a later full copy: that would point originalBlob at a
-				// path we just emptied and empty the real origin on the next iteration.
-				originalBlob = blobPath
 
-				// Repair even when no placeholder was seen first: PutBlob alone cannot replace
-				// a stale empty origin left in the cache.
-				if err := is.cache.SetOrigin(digest, originalBlob); err != nil {
-					return err
-				}
+				continue
+			}
+
+			// First content-bearing path is the preserved origin. Do not reassign
+			// after linking a later full copy: that would point originalBlob at a
+			// path we just emptied and empty the real origin on the next iteration.
+			originalBlob = blobPath
+
+			// Repair even when no placeholder was seen first: PutBlob alone cannot replace
+			// a stale empty origin left in the cache.
+			if err := is.cache.SetOrigin(digest, originalBlob); err != nil {
+				return err
 			}
 
 			// cache it
@@ -3794,6 +3807,29 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 		Msg("deduping blobs for digest finished successfully")
 
 	return nil
+}
+
+// recordRebuiltCopy records blobPath as a copy of digest during the dedupe rebuild, unless it is
+// recorded already, and reports whether it is recorded now. A record that cannot take another
+// copy is not an error for the rebuild: the copy is left as it is, unrecorded, and reported.
+func (is *ImageStore) recordRebuiltCopy(digest godigest.Digest, blobPath string) (bool, error) {
+	if is.cache.HasBlob(digest, blobPath) {
+		return true, nil
+	}
+
+	err := is.cache.PutBlob(digest, blobPath)
+	if err == nil {
+		return true, nil
+	}
+
+	if errors.Is(err, zerr.ErrCacheFull) {
+		is.log.Warn().Err(err).Str("path", blobPath).Str("digest", digest.String()).Str("component", "dedupe").
+			Msg("dedupe record is full, leaving the copy unrecorded")
+
+		return false, nil
+	}
+
+	return false, err
 }
 
 // anyBlobExists reports whether any of these paths is still present. A path that has gone
