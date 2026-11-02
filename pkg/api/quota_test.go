@@ -346,6 +346,64 @@ func TestRepoByteQuotaCountsShortSha256Tag(t *testing.T) {
 	})
 }
 
+func TestRepoByteQuotaCountsDigestNamedTag(t *testing.T) {
+	Convey("Given a manifest tagged with its own digest", t, func() {
+		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		second := CreateImageWith().RandomLayers(2, 10).RandomConfig().Build()
+		limit := int64(first.Size())
+		if second.Size() > int(limit) {
+			limit = int64(second.Size())
+		}
+
+		baseURL, stop := startByteQuotaServer(t, limit)
+		defer stop()
+
+		tag := first.Digest().Algorithm().String() + "-" + first.Digest().Encoded()
+		So(UploadImage(first, baseURL, "digest-named", tag), ShouldBeNil)
+		So(UploadImage(second, baseURL, "digest-named", "v2"), ShouldEqual, ErrPutBlob)
+	})
+}
+
+func TestRepoByteQuotaCountsDigestNamedExtraTag(t *testing.T) {
+	Convey("Given a digest push that also tags the manifest with its own digest", t, func() {
+		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		second := CreateImageWith().RandomLayers(2, 10).RandomConfig().Build()
+		limit := int64(first.Size())
+		if second.Size() > int(limit) {
+			limit = int64(second.Size())
+		}
+
+		baseURL, stop := startByteQuotaServer(t, limit)
+		defer stop()
+
+		tag := first.Digest().Algorithm().String() + "-" + first.Digest().Encoded()
+		So(UploadImageWithOpts(first, baseURL, "digest-named-extra", first.DigestStr(), WithExtraTags(tag)),
+			ShouldBeNil)
+		So(UploadImage(second, baseURL, "digest-named-extra", "v2"), ShouldEqual, ErrPutBlob)
+	})
+}
+
+func TestRepoByteQuotaIgnoresReferrersTag(t *testing.T) {
+	Convey("Given a referrers fallback tag that names another digest", t, func() {
+		image := CreateImageWith().RandomLayers(2, 10).RandomConfig().Build()
+		limit := int64(image.Size()) - 1
+		if limit < 1 {
+			limit = 1
+		}
+
+		baseURL, stop := startByteQuotaServer(t, limit)
+		defer stop()
+
+		referrersTag := "sha256-" + strings.Repeat("a", 64)
+		selfTag := image.Digest().Algorithm().String() + "-" + image.Digest().Encoded()
+		if referrersTag == selfTag {
+			referrersTag = "sha256-" + strings.Repeat("b", 64)
+		}
+
+		So(UploadImage(image, baseURL, "referrers-quota", referrersTag), ShouldBeNil)
+	})
+}
+
 func TestRepoByteQuotaCountsCosignLikeIndexTag(t *testing.T) {
 	Convey("Given an image index with a cosign-like tag", t, func() {
 		indexBody := []byte(`{"schemaVersion":2,"mediaType":"` + ispec.MediaTypeImageIndex + `","manifests":[]}`)

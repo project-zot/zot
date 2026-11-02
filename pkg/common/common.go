@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/opencontainers/go-digest"
 )
 
 const (
@@ -152,12 +154,32 @@ func ContainsStringIgnoreCase(strSlice []string, str string) bool {
 	})
 }
 
-// IsReferrersTag checks if tag is a referrers tag
-// (https://github.com/opencontainers/distribution-spec/blob/main/spec.md#referrers-tag-schema).
-func IsReferrersTag(tag string) bool {
-	referrersTagRule := regexp.MustCompile(`^sha256\-[0-9a-f]{64}$`)
+// referrersTagRule matches a sha256 referrers fallback tag: the algorithm, a hyphen,
+// and 64 lowercase hex digits. Other algorithms can be added separately.
+var referrersTagRule = regexp.MustCompile(`^sha256-[0-9a-f]{64}$`)
 
+// IsReferrersTag checks if tag has the referrers fallback tag shape.
+//
+// Shape alone does not prove the tag is a referrers entry. See IsDigestNamedTag.
+func IsReferrersTag(tag string) bool {
 	return referrersTagRule.MatchString(tag)
+}
+
+// IsDigestNamedTag reports whether tag names the digest of the manifest it resolves to.
+// The tag uses a hyphen where the digest uses a colon. A referrers fallback tag names the
+// subject's digest, so the manifest it tags is a different blob. A tag that names its own
+// target is an ordinary image tagged by digest.
+func IsDigestNamedTag(tag string, dgst digest.Digest) bool {
+	// Algorithm() panics when the digest has no separator. Callers pass whatever the store held.
+	alg, hex, found := strings.Cut(dgst.String(), ":")
+
+	return found && tag == alg+"-"+hex
+}
+
+// IsReferrersEntry reports whether reference is a referrers fallback tag rather than content.
+// It has the referrers shape and does not name its own target.
+func IsReferrersEntry(tag string, dgst digest.Digest) bool {
+	return IsReferrersTag(tag) && !IsDigestNamedTag(tag, dgst)
 }
 
 func IsContextDone(ctx context.Context) bool {

@@ -383,15 +383,32 @@ func quotaImageMeta(reference, mediaType string, body []byte) (mTypes.ImageMeta,
 	}
 }
 
+// quotaIsReferrersEntry reports whether reference is a referrers fallback tag for this manifest.
+// The body is hashed only after the tag matches the referrers shape, and the digest is reused
+// for every tag in the same call.
+func quotaIsReferrersEntry(reference string, body []byte, manifestDigest *godigest.Digest) bool {
+	if !zcommon.IsReferrersTag(reference) {
+		return false
+	}
+
+	if *manifestDigest == "" {
+		*manifestDigest = godigest.FromBytes(body)
+	}
+
+	return !zcommon.IsDigestNamedTag(reference, *manifestDigest)
+}
+
 func quotaReferences(repo, reference, mediaType string, body []byte, extraTags []string) ([]string, bool, bool) {
-	if zcommon.IsReferrersTag(reference) {
+	var manifestDigest godigest.Digest
+
+	if quotaIsReferrersEntry(reference, body, &manifestDigest) {
 		return nil, false, true
 	}
 
 	if len(extraTags) > 0 {
 		references := make([]string, 0, len(extraTags))
 		for _, tag := range extraTags {
-			if zcommon.IsReferrersTag(tag) {
+			if quotaIsReferrersEntry(tag, body, &manifestDigest) {
 				continue
 			}
 

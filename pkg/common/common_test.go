@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	notreg "github.com/notaryproject/notation-go/registry"
+	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -232,12 +233,52 @@ func TestIsReferrersTag(t *testing.T) {
 		"sha256-" + strings.Repeat("g", 64): false,
 		"prefix-" + validTag:                false,
 		validTag + ".sig":                   false,
+		strings.ToUpper(validTag):           false,
 	}
 
 	for tag, expected := range cases {
 		if got := common.IsReferrersTag(tag); got != expected {
 			t.Errorf("IsReferrersTag(%q) = %v, want %v", tag, got, expected)
 		}
+	}
+}
+
+func TestIsReferrersEntry(t *testing.T) {
+	const (
+		hex   = "4a62254e90931470fb90c29362803fe7dada22107229ec2351bd33560c1dceb0"
+		other = "2d1acb6e828945aeadeee396baea355e3fb81101809ef836bc30892a4f284dfe"
+	)
+
+	self := godigest.Digest("sha256:" + hex)
+	subject := godigest.Digest("sha256:" + other)
+	tag := "sha256-" + hex
+
+	if !common.IsDigestNamedTag(tag, self) {
+		t.Fatalf("IsDigestNamedTag(%q, %s) = false, want true", tag, self)
+	}
+
+	if common.IsDigestNamedTag(tag, subject) || common.IsDigestNamedTag("1.0.0", self) {
+		t.Fatal("IsDigestNamedTag matched a tag that does not name the digest")
+	}
+
+	if common.IsDigestNamedTag(tag, godigest.Digest("nosep")) {
+		t.Fatal("IsDigestNamedTag panicked or matched a digest with no separator")
+	}
+
+	if common.IsReferrersEntry(tag, self) {
+		t.Fatalf("IsReferrersEntry(%q, %s) = true, want false", tag, self)
+	}
+
+	if !common.IsReferrersEntry(tag, subject) {
+		t.Fatalf("IsReferrersEntry(%q, %s) = false, want true", tag, subject)
+	}
+
+	if common.IsReferrersEntry("1.0.0", subject) || common.IsReferrersEntry(tag+".sig", subject) {
+		t.Fatal("IsReferrersEntry matched a tag that is not a referrers fallback tag")
+	}
+
+	if !common.IsReferrersEntry(tag, godigest.Digest("nosep")) {
+		t.Fatal("referrers-shaped tag with an unparsable digest should stay a referrers entry")
 	}
 }
 

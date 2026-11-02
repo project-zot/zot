@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -171,6 +172,65 @@ func TestParseStorageErrors(t *testing.T) {
 			}
 			err := meta.ParseRepo("repo", metaDB, storeController, log)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("a digest-named tag is indexed and a referrers entry is not", func() {
+			indexBody := []byte(`{"schemaVersion":2,"mediaType":"` + ispec.MediaTypeImageIndex + `","manifests":[]}`)
+			digest := godigest.FromBytes(indexBody)
+			selfTag := "sha256-" + digest.Encoded()
+			referrersTag := "sha256-" + strings.Repeat("a", 64)
+			if referrersTag == selfTag {
+				referrersTag = "sha256-" + strings.Repeat("b", 64)
+			}
+
+			var kept map[string]bool
+
+			var indexed []string
+
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return getIndexBlob(ispec.Index{
+					Manifests: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageIndex,
+							Digest:    digest,
+							Size:      int64(len(indexBody)),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: selfTag,
+							},
+						},
+						{
+							MediaType: ispec.MediaTypeImageIndex,
+							Digest:    godigest.FromString("referrers-index"),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: referrersTag,
+							},
+						},
+					},
+				}), nil
+			}
+			imageStore.GetBlobContentFn = func(repo string, blobDigest godigest.Digest) ([]byte, error) {
+				if blobDigest == digest {
+					return indexBody, nil
+				}
+
+				return nil, zerr.ErrBlobNotFound
+			}
+			metaDB.ResetRepoReferencesFn = func(repo string, tagsToKeep map[string]bool) error {
+				kept = tagsToKeep
+
+				return nil
+			}
+			metaDB.SetRepoReferenceFn = func(ctx context.Context, repo, reference string, imageMeta mTypes.ImageMeta) error {
+				indexed = append(indexed, reference)
+
+				return nil
+			}
+
+			err := meta.ParseRepo("repo", metaDB, storeController, log)
+			So(err, ShouldBeNil)
+			So(kept, ShouldContainKey, selfTag)
+			So(kept, ShouldNotContainKey, referrersTag)
+			So(indexed, ShouldResemble, []string{selfTag})
 		})
 
 		Convey("imageStore.GetBlobContent non-missing error", func() {

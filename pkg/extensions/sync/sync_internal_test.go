@@ -2161,6 +2161,198 @@ func TestCopyManifestReferrersTag(t *testing.T) {
 	})
 }
 
+func TestCopyManifestDigestNamedTag(t *testing.T) {
+	Convey("a tag naming its own digest is committed", t, func() {
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		repoName := "repo"
+
+		Convey("digest-named manifest entry is committed", func() {
+			tempDir := t.TempDir()
+			destDir := t.TempDir()
+			tempStore := local.NewImageStore(tempDir, true, true, log, metrics, nil, nil, nil, nil)
+			destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
+			tempController := storage.StoreController{DefaultStore: tempStore}
+			destController := storage.StoreController{DefaultStore: destStore}
+			destReg := NewDestinationRegistry(destController, tempController, nil, log).(*DestinationRegistry)
+
+			image := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+			manifestContent, err := json.Marshal(image.Manifest)
+			So(err, ShouldBeNil)
+
+			manifestDigest := godigest.FromBytes(manifestContent)
+			digestNamedTag := "sha256-" + manifestDigest.Encoded()
+
+			So(WriteImageToFileSystem(image, repoName, digestNamedTag, tempController), ShouldBeNil)
+
+			desc := ispec.Descriptor{
+				Digest:    manifestDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+				Size:      int64(len(manifestContent)),
+			}
+			seen := &[]godigest.Digest{}
+
+			So(destReg.copyManifest(repoName, desc, digestNamedTag, tempStore, seen), ShouldBeNil)
+			So(common.IsReferrersTag(digestNamedTag), ShouldBeTrue)
+
+			tags, err := destStore.GetImageTags(repoName)
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, digestNamedTag)
+
+			_, gotDigest, _, err := destStore.GetImageManifest(repoName, digestNamedTag)
+			So(err, ShouldBeNil)
+			So(gotDigest, ShouldEqual, manifestDigest)
+		})
+
+		Convey("digest-named index is committed with its children", func() {
+			tempDir := t.TempDir()
+			destDir := t.TempDir()
+			tempStore := local.NewImageStore(tempDir, true, true, log, metrics, nil, nil, nil, nil)
+			destStore := local.NewImageStore(destDir, true, true, log, metrics, nil, nil, nil, nil)
+			tempController := storage.StoreController{DefaultStore: tempStore}
+			destController := storage.StoreController{DefaultStore: destStore}
+			destReg := NewDestinationRegistry(destController, tempController, nil, log).(*DestinationRegistry)
+
+			childImage := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+			index := CreateMultiarchWith().Images([]Image{childImage}).Build()
+			indexDigest := index.IndexDescriptor.Digest
+			digestNamedTag := "sha256-" + indexDigest.Encoded()
+
+			So(WriteMultiArchImageToFileSystem(index, repoName, digestNamedTag, tempController), ShouldBeNil)
+
+			seen := &[]godigest.Digest{}
+			So(destReg.copyManifest(repoName, index.IndexDescriptor, digestNamedTag, tempStore, seen), ShouldBeNil)
+
+			tags, err := destStore.GetImageTags(repoName)
+			So(err, ShouldBeNil)
+			So(tags, ShouldContain, digestNamedTag)
+
+			_, gotDigest, _, err := destStore.GetImageManifest(repoName, digestNamedTag)
+			So(err, ShouldBeNil)
+			So(gotDigest, ShouldEqual, indexDigest)
+
+			_, childDigest, _, err := destStore.GetImageManifest(repoName, childImage.Digest().String())
+			So(err, ShouldBeNil)
+			So(childDigest, ShouldEqual, childImage.Digest())
+		})
+	})
+}
+
+func TestSyncRepoReferrersTagDiscrimination(t *testing.T) {
+	Convey("SyncRepo syncs digest-named tags but not referrers entries", t, func() {
+		const (
+			hex   = "4a62254e90931470fb90c29362803fe7dada22107229ec2351bd33560c1dceb0"
+			other = "2d1acb6e828945aeadeee396baea355e3fb81101809ef836bc30892a4f284dfe"
+		)
+
+		digestNamedTag := "sha256-" + hex
+		referrersTag := "sha256-" + other
+		cosignTag := "sha256-" + other + ".sig"
+
+		conf := syncconf.RegistryConfig{URLs: []string{"http://localhost"}}
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+			mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		var headed, synced []string
+
+		service.remote = &mocks.SyncRemoteMock{
+			GetTagsFn: func(_ context.Context, _ string) ([]string, error) {
+				return []string{"1.0.0", digestNamedTag, referrersTag, cosignTag}, nil
+			},
+			HeadManifestFn: func(_ context.Context, _, tag string) (godigest.Digest, string, error) {
+				headed = append(headed, tag)
+
+				switch tag {
+				case digestNamedTag:
+					return godigest.Digest("sha256:" + hex), ispec.MediaTypeImageManifest, nil
+				case referrersTag:
+					return godigest.Digest("sha256:" + hex), ispec.MediaTypeImageManifest, nil
+				default:
+					return godigest.Digest("sha256:" + other), ispec.MediaTypeImageManifest, nil
+				}
+			},
+		}
+		service.destination = &mocks.SyncDestinationMock{
+			GetImageReferenceFn: func(_ string, tag string) (ref.Ref, error) {
+				synced = append(synced, tag)
+
+				return ref.Ref{}, zerr.ErrManifestNotFound
+			},
+		}
+
+		So(service.SyncRepo(context.Background(), "repo"), ShouldBeNil)
+		So(headed, ShouldNotContain, cosignTag)
+		So(synced, ShouldNotContain, cosignTag)
+		So(headed, ShouldContain, referrersTag)
+		So(synced, ShouldNotContain, referrersTag)
+		So(synced, ShouldContain, "1.0.0")
+		So(synced, ShouldContain, digestNamedTag)
+		So(headed, ShouldResemble, []string{"1.0.0", digestNamedTag, referrersTag})
+	})
+}
+
+func TestSyncRepoUnresolvedReferrersShapedTag(t *testing.T) {
+	Convey("an unresolved referrers-shaped tag does not fail the whole repo", t, func() {
+		const hex = "4a62254e90931470fb90c29362803fe7dada22107229ec2351bd33560c1dceb0"
+
+		referrersShapedTag := "sha256-" + hex
+		conf := syncconf.RegistryConfig{URLs: []string{"http://localhost"}}
+		upstreamDown := errors.New("upstream unavailable")
+
+		newService := func() *BaseService {
+			service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil,
+				mocks.MetaDBMock{}, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			return service
+		}
+
+		Convey("referrers-shaped tag is skipped, later tags still sync", func() {
+			service := newService()
+
+			var synced []string
+
+			service.remote = &mocks.SyncRemoteMock{
+				GetTagsFn: func(_ context.Context, _ string) ([]string, error) {
+					return []string{referrersShapedTag, "1.0.0"}, nil
+				},
+				HeadManifestFn: func(_ context.Context, _, tag string) (godigest.Digest, string, error) {
+					if tag == referrersShapedTag {
+						return "", "", upstreamDown
+					}
+
+					return godigest.Digest("sha256:" + hex), ispec.MediaTypeImageManifest, nil
+				},
+			}
+			service.destination = &mocks.SyncDestinationMock{
+				GetImageReferenceFn: func(_ string, tag string) (ref.Ref, error) {
+					synced = append(synced, tag)
+
+					return ref.Ref{}, zerr.ErrManifestNotFound
+				},
+			}
+
+			So(service.SyncRepo(context.Background(), "repo"), ShouldBeNil)
+			So(synced, ShouldResemble, []string{"1.0.0"})
+		})
+
+		Convey("an ordinary tag still aborts the repo", func() {
+			service := newService()
+			service.remote = &mocks.SyncRemoteMock{
+				GetTagsFn: func(_ context.Context, _ string) ([]string, error) {
+					return []string{"1.0.0"}, nil
+				},
+				HeadManifestFn: func(_ context.Context, _, _ string) (godigest.Digest, string, error) {
+					return "", "", upstreamDown
+				},
+			}
+
+			So(service.SyncRepo(context.Background(), "repo"), ShouldNotBeNil)
+		})
+	})
+}
+
 // TestNewClientTimeoutBehavior verifies that newClient creates a client that respects timeouts.
 func TestNewClientTimeoutBehavior(t *testing.T) {
 	Convey("Test newClient timeout behavior", t, func() {

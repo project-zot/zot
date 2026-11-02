@@ -449,6 +449,75 @@ func TestOnUpdateManifest(t *testing.T) {
 	})
 }
 
+func TestOnUpdateManifestDigestNamedTag(t *testing.T) {
+	Convey("A tag that names its own digest is indexed", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		params := boltdb.DBParameters{RootDir: rootDir}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		image := CreateDefaultImage()
+		tag := image.Digest().Algorithm().String() + "-" + image.Digest().Encoded()
+		body := image.ManifestDescriptor.Data
+
+		So(WriteImageToFileSystem(image, "repo", tag, storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(context.Background(), "repo", tag, ispec.MediaTypeImageManifest, image.Digest(),
+			body, storeController, metaDB, log), ShouldBeNil)
+
+		repoMeta, err := metaDB.GetRepoMeta(context.Background(), "repo")
+		So(err, ShouldBeNil)
+		So(repoMeta.Tags, ShouldContainKey, tag)
+
+		So(meta.OnGetManifest("repo", tag, ispec.MediaTypeImageManifest, body, storeController, metaDB, log),
+			ShouldBeNil)
+
+		repoMeta, err = metaDB.GetRepoMeta(context.Background(), "repo")
+		So(err, ShouldBeNil)
+		So(repoMeta.Statistics[image.Digest().String()].DownloadCount, ShouldEqual, 1)
+	})
+
+	Convey("A referrers tag that names another digest is not indexed", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		params := boltdb.DBParameters{RootDir: rootDir}
+		boltDriver, err := boltdb.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		image := CreateDefaultImage()
+		tag := "sha256-" + strings.Repeat("a", 64)
+		if tag == image.Digest().Algorithm().String()+"-"+image.Digest().Encoded() {
+			tag = "sha256-" + strings.Repeat("b", 64)
+		}
+
+		So(WriteImageToFileSystem(image, "repo", tag, storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(context.Background(), "repo", tag, ispec.MediaTypeImageManifest, image.Digest(),
+			image.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		_, err = metaDB.GetRepoMeta(context.Background(), "repo")
+		So(errors.Is(err, zerr.ErrRepoMetaNotFound), ShouldBeTrue)
+
+		So(meta.OnGetManifest("repo", tag, ispec.MediaTypeImageManifest, image.ManifestDescriptor.Data,
+			storeController, metaDB, log), ShouldBeNil)
+	})
+}
+
 func TestOnUpdateManifest_TagOverwriteKeepsPriorDigestStats(t *testing.T) {
 	Convey("Tag overwrite leaves prior digest Statistics in MetaDB until GC", t, func() {
 		rootDir := t.TempDir()

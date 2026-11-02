@@ -200,7 +200,9 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 	*seen = append(*seen, desc.Digest)
 
 	imageStore := registry.storeController.GetImageStore(repo)
-	isReferrersRef := common.IsReferrersTag(reference)
+	// A referrers fallback tag names the subject's digest, so it does not name the manifest
+	// it tags. A tag that does name its own target is committed like any other reference.
+	isReferrersRef := common.IsReferrersEntry(reference, desc.Digest)
 
 	manifestContent := desc.Data
 	if manifestContent == nil {

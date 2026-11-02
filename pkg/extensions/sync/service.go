@@ -767,8 +767,9 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 			return ctx.Err()
 		}
 
-		// skip referrers tags and cosign tags here; they are synced via syncReferrers in syncImage.
-		if common.IsCosignTag(tag) || common.IsReferrersTag(tag) {
+		// Cosign tags are skipped on shape. A referrers-shaped tag needs the digest below:
+		// one that names its own manifest is an image, and syncReferrers handles the rest.
+		if common.IsCosignTag(tag) {
 			continue
 		}
 
@@ -787,10 +788,21 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 				continue
 			}
 
+			// The digest is what separates a referrers fallback tag from an image tagged by
+			// digest. Unresolved, skip the tag instead of failing the repo. A digest-named
+			// image is retried on the next poll. The error is already logged above.
+			if common.IsReferrersTag(tag) {
+				continue
+			}
+
 			service.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).
 				Str("tag", tag).Err(err).Msg("error while resolving tag for periodic sync")
 
 			return err
+		}
+
+		if common.IsReferrersEntry(tag, tagContentDigest) {
+			continue
 		}
 
 		// Sparse index (or single image) first, then ensure allowlisted / all child digests.
@@ -1298,7 +1310,7 @@ func (service *BaseService) enforceOnlySigned(ctx context.Context, remoteRepo, t
 ) error {
 	checkIsSigned := service.config.OnlySigned != nil && *service.config.OnlySigned &&
 		!skipOnlySigned &&
-		!common.IsCosignSignature(tag) && !common.IsReferrersTag(tag)
+		!common.IsCosignSignature(tag) && !common.IsReferrersEntry(tag, remoteDigest)
 
 	if !checkIsSigned {
 		return nil
