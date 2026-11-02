@@ -318,7 +318,7 @@ func TestChunkingStreamManagerDownloadResumesInterruptedBlob(t *testing.T) {
 
 	clientDone := make(chan error, 1)
 
-	go func() { clientDone <- copier.Copy() }()
+	go func() { clientDone <- copier.Copy(context.Background()) }()
 
 	files := sm.DownloadStreamedBlobs(context.Background(), "repo-a", predictTestTag, fetcher.fetch, nil)
 

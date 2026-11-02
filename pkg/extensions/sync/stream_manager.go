@@ -451,7 +451,7 @@ func (sm *ChunkingStreamManager) downloadPriorityStream(ctx context.Context, fet
 		return nil
 	}
 
-	return streamed.stream.FillResumable(priority.ctx, sm.resumeWith(priority.fetch))
+	return streamed.stream.FillResumable(ctx, sm.resumeWith(fetch))
 }
 
 // resumeWith is how a download using fetch continues a blob upstream cut short.
