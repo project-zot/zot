@@ -888,3 +888,125 @@ func (d *linkOrderDriver) Link(src, dest string) error {
 
 	return d.Driver.Link(src, dest)
 }
+
+// rebuildFaultCache fails PutBlob or SetOrigin with the given errors.
+type rebuildFaultCache struct {
+	storageTypes.Cache
+
+	putErr       error
+	setOriginErr error
+}
+
+func (c *rebuildFaultCache) PutBlob(digest godigest.Digest, path string) error {
+	if c.putErr != nil {
+		return c.putErr
+	}
+
+	return c.Cache.PutBlob(digest, path)
+}
+
+func (c *rebuildFaultCache) SetOrigin(digest godigest.Digest, path string) error {
+	if c.setOriginErr != nil {
+		return c.setOriginErr
+	}
+
+	return c.Cache.SetOrigin(digest, path)
+}
+
+func TestDedupeRebuildRecordFailures(t *testing.T) {
+	content := []byte("dedupe-rebuild-record-failure-content")
+	digest := godigest.FromBytes(content)
+
+	type fixture struct {
+		imgStore storageTypes.ImageStore
+		cache    storageTypes.Cache
+		faults   *rebuildFaultCache
+		plant    func(repo string, body []byte) string
+	}
+
+	setup := func() fixture {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		faults := &rebuildFaultCache{Cache: cacheDriver}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			&remoteNamedDriver{Driver: local.New(true)}, faults, nil, nil)
+
+		plant := func(repo string, body []byte) string {
+			So(imgStore.InitRepo(context.Background(), repo), ShouldBeNil)
+
+			blobPath := imgStore.BlobPath(repo, digest)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+			return blobPath
+		}
+
+		return fixture{imgStore: imgStore, cache: cacheDriver, faults: faults, plant: plant}
+	}
+
+	Convey("A copy that cannot be recorded fails the rebuild and keeps its content", t, func() {
+		fix := setup()
+
+		origin := fix.plant("repo-origin", content)
+		So(fix.cache.PutBlob(digest, origin), ShouldBeNil)
+
+		copied := fix.plant("repo-copy", content)
+		fix.faults.putErr = errStagingFailed
+
+		err := fix.imgStore.RunDedupeForDigest(context.Background(), digest, true, []string{origin, copied})
+		So(errors.Is(err, errStagingFailed), ShouldBeTrue)
+
+		data, err := os.ReadFile(copied)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+	})
+
+	Convey("A placeholder that cannot be recorded fails the rebuild", t, func() {
+		fix := setup()
+
+		origin := fix.plant("repo-origin", content)
+		So(fix.cache.PutBlob(digest, origin), ShouldBeNil)
+
+		placeholder := fix.plant("repo-placeholder", []byte{})
+		fix.faults.putErr = errStagingFailed
+
+		err := fix.imgStore.RunDedupeForDigest(context.Background(), digest, true, []string{origin, placeholder})
+		So(errors.Is(err, errStagingFailed), ShouldBeTrue)
+	})
+
+	Convey("An origin that cannot be set fails the rebuild", t, func() {
+		fix := setup()
+
+		origin := fix.plant("repo-origin", content)
+		fix.faults.setOriginErr = errStagingFailed
+
+		err := fix.imgStore.RunDedupeForDigest(context.Background(), digest, true, []string{origin})
+		So(errors.Is(err, errStagingFailed), ShouldBeTrue)
+	})
+
+	Convey("A copy recorded already is linked without being recorded again", t, func() {
+		fix := setup()
+
+		origin := fix.plant("repo-origin", content)
+		copied := fix.plant("repo-copy", content)
+		So(fix.cache.PutBlob(digest, origin), ShouldBeNil)
+		So(fix.cache.PutBlob(digest, copied), ShouldBeNil)
+
+		fix.faults.putErr = errStagingFailed
+
+		So(fix.imgStore.RunDedupeForDigest(context.Background(), digest, true, []string{origin, copied}), ShouldBeNil)
+
+		binfo, err := os.Stat(copied)
+		So(err, ShouldBeNil)
+		So(binfo.Size(), ShouldEqual, 0)
+	})
+}
