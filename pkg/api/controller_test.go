@@ -10788,6 +10788,12 @@ func TestPagedRepositories(t *testing.T) {
 			expectedRepos: repoNames[5:9],
 		},
 		{
+			testCaseName:  "an n with more than one digit",
+			pageSize:      "10",
+			last:          "",
+			expectedRepos: repoNames,
+		},
+		{
 			testCaseName:  "0",
 			pageSize:      "0",
 			last:          "",
