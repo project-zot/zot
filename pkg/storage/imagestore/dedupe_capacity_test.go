@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"path"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -497,5 +499,106 @@ func TestKeepFullCopyFailures(t *testing.T) {
 
 		_, _, err := fix.imgStore.FullBlobUpload(context.Background(), "repo-push", bytes.NewReader(content), digest)
 		So(errors.Is(err, errMoveFailed), ShouldBeTrue)
+	})
+}
+
+// statHookDriver runs after once, right after the nth Stat of path has been answered, so that
+// a test can act on the path while the caller still holds that answer.
+type statHookDriver struct {
+	storageTypes.Driver
+
+	path  string
+	nth   int32
+	count atomic.Int32
+	after func()
+}
+
+func (d *statHookDriver) Stat(path string) (driver.FileInfo, error) {
+	binfo, err := d.Driver.Stat(path)
+
+	if path == d.path && d.count.Add(1) == d.nth && d.after != nil {
+		hook := d.after
+		d.after = nil
+
+		hook()
+	}
+
+	return binfo, err
+}
+
+func TestKeepFullCopyUnderReadLockExcludesOtherCheckBlobs(t *testing.T) {
+	content := []byte("dedupe-capacity-read-lock-content")
+	digest := godigest.FromBytes(content)
+
+	Convey("A CheckBlob whose staging failed does not remove the copy another CheckBlob installed", t, func() {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		racing := &racingReadDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}, failRead: true}
+		stats := &statHookDriver{Driver: racing, nth: 2}
+
+		// dedupe is off, so CheckBlob holds the read lock
+		imgStore := imagestore.NewImageStore(dir, dir, false, true, log, monitoring.NewNopMetricServer(), nil,
+			stats, &fullCache{Cache: cacheDriver}, nil, nil)
+
+		So(imgStore.InitRepo(context.Background(), "repo-origin"), ShouldBeNil)
+
+		origin := imgStore.BlobPath("repo-origin", digest)
+		So(os.MkdirAll(path.Dir(origin), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(origin, content, storageConstants.DefaultFilePerms), ShouldBeNil)
+		So(cacheDriver.PutBlob(digest, origin), ShouldBeNil)
+
+		So(imgStore.InitRepo(context.Background(), "repo-copy"), ShouldBeNil)
+
+		dest := imgStore.BlobPath("repo-copy", digest)
+		So(os.MkdirAll(path.Dir(dest), storageConstants.DefaultDirPerms), ShouldBeNil)
+		So(os.WriteFile(dest, nil, storageConstants.DefaultFilePerms), ShouldBeNil)
+
+		// the first CheckBlob's staging fails; the second one's succeeds
+		racing.origin = origin
+		racing.onRead = func() {}
+		stats.path = dest
+
+		second := make(chan error, 1)
+
+		// right after the first CheckBlob has seen the placeholder again, a second CheckBlob
+		// for the same placeholder starts; under the write lock it has to wait for the first
+		stats.after = func() {
+			go func() {
+				_, _, err := imgStore.CheckBlob(context.Background(), "repo-copy", digest)
+				second <- err
+			}()
+
+			select {
+			case <-second:
+				second <- nil
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+
+		_, _, err = imgStore.CheckBlob(context.Background(), "repo-copy", digest)
+		So(errors.Is(err, errStagingFailed), ShouldBeTrue)
+
+		select {
+		case err := <-second:
+			So(err, ShouldBeNil)
+		case <-time.After(10 * time.Second):
+			So("second CheckBlob did not finish", ShouldBeEmpty)
+		}
+
+		data, err := os.ReadFile(dest)
+		So(err, ShouldBeNil)
+		So(data, ShouldResemble, content)
+
+		uploads, err := imgStore.ListBlobUploads("repo-copy")
+		So(err, ShouldBeNil)
+		So(uploads, ShouldBeEmpty)
 	})
 }

@@ -21,8 +21,12 @@ import (
 // held again on return, so that a large copy does not block every repository. While the lock is
 // released, a push or another CheckBlob can put a full copy at blobPath; once the lock is held
 // again, such a copy is kept and the staged one dropped. Only a placeholder that is still
-// without content is replaced, or removed when staging failed. writeLocked tells which kind of
-// lock the caller holds, and the same kind is held again on return.
+// without content is replaced, or removed when staging failed.
+//
+// writeLocked tells which kind of lock the caller holds, and the same kind is held again on
+// return. The revalidation, the move and the cleanup always run under the write lock: under a
+// read lock, another CheckBlob for the same placeholder could install its full copy between
+// this one's stat and its delete.
 func (is *ImageStore) keepFullCopy(ctx context.Context, repo, blobPath, origin string, digest godigest.Digest,
 	writeLocked bool, lockLatency *time.Time,
 ) error {
@@ -34,10 +38,13 @@ func (is *ImageStore) keepFullCopy(ctx context.Context, repo, blobPath, origin s
 
 	staged, stageErr := is.stageVerifiedCopy(ctx, repo, origin, digest)
 
-	if writeLocked {
-		is.Lock(lockLatency)
-	} else {
-		is.RLock(lockLatency)
+	is.Lock(lockLatency)
+
+	if !writeLocked {
+		defer func() {
+			is.Unlock(lockLatency)
+			is.RLock(lockLatency)
+		}()
 	}
 
 	placeholder, err := is.isPlaceholderCopy(digest, blobPath)
