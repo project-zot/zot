@@ -535,9 +535,14 @@ type lockTrackingStore struct {
 	mocks.MockedImageStore
 	locked bool
 	locks  int
+	onLock func()
 }
 
 func (s *lockTrackingStore) WithRepoCleanupLock(_ string, wrappedFunc func() error) error {
+	if s.onLock != nil {
+		s.onLock()
+	}
+
 	s.locked = true
 	s.locks++
 
