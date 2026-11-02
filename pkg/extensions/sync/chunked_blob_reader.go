@@ -565,7 +565,7 @@ func (cbr *ChunkedBlobReader) Read(buff []byte) (int, error) {
 
 // readChunk is Read, except that an upstream failure is reported with interrupted set instead of
 // failing the blob. The failed read's bytes are dropped, so the temp file ends at numBytesWritten.
-func (cbr *ChunkedBlobReader) readChunk(buff []byte) (n int, interrupted bool, err error) {
+func (cbr *ChunkedBlobReader) readChunk(buff []byte) (int, bool, error) {
 	cbr.readMu.Lock()
 	defer cbr.readMu.Unlock()
 
@@ -578,7 +578,7 @@ func (cbr *ChunkedBlobReader) readChunk(buff []byte) (n int, interrupted bool, e
 
 	numBytesRead := cbr.numBytesWritten
 
-	n, err = io.ReadFull(upstream, buff)
+	n, err := io.ReadFull(upstream, buff)
 
 	switch classifyReadErr(err) {
 	case readErrIntegrityFailure:
