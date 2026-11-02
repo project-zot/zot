@@ -221,6 +221,34 @@ func TestPagination(t *testing.T) {
 			})
 		})
 
+		Convey("Offset without limit", func() {
+			imgSum1 := gql_generated.ImageSummary{RepoName: ref("repo1"), Tag: ref("1")}
+			imgSum2 := gql_generated.ImageSummary{RepoName: ref("repo2"), Tag: ref("1")}
+			imgSum3 := gql_generated.ImageSummary{RepoName: ref("repo3"), Tag: ref("1")}
+
+			// a limit of 0 returns everything after the offset
+			imagePageFinder, err := pagination.NewImgSumPageFinder(0, 1, pagination.AlphabeticAsc)
+			So(err, ShouldBeNil)
+			imagePageFinder.Add(&imgSum3)
+			imagePageFinder.Add(&imgSum1)
+			imagePageFinder.Add(&imgSum2)
+			page, pageInfo := imagePageFinder.Page()
+			So(page, ShouldEqual, []*gql_generated.ImageSummary{&imgSum2, &imgSum3})
+			So(pageInfo.ItemCount, ShouldEqual, 2)
+			So(pageInfo.TotalCount, ShouldEqual, 3)
+
+			// an offset past the last image returns an empty page
+			imagePageFinder, err = pagination.NewImgSumPageFinder(0, 3, pagination.AlphabeticAsc)
+			So(err, ShouldBeNil)
+			imagePageFinder.Add(&imgSum1)
+			imagePageFinder.Add(&imgSum2)
+			imagePageFinder.Add(&imgSum3)
+			page, pageInfo = imagePageFinder.Page()
+			So(page, ShouldBeEmpty)
+			So(pageInfo.ItemCount, ShouldEqual, 0)
+			So(pageInfo.TotalCount, ShouldEqual, 3)
+		})
+
 		Convey("ImgSortByUpdateTime with nil LastUpdated in pagination", func() {
 			// Test pagination with images that have nil LastUpdated
 			imgSumWithTime := gql_generated.ImageSummary{
@@ -559,6 +587,34 @@ func TestPagination(t *testing.T) {
 			So(page, ShouldEqual, []*gql_generated.RepoSummary{
 				&repoSum4, &repoSum1, &repoSum3, &repoSum2,
 			})
+		})
+
+		Convey("Repo page finder offset without limit", func() {
+			repoSum1 := gql_generated.RepoSummary{Name: ref("repo1")}
+			repoSum2 := gql_generated.RepoSummary{Name: ref("repo2")}
+			repoSum3 := gql_generated.RepoSummary{Name: ref("repo3")}
+
+			// a limit of 0 returns everything after the offset
+			repoPageFinder, err := pagination.NewRepoSumPageFinder(0, 1, pagination.AlphabeticAsc)
+			So(err, ShouldBeNil)
+			repoPageFinder.Add(&repoSum3)
+			repoPageFinder.Add(&repoSum1)
+			repoPageFinder.Add(&repoSum2)
+			page, pageInfo := repoPageFinder.Page()
+			So(page, ShouldEqual, []*gql_generated.RepoSummary{&repoSum2, &repoSum3})
+			So(pageInfo.ItemCount, ShouldEqual, 2)
+			So(pageInfo.TotalCount, ShouldEqual, 3)
+
+			// an offset past the last repo returns an empty page
+			repoPageFinder, err = pagination.NewRepoSumPageFinder(0, 3, pagination.AlphabeticAsc)
+			So(err, ShouldBeNil)
+			repoPageFinder.Add(&repoSum1)
+			repoPageFinder.Add(&repoSum2)
+			repoPageFinder.Add(&repoSum3)
+			page, pageInfo = repoPageFinder.Page()
+			So(page, ShouldBeEmpty)
+			So(pageInfo.ItemCount, ShouldEqual, 0)
+			So(pageInfo.TotalCount, ShouldEqual, 3)
 		})
 
 		Convey("RepoSortByUpdateTime with nil LastUpdated in pagination", func() {
