@@ -195,7 +195,8 @@ func onUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 	if err != nil {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
-		if delErr := imgStore.DeleteImageManifest(ctx, repo, reference, false); delErr != nil {
+		if delErr := imgStore.DeleteImageManifest(ctx, repo, reference, false); delErr != nil &&
+			!errors.Is(delErr, zerr.ErrManifestBlobCleanup) {
 			log.Error().Err(delErr).Str("reference", reference).Str("repository", repo).
 				Msg("failed to remove image manifest in repo")
 

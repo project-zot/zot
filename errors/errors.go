@@ -111,6 +111,7 @@ var (
 	ErrBadLayerCount                    = errors.New("manifest layers count doesn't correspond to config history")
 	ErrManifestConflict                 = errors.New("multiple manifests found")
 	ErrManifestRestoreAttempted         = errors.New("manifest restore to image store attempted after a metadb failure")
+	ErrManifestBlobCleanup              = errors.New("manifest blob cleanup failed after index commit")
 	ErrImageMetaNotFound                = errors.New("image meta not found")
 	ErrInvalidRepoSize                  = errors.New("invalid repository size")
 	ErrInvalidRepoSizeCandidate         = errors.New("invalid repository size candidate")

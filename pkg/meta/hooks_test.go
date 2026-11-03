@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -477,6 +478,49 @@ func TestOnUpdateManifest_metaFailureRestoresPreviousTag(t *testing.T) {
 		repoMeta, err := metaDB.GetRepoMeta(context.Background(), "repo")
 		So(err, ShouldBeNil)
 		So(repoMeta.Tags["latest"].Digest, ShouldEqual, first.DigestStr())
+	})
+}
+
+func TestOnUpdateManifest_retagsAfterManifestCleanupError(t *testing.T) {
+	Convey("OnUpdateManifest restores the previous tag when manifest blob cleanup fails", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		baseStore := local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+		cleanupErr := fmt.Errorf("%w: %w", zerr.ErrManifestBlobCleanup, errDeleteAfterMetaHookTest)
+		storeController.DefaultStore = &failDeleteImageStore{
+			ImageStore: baseStore,
+			deleteErr:  cleanupErr,
+		}
+
+		boltDriver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		first := CreateRandomImage()
+		second := CreateRandomImage()
+
+		So(WriteImageToFileSystem(first, "repo", "latest", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(context.Background(), "repo", "latest", ispec.MediaTypeImageManifest,
+			first.Digest(), first.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		So(WriteImageToFileSystem(second, "repo", second.DigestStr(), storeController), ShouldBeNil)
+		_, _, err = baseStore.PutImageManifest(context.Background(), "repo", "latest",
+			ispec.MediaTypeImageManifest, second.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		failingMeta := &setRepoRefFailMetaDB{MetaDB: metaDB, failRef: "latest"}
+		err = meta.OnUpdateManifest(context.Background(), "repo", "latest", ispec.MediaTypeImageManifest,
+			second.Digest(), second.ManifestDescriptor.Data, storeController, failingMeta, log)
+		So(errors.Is(err, errDigestTagsSetRepoReferenceFail), ShouldBeTrue)
+
+		_, storedDigest, _, err := baseStore.GetImageManifest("repo", "latest")
+		So(err, ShouldBeNil)
+		So(storedDigest, ShouldEqual, first.Digest())
 	})
 }
 
