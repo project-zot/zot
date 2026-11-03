@@ -2616,7 +2616,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 				// PutBlobChunk and go straight to FinishBlobUpload below.
 				shouldPutBlobChunk = false
 			}
-		} else if from, to, err = getContentRange(request); err != nil { // finish chunked upload
+		} else if from, to, err = getContentRange(request); err != nil || (to-from)+1 != contentLen { // finish chunked upload
 			details := zerr.GetDetails(err)
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
