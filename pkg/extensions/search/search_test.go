@@ -462,6 +462,36 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
 		})
 
+		Convey("Test repoListWithNewestImage with pagination, offset and no limit", func() {
+			query := `{
+				RepoListWithNewestImage(requestedPage:{
+					offset: 1
+					sortBy: ALPHABETIC_ASC
+				}){
+					Page{
+						ItemCount
+						TotalCount
+					}
+					Results{
+						Name
+					}
+				}
+			}`
+
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			var responseStruct zcommon.RepoWithNewestImageResponse
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.Results), ShouldEqual, 3)
+			So(responseStruct.Page.ItemCount, ShouldEqual, 3)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
+		})
+
 		Convey("Test repoListWithNewestImage multiple", func() {
 			query := `{RepoListWithNewestImage{
 							Results{

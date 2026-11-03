@@ -68,6 +68,11 @@ func (pf *ImageSummariesPageFinder) Page() ([]*gql_gen.ImageSummary, zcommon.Pag
 	start := pf.offset
 	end := pf.offset + pf.limit
 
+	// a limit of 0 means no limit, return everything after the offset
+	if pf.limit == 0 {
+		end = len(pf.pageBuffer)
+	}
+
 	// we'll return an empty array when the offset is greater than the number of elements
 	if start >= len(pf.pageBuffer) {
 		start = len(pf.pageBuffer)
@@ -81,11 +86,6 @@ func (pf *ImageSummariesPageFinder) Page() ([]*gql_gen.ImageSummary, zcommon.Pag
 	page := pf.pageBuffer[start:end]
 
 	pageInfo.ItemCount = len(page)
-
-	if start == 0 && end == 0 {
-		page = pf.pageBuffer
-		pageInfo.ItemCount = len(page)
-	}
 
 	pageInfo.TotalCount = len(pf.pageBuffer)
 
