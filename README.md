@@ -8,5 +8,11 @@ Documentation for `zot` is located at: [https://zotregistry.dev](https://zotregi
 Code of conduct details are [here](CODE_OF_CONDUCT.md).
 
 
+## One-Click Deploy
+
+<a href="https://repocloud.io/details/Zot/"><img src="https://d16t0pc4846x52.cloudfront.net/deploylobe.svg" alt="Deploy on RepoCloud" height="42"></a>
+<a href="https://railway.com/deploy/zot"><img src="https://railway.com/button.svg" alt="Deploy on Railway" height="42"></a>
+<a href="https://template.sealos.io/deploy?templateName=zot"><img src="https://raw.githubusercontent.com/labring-actions/templates/main/Deploy-on-Sealos.svg" alt="Deploy on Sealos" height="42"></a>
+
 ## License
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fproject-zot%2Fzot.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fproject-zot%2Fzot?ref=badge_large)
