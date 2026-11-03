@@ -1722,6 +1722,24 @@ func TestRoutes(t *testing.T) {
 			)
 			So(status, ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
 
+			// A final chunk whose Content-Range disagrees with its Content-Length
+			// is rejected the same way PATCH rejects it.
+			status = testUpdateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
+				},
+				map[string]string{
+					"Content-Length": "5",
+					"Content-Range":  "0-9",
+				},
+				map[string]string{
+					"name":       "repo",
+					"session_id": "test",
+				},
+				&mocks.MockedImageStore{},
+			)
+			So(status, ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
 			// Malformed Content-Range (no hyphen): must return 416, not panic.
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
