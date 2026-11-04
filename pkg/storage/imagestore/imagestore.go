@@ -2487,26 +2487,82 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
 		// Only sync the cache when the blob is actually gone. A transient Stat
-		// failure must not DeleteBlob (which can promote a placeholder on Redis) or be
-		// reported as a miss that rebuild then "repairs" with another path.
+		// failure must not change the origin or be reported as a miss that rebuild
+		// then "repairs" with another path.
 		if !errclass.IsStorageObjectMissing(err) {
 			return "", mapStorageErr(err)
 		}
 
-		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
+		origin, repairErr := is.replaceMissingOrigin(digest, dstRecord)
+		if repairErr != nil {
+			is.log.Error().Err(repairErr).Str("digest", digest.String()).Str("blobPath", dstRecord).
 				Msg("failed to remove blob path from cache")
 
-			return "", err
+			return "", repairErr
 		}
 
-		return "", mapStorageErr(err)
+		if origin == "" {
+			return "", mapStorageErr(err)
+		}
+
+		dstRecord = origin
 	}
 
 	is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
 		Msg("found dedupe record")
 
 	return dstRecord, nil
+}
+
+// replaceMissingOrigin makes a copy that holds digest's content the origin, in place of
+// missingOrigin, which is gone from storage, and returns that copy. The cache drivers promote an
+// arbitrary tracked path when an origin is deleted, which on remote storage can be an empty
+// placeholder, and reads through such an origin fail while another copy holds the content. The
+// origin is changed only if it is still missingOrigin; if another writer changed it meanwhile,
+// or no tracked copy holds the content, missingOrigin is dropped from the record as before and
+// "" is returned.
+func (is *ImageStore) replaceMissingOrigin(digest godigest.Digest, missingOrigin string) (string, error) {
+	records, err := is.cache.GetAllBlobs(digest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		return "", err
+	}
+
+	for _, record := range records {
+		candidate := is.cacheRecordPath(record)
+		if candidate == "" || path.Clean(candidate) == path.Clean(missingOrigin) {
+			continue
+		}
+
+		binfo, err := is.storeDriver.Stat(candidate)
+		if err != nil {
+			if errclass.IsStorageObjectMissing(err) {
+				continue
+			}
+
+			return "", mapStorageErr(err)
+		}
+
+		if lacksContent(digest, binfo.Size()) {
+			continue
+		}
+
+		if err := is.cache.ReplaceBlob(digest, missingOrigin, candidate); err != nil {
+			if errors.Is(err, zerr.ErrCacheConflict) {
+				return "", nil
+			}
+
+			return "", err
+		}
+
+		// missingOrigin is a duplicate now, and still gone from storage
+		if err := is.cache.DeleteBlob(digest, missingOrigin); err != nil {
+			return "", err
+		}
+
+		return candidate, nil
+	}
+
+	return "", is.cache.DeleteBlob(digest, missingOrigin)
 }
 
 func (is *ImageStore) getCachedBlobPath(digest godigest.Digest) (string, error) {
@@ -3075,7 +3131,8 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	if err != nil {
 		if errclass.IsStorageObjectMissing(err) {
 			// A copy that has gone may still be the cache origin, after a hand-off that moved its
-			// content but could not publish the new origin. checkCacheBlob drops such an origin.
+			// content but could not publish the new origin. checkCacheBlob replaces such an origin
+			// with a copy that holds the content.
 			if !is.isCacheNil() {
 				_, _ = is.checkCacheBlob(digest)
 			}
