@@ -65,6 +65,10 @@ type ImageStore interface { //nolint:interfacebloat
 	PutImageManifest(ctx context.Context, repo, reference, mediaType string, body []byte, extraTags []string) (
 		godigest.Digest, godigest.Digest, error)
 	DeleteImageManifest(ctx context.Context, repo, reference string, detectCollision bool) error
+	// RetagManifest points reference at an existing digest already present in the repository
+	// index (typically an untagged descriptor left by a tag overwrite). It does not write
+	// blobs, run the linter, or emit image-updated events.
+	RetagManifest(ctx context.Context, repo, reference string, digest godigest.Digest) error
 	BlobUploadPath(repo, uuid string) string
 	StatBlobUpload(repo, uuid string) (bool, int64, time.Time, error)
 	ListBlobUploads(repo string) ([]string, error)

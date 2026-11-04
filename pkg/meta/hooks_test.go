@@ -33,6 +33,7 @@ var (
 	errDeleteAfterMetaHookTest        = errors.New("delete manifest after meta failure hook test")
 	errDigestTagsSetRepoReferenceFail = errors.New("injected SetRepoReference failure for digest-tags rollback tests")
 	errGetRepoMetaForDigestTags       = errors.New("get repo meta failed for digest tags test")
+	errRetagAfterMetaHookTest         = errors.New("retag after meta failure hook test")
 	errSetRepoRefForHookTest          = errors.New("set repo reference failed for hook test")
 )
 
@@ -67,6 +68,18 @@ func (f *failDeleteImageStore) DeleteImageManifest(ctx context.Context, repo, re
 	return f.deleteErr
 }
 
+// failRetagImageStore delegates to an inner ImageStore but forces RetagManifest to return retagErr.
+type failRetagImageStore struct {
+	stypes.ImageStore
+
+	retagErr error
+}
+
+func (f *failRetagImageStore) RetagManifest(ctx context.Context, repo, reference string, digest godigest.Digest,
+) error {
+	return f.retagErr
+}
+
 func TestOnUpdateManifestDigestTags_emptyTags(t *testing.T) {
 	Convey("OnUpdateManifestDigestTags with no tags is a no-op (nil MetaDB: no GetRepoMeta/SetRepoReference path)",
 		t, func() {
@@ -76,6 +89,48 @@ func TestOnUpdateManifestDigestTags_emptyTags(t *testing.T) {
 				godigest.Digest(""), nil, storage.StoreController{}, nil, log)
 			So(err, ShouldBeNil)
 		})
+}
+
+func TestOnUpdateManifestDigestTags_snapshotsRepoMetaOnce(t *testing.T) {
+	Convey("OnUpdateManifestDigestTags does not re-GetRepoMeta for each tag after the bulk snapshot", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		image := CreateDefaultImage()
+		mediaType := image.ManifestDescriptor.MediaType
+		if mediaType == "" {
+			mediaType = ispec.MediaTypeImageManifest
+		}
+
+		So(WriteImageToFileSystem(image, "repo", image.DigestStr(), storeController), ShouldBeNil)
+
+		getRepoMetaCalls := 0
+		metaDB := mocks.MetaDBMock{
+			GetRepoMetaFn: func(context.Context, string) (mTypes.RepoMeta, error) {
+				getRepoMetaCalls++
+
+				return mTypes.RepoMeta{
+					Name: "repo",
+					Tags: map[string]mTypes.Descriptor{
+						"old": {Digest: image.DigestStr(), MediaType: mediaType},
+					},
+				}, nil
+			},
+			SetRepoReferenceFn: func(context.Context, string, string, mTypes.ImageMeta) error {
+				return nil
+			},
+		}
+
+		err := meta.OnUpdateManifestDigestTags(context.Background(), "repo",
+			[]string{"ta", "tb", "old"}, mediaType, image.Digest(), image.ManifestDescriptor.Data,
+			storeController, metaDB, log)
+		So(err, ShouldBeNil)
+		So(getRepoMetaCalls, ShouldEqual, 1)
+	})
 }
 
 func TestOnUpdateManifestDigestTags_success(t *testing.T) {
@@ -378,6 +433,160 @@ func TestOnUpdateManifest_setRepoReferenceFailsRemovesManifest(t *testing.T) {
 
 		_, _, _, err = imgStore.GetImageManifest("repo", "tag1")
 		So(errors.Is(err, zerr.ErrManifestNotFound), ShouldBeTrue)
+	})
+}
+
+func TestOnUpdateManifest_metaFailureRestoresPreviousTag(t *testing.T) {
+	Convey("OnUpdateManifest restores the previous tag when MetaDB rejects an overwrite", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		boltDriver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		first := CreateRandomImage()
+		second := CreateRandomImage()
+
+		So(WriteImageToFileSystem(first, "repo", "latest", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(context.Background(), "repo", "latest", ispec.MediaTypeImageManifest,
+			first.Digest(), first.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		So(WriteImageToFileSystem(second, "repo", second.DigestStr(), storeController), ShouldBeNil)
+
+		imgStore := storeController.GetImageStore("repo")
+		_, _, err = imgStore.PutImageManifest(context.Background(), "repo", "latest",
+			ispec.MediaTypeImageManifest, second.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		failingMeta := &setRepoRefFailMetaDB{MetaDB: metaDB, failRef: "latest"}
+		err = meta.OnUpdateManifest(context.Background(), "repo", "latest", ispec.MediaTypeImageManifest,
+			second.Digest(), second.ManifestDescriptor.Data, storeController, failingMeta, log)
+		So(errors.Is(err, errDigestTagsSetRepoReferenceFail), ShouldBeTrue)
+
+		_, storedDigest, _, err := imgStore.GetImageManifest("repo", "latest")
+		So(err, ShouldBeNil)
+		So(storedDigest, ShouldEqual, first.Digest())
+
+		repoMeta, err := metaDB.GetRepoMeta(context.Background(), "repo")
+		So(err, ShouldBeNil)
+		So(repoMeta.Tags["latest"].Digest, ShouldEqual, first.DigestStr())
+	})
+}
+
+func TestOnUpdateManifest_metaFailureRestoresSameDigest(t *testing.T) {
+	Convey("OnUpdateManifest restores the tag when MetaDB fails on an idempotent same-digest push", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		boltDriver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		image := CreateRandomImage()
+
+		So(WriteImageToFileSystem(image, "repo", "latest", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(context.Background(), "repo", "latest", ispec.MediaTypeImageManifest,
+			image.Digest(), image.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		imgStore := storeController.GetImageStore("repo")
+		_, _, err = imgStore.PutImageManifest(context.Background(), "repo", "latest",
+			ispec.MediaTypeImageManifest, image.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		failingMeta := &setRepoRefFailMetaDB{MetaDB: metaDB, failRef: "latest"}
+		err = meta.OnUpdateManifest(context.Background(), "repo", "latest", ispec.MediaTypeImageManifest,
+			image.Digest(), image.ManifestDescriptor.Data, storeController, failingMeta, log)
+		So(errors.Is(err, errDigestTagsSetRepoReferenceFail), ShouldBeTrue)
+
+		_, storedDigest, _, err := imgStore.GetImageManifest("repo", "latest")
+		So(err, ShouldBeNil)
+		So(storedDigest, ShouldEqual, image.Digest())
+
+		repoMeta, err := metaDB.GetRepoMeta(context.Background(), "repo")
+		So(err, ShouldBeNil)
+		So(repoMeta.Tags["latest"].Digest, ShouldEqual, image.DigestStr())
+	})
+}
+
+func TestOnUpdateManifest_snapshotFailureStillDeletesOnMetaError(t *testing.T) {
+	Convey("OnUpdateManifest warns and falls back to delete-only cleanup when the prior snapshot fails", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+
+		image := CreateRandomImage()
+		So(WriteImageToFileSystem(image, "repo", "latest", storeController), ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{
+			GetRepoMetaFn: func(context.Context, string) (mTypes.RepoMeta, error) {
+				return mTypes.RepoMeta{}, errGetRepoMetaForDigestTags
+			},
+			SetRepoReferenceFn: func(context.Context, string, string, mTypes.ImageMeta) error {
+				return errSetRepoRefForHookTest
+			},
+		}
+
+		err := meta.OnUpdateManifest(context.Background(), "repo", "latest", ispec.MediaTypeImageManifest,
+			image.Digest(), image.ManifestDescriptor.Data, storeController, metaDB, log)
+		So(errors.Is(err, errSetRepoRefForHookTest), ShouldBeTrue)
+
+		imgStore := storeController.GetImageStore("repo")
+		_, _, _, err = imgStore.GetImageManifest("repo", "latest")
+		So(errors.Is(err, zerr.ErrManifestNotFound), ShouldBeTrue)
+	})
+}
+
+func TestOnUpdateManifest_retagFailureIsBestEffort(t *testing.T) {
+	Convey("OnUpdateManifest still returns the MetaDB error when RetagManifest fails after delete", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		baseStore := local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+		storeController.DefaultStore = &failRetagImageStore{
+			ImageStore: baseStore,
+			retagErr:   errRetagAfterMetaHookTest,
+		}
+
+		boltDriver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+		So(err, ShouldBeNil)
+
+		metaDB, err := boltdb.New(boltDriver, log)
+		So(err, ShouldBeNil)
+
+		first := CreateRandomImage()
+		second := CreateRandomImage()
+
+		So(WriteImageToFileSystem(first, "repo", "latest", storeController), ShouldBeNil)
+		So(meta.OnUpdateManifest(context.Background(), "repo", "latest", ispec.MediaTypeImageManifest,
+			first.Digest(), first.ManifestDescriptor.Data, storeController, metaDB, log), ShouldBeNil)
+
+		So(WriteImageToFileSystem(second, "repo", second.DigestStr(), storeController), ShouldBeNil)
+		_, _, err = baseStore.PutImageManifest(context.Background(), "repo", "latest",
+			ispec.MediaTypeImageManifest, second.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		failingMeta := &setRepoRefFailMetaDB{MetaDB: metaDB, failRef: "latest"}
+		err = meta.OnUpdateManifest(context.Background(), "repo", "latest", ispec.MediaTypeImageManifest,
+			second.Digest(), second.ManifestDescriptor.Data, storeController, failingMeta, log)
+		So(errors.Is(err, errDigestTagsSetRepoReferenceFail), ShouldBeTrue)
 	})
 }
 

@@ -27,6 +27,7 @@ type MockedImageStore struct {
 	PutImageManifestFn    func(ctx context.Context, repo string, reference string, mediaType string, body []byte,
 		extraTags []string) (godigest.Digest, godigest.Digest, error)
 	DeleteImageManifestFn  func(ctx context.Context, repo string, reference string, detectCollision bool) error
+	RetagManifestFn        func(ctx context.Context, repo, reference string, digest godigest.Digest) error
 	BlobUploadPathFn       func(repo string, uuid string) string
 	StatBlobUploadFn       func(repo string, uuid string) (bool, int64, time.Time, error)
 	ListBlobUploadsFn      func(repo string) ([]string, error)
@@ -217,6 +218,14 @@ func (is MockedImageStore) DeleteImageManifest(ctx context.Context, name string,
 ) error {
 	if is.DeleteImageManifestFn != nil {
 		return is.DeleteImageManifestFn(ctx, name, reference, detectCollision)
+	}
+
+	return nil
+}
+
+func (is MockedImageStore) RetagManifest(ctx context.Context, repo, reference string, digest godigest.Digest) error {
+	if is.RetagManifestFn != nil {
+		return is.RetagManifestFn(ctx, repo, reference, digest)
 	}
 
 	return nil
