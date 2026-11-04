@@ -2199,7 +2199,8 @@ func (is *ImageStore) CheckBlob(ctx context.Context, repo string, digest godiges
 // CheckBlobWithSize is CheckBlob for callers that already know the size of the blob, e.g. from the
 // descriptor referencing it. A present blob is compared against that size instead of the size found
 // by looking up its descriptor in the manifests of the repository, which reads every manifest in the
-// worst case. A negative size means the size is unknown, same as CheckBlob.
+// worst case. Content found through the dedupe cache is compared against that size as well. A negative
+// size means the size is unknown, same as CheckBlob.
 func (is *ImageStore) CheckBlobWithSize(ctx context.Context, repo string, digest godigest.Digest, size int64,
 ) (bool, int64, error) {
 	return is.checkBlob(ctx, repo, digest, size)
@@ -2257,6 +2258,14 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 		if lacksContent(digest, blobSize) {
 			is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).
 				Msg("dedupe origin is empty for non-empty digest")
+
+			return false, -1, zerr.ErrBlobNotFound
+		}
+
+		if expectedSize >= 0 && blobSize != expectedSize {
+			is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).
+				Int64("size", blobSize).Int64("expectedSize", expectedSize).
+				Msg("dedupe origin size does not match the expected size")
 
 			return false, -1, zerr.ErrBlobNotFound
 		}
@@ -2339,6 +2348,14 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 	if blobSize == 0 {
 		is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).
 			Msg("dedupe origin is empty for non-empty digest")
+
+		return false, -1, zerr.ErrBlobNotFound
+	}
+
+	if expectedSize >= 0 && blobSize != expectedSize {
+		is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).
+			Int64("size", blobSize).Int64("expectedSize", expectedSize).
+			Msg("dedupe origin size does not match the expected size")
 
 		return false, -1, zerr.ErrBlobNotFound
 	}
