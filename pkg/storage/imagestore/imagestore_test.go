@@ -831,6 +831,164 @@ func TestCheckBlobTransientSkipsCacheFallback(t *testing.T) {
 	})
 }
 
+// TestCheckBlobWithSize checks that a known size replaces the descriptor lookup, which reads
+// index.json and then the manifests of the repo, while CheckBlob keeps doing that lookup.
+func TestCheckBlobWithSize(t *testing.T) {
+	Convey("CheckBlobWithSize compares against the given size without reading the repo", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+
+		digest := godigest.FromString("checkblob-with-size")
+		blobPath := path.Join(rootDir, "repo", ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+
+		var contentReads []string
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+				So(statPath, ShouldEqual, blobPath)
+
+				return &mocks.FileInfoMock{SizeFn: func() int64 { return 5 }}, nil
+			},
+			GetContentFn: func(_ context.Context, contentPath string) ([]byte, error) {
+				contentReads = append(contentReads, contentPath)
+
+				return nil, driver.PathNotFoundError{Path: contentPath}
+			},
+		}
+
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+		So(store, ShouldNotBeNil)
+
+		ctx := context.Background()
+
+		Convey("blob with the expected size is found", func() {
+			ok, size, err := store.CheckBlobWithSize(ctx, "repo", digest, 5)
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeTrue)
+			So(size, ShouldEqual, 5)
+			So(contentReads, ShouldBeEmpty)
+		})
+
+		Convey("blob with a different size is reported as not found", func() {
+			for _, expectedSize := range []int64{0, 4, 6} {
+				ok, size, err := store.CheckBlobWithSize(ctx, "repo", digest, expectedSize)
+				So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+				So(ok, ShouldBeFalse)
+				So(size, ShouldEqual, -1)
+			}
+
+			So(contentReads, ShouldBeEmpty)
+		})
+
+		Convey("unknown size falls back to the descriptor lookup", func() {
+			ok, size, err := store.CheckBlobWithSize(ctx, "repo", digest, -1)
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeTrue)
+			So(size, ShouldEqual, 5)
+			So(contentReads, ShouldResemble, []string{path.Join(rootDir, "repo", ispec.ImageIndexFile)})
+		})
+
+		Convey("CheckBlob keeps the descriptor lookup", func() {
+			ok, size, err := store.CheckBlob(ctx, "repo", digest)
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeTrue)
+			So(size, ShouldEqual, 5)
+			So(contentReads, ShouldResemble, []string{path.Join(rootDir, "repo", ispec.ImageIndexFile)})
+		})
+	})
+}
+
+// TestCheckBlobWithSizeCacheOrigin checks that a known size is also compared against content found
+// through the dedupe cache, both when the blob is missing from the repo and when it is a placeholder.
+func TestCheckBlobWithSizeCacheOrigin(t *testing.T) {
+	Convey("CheckBlobWithSize compares content found through the dedupe cache", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+
+		digest := godigest.FromString("checkblob-with-size-cache-origin")
+		blobPath := path.Join(rootDir, "repo", ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+		cacheHitPath := path.Join(rootDir, "origin", ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+
+		for _, testCase := range []struct {
+			name     string
+			blobInfo func(statPath string) (driver.FileInfo, error)
+		}{
+			{
+				name: "blob missing from the repo",
+				blobInfo: func(statPath string) (driver.FileInfo, error) {
+					return nil, driver.PathNotFoundError{Path: statPath}
+				},
+			},
+			{
+				name: "blob is a placeholder",
+				blobInfo: func(string) (driver.FileInfo, error) {
+					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+				},
+			},
+		} {
+			Convey(testCase.name, func() {
+				var putBlobs []string
+
+				storeMock := &mocks.StorageDriverMock{
+					StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
+						switch statPath {
+						case blobPath:
+							return testCase.blobInfo(statPath)
+						case cacheHitPath:
+							return &mocks.FileInfoMock{SizeFn: func() int64 { return 42 }}, nil
+						default:
+							// initRepo layout/index: absent so WriteFile creates them.
+							return nil, driver.PathNotFoundError{Path: statPath}
+						}
+					},
+				}
+
+				store := imagestore.NewImageStore(rootDir, "", true, false, log, metrics, nil,
+					gcs.New(storeMock), mocks.CacheMock{
+						GetBlobFn: func(godigest.Digest) (string, error) {
+							return cacheHitPath, nil
+						},
+						PutBlobFn: func(_ godigest.Digest, putPath string) error {
+							putBlobs = append(putBlobs, putPath)
+
+							return nil
+						},
+						HasBlobFn: func(godigest.Digest, string) bool { return true },
+					}, nil, nil)
+
+				ctx := context.Background()
+
+				Convey("origin with the expected size is found", func() {
+					ok, size, err := store.CheckBlobWithSize(ctx, "repo", digest, 42)
+					So(err, ShouldBeNil)
+					So(ok, ShouldBeTrue)
+					So(size, ShouldEqual, 42)
+					So(putBlobs, ShouldResemble, []string{blobPath})
+				})
+
+				Convey("origin with a different size is reported as not found", func() {
+					ok, size, err := store.CheckBlobWithSize(ctx, "repo", digest, 41)
+					So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeTrue)
+					So(ok, ShouldBeFalse)
+					So(size, ShouldEqual, -1)
+					So(putBlobs, ShouldBeEmpty)
+				})
+
+				Convey("unknown size accepts the origin", func() {
+					ok, size, err := store.CheckBlobWithSize(ctx, "repo", digest, -1)
+					So(err, ShouldBeNil)
+					So(ok, ShouldBeTrue)
+					So(size, ShouldEqual, 42)
+					So(putBlobs, ShouldResemble, []string{blobPath})
+				})
+			})
+		}
+	})
+}
+
 // TestCheckBlobMissingCacheLookupErrors covers Missing Stat + non-unavailable
 // cache lookup, and PutBlob failure after a successful cache heal/`Link`.
 func TestCheckBlobMissingCacheLookupErrors(t *testing.T) {

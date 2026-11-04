@@ -236,13 +236,13 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 				continue
 			}
 
-			err := registry.copyBlob(repo, blob.Digest, blob.MediaType, tempImageStore)
+			err := registry.copyBlob(repo, blob, tempImageStore)
 			if err != nil {
 				return err
 			}
 		}
 
-		err := registry.copyBlob(repo, manifest.Config.Digest, manifest.Config.MediaType, tempImageStore)
+		err := registry.copyBlob(repo, manifest.Config, tempImageStore)
 		if err != nil {
 			return err
 		}
@@ -348,12 +348,16 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 }
 
 // Copy a blob from one image store to another image store.
-func (registry *DestinationRegistry) copyBlob(repo string, blobDigest godigest.Digest, blobMediaType string,
+func (registry *DestinationRegistry) copyBlob(repo string, blob ispec.Descriptor,
 	tempImageStore storageTypes.ImageStore,
 ) error {
+	blobDigest, blobMediaType := blob.Digest, blob.MediaType
+
 	imageStore := registry.storeController.GetImageStore(repo)
 	ctx := context.Background()
-	if found, _, _ := imageStore.CheckBlob(ctx, repo, blobDigest); found {
+	// The descriptor gives the expected size, so the check doesn't have to look the blob up
+	// in every manifest of the destination repo.
+	if found, _, _ := imageStore.CheckBlobWithSize(ctx, repo, blobDigest, blob.Size); found {
 		// Blob is already at destination, nothing to do
 		return nil
 	}
