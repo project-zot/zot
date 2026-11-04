@@ -882,3 +882,217 @@ func TestDeleteDedupeOriginCacheFailures(t *testing.T) {
 		So(record, ShouldEqual, fix.third)
 	})
 }
+
+func TestMissingOriginIsReplacedByContentCopy(t *testing.T) {
+	content := []byte("missing-origin-content")
+	digest := godigest.FromBytes(content)
+
+	type fixture struct {
+		imgStore storageTypes.ImageStore
+		cache    storageTypes.Cache
+		stats    *statFailingDriver
+		plant    func(repo string, body []byte) string
+	}
+
+	setup := func(wrapCache func(storageTypes.Cache) storageTypes.Cache) fixture {
+		dir := t.TempDir()
+		log := zlog.NewTestLogger()
+
+		cacheDriver, err := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: false,
+		}, log)
+		So(err, ShouldBeNil)
+
+		var storeCache storageTypes.Cache = cacheDriver
+		if wrapCache != nil {
+			storeCache = wrapCache(cacheDriver)
+		}
+
+		stats := &statFailingDriver{Driver: &remoteNamedDriver{Driver: local.New(true)}}
+
+		imgStore := imagestore.NewImageStore(dir, dir, true, true, log, monitoring.NewNopMetricServer(), nil,
+			stats, storeCache, nil, nil)
+
+		plant := func(repo string, body []byte) string {
+			So(imgStore.InitRepo(context.Background(), repo), ShouldBeNil)
+
+			blobPath := imgStore.BlobPath(repo, digest)
+			So(os.MkdirAll(path.Dir(blobPath), storageConstants.DefaultDirPerms), ShouldBeNil)
+			So(os.WriteFile(blobPath, body, storageConstants.DefaultFilePerms), ShouldBeNil)
+			So(cacheDriver.PutBlob(digest, blobPath), ShouldBeNil)
+
+			return blobPath
+		}
+
+		return fixture{imgStore: imgStore, cache: cacheDriver, stats: stats, plant: plant}
+	}
+
+	// the copies are recorded so that the cache, left to itself, promotes the placeholder: BoltDB
+	// promotes the first tracked path in key order
+	Convey("Retrying the delete of a gone origin makes a copy with content the origin", t, func() {
+		fix := setup(nil)
+
+		first := fix.plant("repo-a", content)
+		placeholder := fix.plant("repo-b", []byte{})
+		full := fix.plant("repo-c", content)
+
+		So(os.Remove(first), ShouldBeNil)
+
+		So(errors.Is(fix.imgStore.DeleteBlob("repo-a", digest), zerr.ErrBlobNotFound), ShouldBeTrue)
+
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, full)
+		So(fix.cache.HasBlob(digest, first), ShouldBeFalse)
+		So(fix.cache.HasBlob(digest, placeholder), ShouldBeTrue)
+
+		ok, size, err := fix.imgStore.CheckBlob(context.Background(), "repo-b", digest)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, len(content))
+	})
+
+	Convey("A read through a gone origin is served by the copy that holds the content", t, func() {
+		fix := setup(nil)
+
+		first := fix.plant("repo-a", content)
+		fix.plant("repo-b", []byte{})
+		full := fix.plant("repo-c", content)
+
+		So(os.Remove(first), ShouldBeNil)
+
+		ok, size, err := fix.imgStore.CheckBlob(context.Background(), "repo-b", digest)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+		So(size, ShouldEqual, len(content))
+
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, full)
+	})
+
+	Convey("With no copy holding the content, the gone origin is dropped as before", t, func() {
+		fix := setup(nil)
+
+		first := fix.plant("repo-a", content)
+		placeholder := fix.plant("repo-b", []byte{})
+		gone := fix.plant("repo-c", content)
+
+		So(os.Remove(first), ShouldBeNil)
+		So(os.Remove(gone), ShouldBeNil)
+
+		So(errors.Is(fix.imgStore.DeleteBlob("repo-a", digest), zerr.ErrBlobNotFound), ShouldBeTrue)
+
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, placeholder)
+		So(fix.cache.HasBlob(digest, first), ShouldBeFalse)
+	})
+
+	Convey("A copy that cannot be stat'd fails the repair", t, func() {
+		fix := setup(nil)
+
+		first := fix.plant("repo-a", content)
+		fix.plant("repo-b", []byte{})
+		fix.stats.failPath = fix.plant("repo-c", content)
+
+		So(os.Remove(first), ShouldBeNil)
+
+		ok, _, err := fix.imgStore.CheckBlob(context.Background(), "repo-b", digest)
+		So(errors.Is(err, errHandOffCache), ShouldBeTrue)
+		So(ok, ShouldBeFalse)
+
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, first)
+	})
+
+	Convey("An origin changed meanwhile is left alone", t, func() {
+		var faulty *faultyCache
+
+		fix := setup(func(c storageTypes.Cache) storageTypes.Cache {
+			faulty = &faultyCache{Cache: c, conflict: true}
+
+			return faulty
+		})
+
+		first := fix.plant("repo-a", content)
+		fix.plant("repo-c", content)
+
+		So(os.Remove(first), ShouldBeNil)
+
+		So(errors.Is(fix.imgStore.DeleteBlob("repo-a", digest), zerr.ErrBlobNotFound), ShouldBeTrue)
+
+		record, err := fix.cache.GetBlob(digest)
+		So(err, ShouldBeNil)
+		So(record, ShouldEqual, first)
+	})
+
+	Convey("A cache that fails during the repair fails the read", t, func() {
+		for _, testCase := range []struct {
+			name  string
+			fault func(c *repairFaultCache)
+		}{
+			{"listing the copies", func(c *repairFaultCache) { c.getAllErr = errHandOffCache }},
+			{"replacing the origin", func(c *repairFaultCache) { c.replaceErr = errHandOffCache }},
+			{"dropping the missing origin", func(c *repairFaultCache) { c.deleteErr = errHandOffCache }},
+		} {
+			Convey("while "+testCase.name, func() {
+				var faults *repairFaultCache
+
+				fix := setup(func(c storageTypes.Cache) storageTypes.Cache {
+					faults = &repairFaultCache{Cache: c}
+
+					return faults
+				})
+
+				first := fix.plant("repo-a", content)
+				fix.plant("repo-b", []byte{})
+				fix.plant("repo-c", content)
+
+				So(os.Remove(first), ShouldBeNil)
+
+				testCase.fault(faults)
+
+				ok, _, err := fix.imgStore.CheckBlob(context.Background(), "repo-b", digest)
+				So(errors.Is(err, errHandOffCache), ShouldBeTrue)
+				So(ok, ShouldBeFalse)
+			})
+		}
+	})
+}
+
+// repairFaultCache fails the cache calls the missing-origin repair makes.
+type repairFaultCache struct {
+	storageTypes.Cache
+
+	getAllErr  error
+	replaceErr error
+	deleteErr  error
+}
+
+func (c *repairFaultCache) GetAllBlobs(digest godigest.Digest) ([]string, error) {
+	if c.getAllErr != nil {
+		return nil, c.getAllErr
+	}
+
+	return c.Cache.GetAllBlobs(digest)
+}
+
+func (c *repairFaultCache) ReplaceBlob(digest godigest.Digest, oldPath, newPath string) error {
+	if c.replaceErr != nil {
+		return c.replaceErr
+	}
+
+	return c.Cache.ReplaceBlob(digest, oldPath, newPath)
+}
+
+func (c *repairFaultCache) DeleteBlob(digest godigest.Digest, path string) error {
+	if c.deleteErr != nil {
+		return c.deleteErr
+	}
+
+	return c.Cache.DeleteBlob(digest, path)
+}
