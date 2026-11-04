@@ -2,14 +2,17 @@ package cache_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"path"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redismock/v9"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -1118,20 +1121,10 @@ func TestRedisPutDuplicateAndReplaceBlobErrors(t *testing.T) {
 			So(mock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
-		Convey("PutDuplicate cannot read the origin", func() {
+		Convey("PutDuplicate's script fails", func() {
 			cacheDriver, mock := newDriver()
 			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
-			mock.ExpectHExists(originKey, "key").SetErr(ErrTestError)
-
-			So(cacheDriver.PutDuplicate("key", "/repo/copy"), ShouldEqual, ErrTestError)
-			So(mock.ExpectationsWereMet(), ShouldBeNil)
-		})
-
-		Convey("PutDuplicate cannot add the path", func() {
-			cacheDriver, mock := newDriver()
-			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
-			mock.ExpectHExists(originKey, "key").SetVal(true)
-			mock.ExpectSAdd(pathSet, "/repo/copy").SetErr(ErrTestError)
+			mock.Regexp().ExpectEval(`.*HEXISTS.*`, []string{originKey, pathSet}, "key", "/repo/copy").SetErr(ErrTestError)
 
 			So(cacheDriver.PutDuplicate("key", "/repo/copy"), ShouldEqual, ErrTestError)
 			So(mock.ExpectationsWereMet(), ShouldBeNil)
@@ -1145,34 +1138,154 @@ func TestRedisPutDuplicateAndReplaceBlobErrors(t *testing.T) {
 			So(mock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
-		Convey("ReplaceBlob cannot read the origin", func() {
+		Convey("ReplaceBlob's script fails", func() {
 			cacheDriver, mock := newDriver()
 			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
-			mock.ExpectHGet(originKey, "key").SetErr(ErrTestError)
+			mock.Regexp().ExpectEval(`.*HGET.*`, []string{originKey, pathSet}, "key", "/repo/origin", "/repo/copy").
+				SetErr(ErrTestError)
 
 			So(cacheDriver.ReplaceBlob("key", "/repo/origin", "/repo/copy"), ShouldEqual, ErrTestError)
 			So(mock.ExpectationsWereMet(), ShouldBeNil)
 		})
+	})
+}
 
-		Convey("ReplaceBlob cannot check the new path", func() {
-			cacheDriver, mock := newDriver()
-			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
-			mock.ExpectHGet(originKey, "key").SetVal("/repo/origin")
-			mock.ExpectSIsMember(pathSet, "/repo/copy").SetErr(ErrTestError)
+// beforeScriptHook runs fn once, right before the first script this client sends, as another
+// node would act after this one's lock lease had expired and before its write.
+type beforeScriptHook struct {
+	fn func()
+}
 
-			So(cacheDriver.ReplaceBlob("key", "/repo/origin", "/repo/copy"), ShouldEqual, ErrTestError)
-			So(mock.ExpectationsWereMet(), ShouldBeNil)
+func (h *beforeScriptHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *beforeScriptHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if cmd.Name() == "eval" && h.fn != nil {
+			fn := h.fn
+			h.fn = nil
+
+			fn()
+		}
+
+		return next(ctx, cmd)
+	}
+}
+
+func (h *beforeScriptHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+func TestRedisPutDuplicateAndReplaceBlobAreAtomic(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+
+	newDriver := func(hook redis.Hook) *cache.RedisDriver {
+		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
+		client := redis.NewClient(connOpts)
+
+		if hook != nil {
+			client.AddHook(hook)
+		}
+
+		cacheDriver, err := cache.NewRedisCache(
+			cache.RedisDriverParameters{Client: client, RootDir: t.TempDir(), UseRelPaths: false, KeyPrefix: "zot"},
+			log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		return cacheDriver
+	}
+
+	Convey("Another node's change between this node's check and write is not lost", t, func() {
+		miniRedis.FlushAll()
+
+		digest := godigest.FromString("atomic")
+		// the paused node holds a lease that expires while it is paused; FastForward expires it
+		hook := &beforeScriptHook{}
+		paused := newDriver(hook)
+		other := newDriver(nil)
+
+		Convey("PutDuplicate does not record a copy once the origin is gone", func() {
+			So(other.PutBlob(digest, "/repo/origin"), ShouldBeNil)
+
+			hook.fn = func() {
+				miniRedis.FastForward(10 * time.Second)
+				So(other.DeleteBlob(digest, "/repo/origin"), ShouldBeNil)
+			}
+
+			So(paused.PutDuplicate(digest, "/repo/copy"), ShouldEqual, zerr.ErrCacheMiss)
+			So(other.HasBlob(digest, "/repo/copy"), ShouldBeFalse)
+
+			_, err := other.GetBlob(digest)
+			So(err, ShouldEqual, zerr.ErrCacheMiss)
 		})
 
-		Convey("ReplaceBlob cannot write the origin", func() {
-			cacheDriver, mock := newDriver()
-			mock.Regexp().ExpectSetNX(lockKey, `.*`, 8*time.Second).SetVal(true)
-			mock.ExpectHGet(originKey, "key").SetVal("/repo/origin")
-			mock.ExpectSIsMember(pathSet, "/repo/copy").SetVal(true)
-			mock.ExpectHSet(originKey, "key", "/repo/copy").SetErr(ErrTestError)
+		Convey("ReplaceBlob does not overwrite an origin changed meanwhile", func() {
+			So(other.PutBlob(digest, "/repo/origin"), ShouldBeNil)
+			So(other.PutBlob(digest, "/repo/copy"), ShouldBeNil)
+			So(other.PutBlob(digest, "/repo/newer"), ShouldBeNil)
 
-			So(cacheDriver.ReplaceBlob("key", "/repo/origin", "/repo/copy"), ShouldEqual, ErrTestError)
-			So(mock.ExpectationsWereMet(), ShouldBeNil)
+			hook.fn = func() {
+				miniRedis.FastForward(10 * time.Second)
+				So(other.SetOrigin(digest, "/repo/newer"), ShouldBeNil)
+			}
+
+			So(paused.ReplaceBlob(digest, "/repo/origin", "/repo/copy"), ShouldEqual, zerr.ErrCacheConflict)
+
+			origin, err := other.GetBlob(digest)
+			So(err, ShouldBeNil)
+			So(origin, ShouldEqual, "/repo/newer")
 		})
+
+		Convey("ReplaceBlob does not publish a path untracked meanwhile", func() {
+			So(other.PutBlob(digest, "/repo/origin"), ShouldBeNil)
+			So(other.PutBlob(digest, "/repo/copy"), ShouldBeNil)
+
+			hook.fn = func() {
+				miniRedis.FastForward(10 * time.Second)
+				So(other.DeleteBlob(digest, "/repo/copy"), ShouldBeNil)
+			}
+
+			So(paused.ReplaceBlob(digest, "/repo/origin", "/repo/copy"), ShouldEqual, zerr.ErrCacheConflict)
+
+			origin, err := other.GetBlob(digest)
+			So(err, ShouldBeNil)
+			So(origin, ShouldEqual, "/repo/origin")
+		})
+	})
+
+	Convey("Copies recorded concurrently with the origin's removal never outlive it", t, func() {
+		miniRedis.FlushAll()
+
+		writers := []*cache.RedisDriver{newDriver(nil), newDriver(nil), newDriver(nil), newDriver(nil)}
+
+		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
+		raw := redis.NewClient(connOpts)
+
+		for round := range 10 {
+			digest := godigest.FromString(fmt.Sprintf("round-%d", round))
+			So(writers[0].PutBlob(digest, "/repo/origin"), ShouldBeNil)
+
+			var wg sync.WaitGroup
+
+			for i, writer := range writers {
+				copied := fmt.Sprintf("/repo/copy-%d", i)
+
+				wg.Go(func() { _ = writer.PutDuplicate(digest, copied) })
+			}
+
+			wg.Go(func() { _ = writers[0].DeleteBlob(digest, "/repo/origin") })
+
+			wg.Wait()
+
+			exists, err := raw.HExists(context.Background(), "zot:"+constants.BlobsCache+":"+constants.OriginalBucket,
+				digest.String()).Result()
+			So(err, ShouldBeNil)
+
+			if !exists {
+				tracked, err := raw.SCard(context.Background(),
+					"zot:"+constants.BlobsCache+":"+constants.DuplicatesBucket+":"+digest.String()).Result()
+				So(err, ShouldBeNil)
+				So(tracked, ShouldEqual, 0)
+			}
+		}
 	})
 }
