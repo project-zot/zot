@@ -35,6 +35,7 @@ var (
 	errDigestTagsSetRepoReferenceFail = errors.New("injected SetRepoReference failure for digest-tags rollback tests")
 	errGetRepoMetaForDigestTags       = errors.New("get repo meta failed for digest tags test")
 	errSetRepoRefForHookTest          = errors.New("set repo reference failed for hook test")
+	errSignatureValidityForHookTest   = errors.New("signature validity failed for hook test")
 )
 
 // setRepoRefFailMetaDB delegates to an inner MetaDB but fails SetRepoReference for one tag (used to
@@ -498,6 +499,43 @@ func TestOnUpdateManifest_setRepoReferenceFailsKeepsProtectedManifestWhenRepoMet
 	})
 }
 
+func TestOnUpdateManifest_signatureFailureKeepsPreexistingProtectedTag(t *testing.T) {
+	Convey("OnUpdateManifest does not delete a pre-existing protected signature tag", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		matcher, err := protectedtags.Compile(protectedtags.Config{Exact: []string{"sig"}})
+		So(err, ShouldBeNil)
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil, matcher)
+
+		subject := CreateRandomImage()
+		signature := CreateImageWith().RandomLayers(1, 10).RandomConfig().Subject(subject.DescriptorRef()).
+			ArtifactType(zcommon.ArtifactTypeNotation).Build()
+		err = WriteImageToFileSystem(signature, "repo", "sig", storeController)
+		So(err, ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{
+			UpdateSignaturesValidityFn: func(context.Context, string, godigest.Digest) error {
+				return errSignatureValidityForHookTest
+			},
+		}
+
+		ctx, _ := stypes.WithManifestWriteState(context.Background())
+		_, _, err = storeController.GetImageStore("repo").PutImageManifest(ctx, "repo", "sig",
+			signature.ManifestDescriptor.MediaType, signature.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		err = meta.OnUpdateManifest(ctx, "repo", "sig", signature.ManifestDescriptor.MediaType, signature.Digest(),
+			signature.ManifestDescriptor.Data, storeController, metaDB, log)
+		So(errors.Is(err, errSignatureValidityForHookTest), ShouldBeTrue)
+
+		_, _, _, err = storeController.GetImageStore("repo").GetImageManifest("repo", "sig")
+		So(err, ShouldBeNil)
+	})
+}
+
 func TestOnUpdateManifestDigestTags_rollbackKeepsExistingProtectedTag(t *testing.T) {
 	Convey("digest tag rollback keeps an existing protected tag with the same digest", t, func() {
 		rootDir := t.TempDir()
@@ -534,11 +572,12 @@ func TestOnUpdateManifestDigestTags_rollbackKeepsExistingProtectedTag(t *testing
 		}
 
 		imgStore := storeController.GetImageStore("repo")
-		_, _, err = imgStore.PutImageManifest(context.Background(), "repo", image.Digest().String(), mediaType,
+		ctx, _ := stypes.WithManifestWriteState(context.Background())
+		_, _, err = imgStore.PutImageManifest(ctx, "repo", image.Digest().String(), mediaType,
 			image.ManifestDescriptor.Data, []string{"ta", "tb"})
 		So(err, ShouldBeNil)
 
-		err = meta.OnUpdateManifestDigestTags(context.Background(), "repo", []string{"ta", "tb"}, mediaType,
+		err = meta.OnUpdateManifestDigestTags(ctx, "repo", []string{"ta", "tb"}, mediaType,
 			image.Digest(), image.ManifestDescriptor.Data, storeController, metaDB, log)
 		So(errors.Is(err, errDigestTagsSetRepoReferenceFail), ShouldBeTrue)
 

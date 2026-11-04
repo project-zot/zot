@@ -17,6 +17,52 @@ type FilterRepoFunc func(repo string) (bool, error)
 
 type manifestRollbackContextKey struct{}
 
+type manifestWriteStateContextKey struct{}
+
+// ManifestWriteState records which tags were created by the current manifest write.
+// It is populated while the image-store write lock is held and consumed by metadata
+// rollback so pre-existing tags cannot be removed after a metadata failure.
+type ManifestWriteState struct {
+	createdTags map[string]bool
+}
+
+// WithManifestWriteState attaches write state to ctx for PutImageManifest and its metadata hook.
+func WithManifestWriteState(ctx context.Context) (context.Context, *ManifestWriteState) {
+	state := &ManifestWriteState{createdTags: make(map[string]bool)}
+
+	return context.WithValue(ctx, manifestWriteStateContextKey{}, state), state
+}
+
+// ManifestWriteStateFromContext returns manifest write state attached to ctx.
+func ManifestWriteStateFromContext(ctx context.Context) (*ManifestWriteState, bool) {
+	state, ok := ctx.Value(manifestWriteStateContextKey{}).(*ManifestWriteState)
+
+	return state, ok && state != nil
+}
+
+// SetTagCreated records whether the current write created tag.
+func (state *ManifestWriteState) SetTagCreated(tag string, created bool) {
+	if state == nil {
+		return
+	}
+	if state.createdTags == nil {
+		state.createdTags = make(map[string]bool)
+	}
+
+	state.createdTags[tag] = created
+}
+
+// TagCreated returns whether the current write created tag and whether that state is known.
+func (state *ManifestWriteState) TagCreated(tag string) (bool, bool) {
+	if state == nil {
+		return false, false
+	}
+
+	created, ok := state.createdTags[tag]
+
+	return created, ok
+}
+
 // WithManifestRollback marks a manifest deletion as cleanup for a failed metadata update.
 // The storage layer uses the digest to avoid deleting a tag that was changed concurrently.
 func WithManifestRollback(ctx context.Context, digest godigest.Digest) context.Context {

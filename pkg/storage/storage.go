@@ -395,8 +395,20 @@ func remoteStorageTargetKey(driverParams map[string]any) (string, error) {
 		normalized["rootdirectory"] = "/"
 	}
 
-	canonical := stripStorageDriverCredentials(normalized)
-	encoded, err := json.Marshal(canonical)
+	target := map[string]any{"name": storeName}
+	fields := map[string][]string{
+		constants.S3StorageDriverName:    {"bucket", "rootdirectory", "regionendpoint", "endpoint"},
+		constants.GCSStorageDriverName:   {"bucket", "rootdirectory", "endpoint"},
+		constants.AzureStorageDriverName: {"accountname", "container", "rootdirectory", "realm", "endpoint"},
+	}
+
+	for _, field := range fields[storeName] {
+		if value, ok := normalized[field]; ok {
+			target[field] = value
+		}
+	}
+
+	encoded, err := json.Marshal(target)
 	if err != nil {
 		return "", err
 	}
@@ -406,43 +418,6 @@ func remoteStorageTargetKey(driverParams map[string]any) (string, error) {
 
 func cloneStorageDriverParams(params map[string]any) map[string]any {
 	return maps.Clone(params)
-}
-
-func stripStorageDriverCredentials(value any) any {
-	switch value := value.(type) {
-	case map[string]any:
-		stripped := make(map[string]any, len(value))
-		for key, nested := range value {
-			if isStorageDriverCredentialKey(key) {
-				continue
-			}
-
-			stripped[key] = stripStorageDriverCredentials(nested)
-		}
-
-		return stripped
-	case []any:
-		stripped := make([]any, len(value))
-		for idx, nested := range value {
-			stripped[idx] = stripStorageDriverCredentials(nested)
-		}
-
-		return stripped
-	default:
-		return value
-	}
-}
-
-func isStorageDriverCredentialKey(key string) bool {
-	normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", ""))
-
-	switch normalized {
-	case "accesskey", "secretkey", "accountkey", "credentials", "credentialsfile", "credentialfile",
-		"password", "secret", "token", "sessiontoken", "clientsecret", "clientid", "tenantid":
-		return true
-	default:
-		return false
-	}
 }
 
 // CheckIsImageSignature checks if the given image (repo:tag) represents a signature. The function

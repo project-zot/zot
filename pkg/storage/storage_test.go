@@ -740,6 +740,36 @@ func TestProtectedTagsAtStorageLayer(t *testing.T) {
 	})
 }
 
+func TestPutImageManifestRecordsTagCreationState(t *testing.T) {
+	Convey("manifest writes record whether tags were newly created", t, func() {
+		rootDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		imgStore := local.NewImageStore(rootDir, false, true, log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+		image := CreateRandomImage()
+
+		So(WriteImageToFileSystem(image, "repo", "seed", storeController), ShouldBeNil)
+
+		ctx, state := storageTypes.WithManifestWriteState(context.Background())
+		_, _, err := imgStore.PutImageManifest(ctx, "repo", "prod", image.Manifest.MediaType,
+			image.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		created, known := state.TagCreated("prod")
+		So(known, ShouldBeTrue)
+		So(created, ShouldBeTrue)
+
+		ctx, state = storageTypes.WithManifestWriteState(context.Background())
+		_, _, err = imgStore.PutImageManifest(ctx, "repo", "prod", image.Manifest.MediaType,
+			image.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		created, known = state.TagCreated("prod")
+		So(known, ShouldBeTrue)
+		So(created, ShouldBeFalse)
+	})
+}
+
 func TestStorageRejectsConflictingProtectedTagsForSharedRoot(t *testing.T) {
 	Convey("shared local storage roots cannot use different protected tag rules", t, func() {
 		conf := config.New()
@@ -764,6 +794,7 @@ func TestStorageRejectsConflictingProtectedTagsForSharedRemoteTarget(t *testing.
 			"bucket":         "shared-bucket",
 			"rootdirectory":  "/zot",
 			"regionendpoint": "http://localhost:4566",
+			"skipverify":     false,
 		}
 		conf.Storage.ProtectedTags = protectedtags.Config{Exact: []string{"prod"}}
 		conf.Storage.SubPaths = map[string]config.StorageConfig{
@@ -774,6 +805,7 @@ func TestStorageRejectsConflictingProtectedTagsForSharedRemoteTarget(t *testing.
 					"bucket":         "shared-bucket",
 					"rootdirectory":  "/zot",
 					"regionendpoint": "http://localhost:4566",
+					"skipverify":     true,
 				},
 				ProtectedTags: protectedtags.Config{Exact: []string{"release"}},
 			},

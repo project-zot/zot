@@ -975,6 +975,26 @@ func (is *ImageStore) checkProtectedTagChanges(repo string, next ispec.Index) er
 	return nil
 }
 
+func recordManifestWriteState(ctx context.Context, index ispec.Index, reference string, refIsDigest bool,
+	extraTags []string,
+) {
+	state, ok := storageTypes.ManifestWriteStateFromContext(ctx)
+	if !ok {
+		return
+	}
+
+	currentTags := taggedManifestDigests(index)
+	tags := extraTags
+	if !refIsDigest {
+		tags = []string{reference}
+	}
+
+	for _, tag := range tags {
+		_, exists := currentTags[tag]
+		state.SetTagCreated(tag, !exists)
+	}
+}
+
 // PutImageManifest adds an image manifest to the repository.
 // When extraTags is non-empty, the reference must be a digest; each entry becomes an
 // org.opencontainers.image.ref.name on a separate index descriptor (distribution-spec
@@ -1034,6 +1054,8 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 	if err != nil {
 		return "", "", err
 	}
+
+	recordManifestWriteState(ctx, index, reference, refIsDigest, extraTags)
 
 	// create a new descriptor
 	desc := ispec.Descriptor{

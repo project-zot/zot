@@ -882,6 +882,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	defer releaseRepoMutationLock()
 
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+	ctx, _ = storageTypes.WithManifestWriteState(ctx)
 
 	storePath := rh.c.StoreController.GetStorePath(name)
 	if rh.c.MetaDB != nil && rh.c.Config.MaxRepoBytesForStore(storePath) > 0 {
@@ -911,7 +912,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	if rh.c.MetaDB != nil {
 		if len(digestQueryTags) > 0 {
-			err := meta.OnUpdateManifestDigestTags(request.Context(), name, digestQueryTags, mediaType,
+			err := meta.OnUpdateManifestDigestTags(ctx, name, digestQueryTags, mediaType,
 				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 			if err != nil {
 				response.WriteHeader(http.StatusInternalServerError)
@@ -919,7 +920,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 				return
 			}
 		} else {
-			err := meta.OnUpdateManifest(request.Context(), name, reference, mediaType,
+			err := meta.OnUpdateManifest(ctx, name, reference, mediaType,
 				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
 			if err != nil {
 				response.WriteHeader(http.StatusInternalServerError)

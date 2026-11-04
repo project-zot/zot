@@ -94,7 +94,7 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 
 	for i := range slices.Backward(tags) {
 		refTag := tags[i]
-		if prior, ok := priorTagManifests[refTag]; ok && prior.digest == digest {
+		if tagWasPreexisting(ctx, refTag) || priorTagAlreadyPointsToDigest(priorTagManifests, refTag, digest) {
 			continue
 		}
 
@@ -108,7 +108,7 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 
 	for i := range slices.Backward(appliedMetaTags) {
 		refTag := appliedMetaTags[i]
-		if prior, ok := priorTagManifests[refTag]; ok && prior.digest == digest {
+		if tagWasPreexisting(ctx, refTag) || priorTagAlreadyPointsToDigest(priorTagManifests, refTag, digest) {
 			continue
 		}
 
@@ -177,16 +177,22 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 	if err != nil {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
-		tagAlreadyPoints, lookupErr := tagAlreadyPointsToDigest(ctx, metaDB, repo, reference, digest)
-		if lookupErr != nil {
-			log.Error().Err(lookupErr).Str("tag", reference).Str("repository", repo).
-				Msg("failed to inspect existing tag after metadata failure; leaving image store unchanged")
+		if created, known := manifestTagCreated(ctx, reference); known {
+			if !created {
+				return err
+			}
+		} else {
+			tagAlreadyPoints, lookupErr := tagAlreadyPointsToDigest(ctx, metaDB, repo, reference, digest)
+			if lookupErr != nil {
+				log.Error().Err(lookupErr).Str("tag", reference).Str("repository", repo).
+					Msg("failed to inspect existing tag after metadata failure; leaving image store unchanged")
 
-			return err
-		}
+				return err
+			}
 
-		if tagAlreadyPoints {
-			return err
+			if tagAlreadyPoints {
+				return err
+			}
 		}
 
 		rollbackCtx := ctx
@@ -225,6 +231,29 @@ func tagAlreadyPointsToDigest(ctx context.Context, metaDB mTypes.MetaDB, repo, r
 	desc, ok := repoMeta.Tags[reference]
 
 	return ok && desc.Digest == digest.String(), nil
+}
+
+func manifestTagCreated(ctx context.Context, reference string) (bool, bool) {
+	state, ok := storageTypes.ManifestWriteStateFromContext(ctx)
+	if !ok {
+		return false, false
+	}
+
+	return state.TagCreated(reference)
+}
+
+func tagWasPreexisting(ctx context.Context, reference string) bool {
+	created, known := manifestTagCreated(ctx, reference)
+
+	return known && !created
+}
+
+func priorTagAlreadyPointsToDigest(priorTagManifests map[string]priorTagManifest, reference string,
+	digest godigest.Digest,
+) bool {
+	prior, ok := priorTagManifests[reference]
+
+	return ok && prior.digest == digest
 }
 
 // OnUpdateManifestDigestTags updates metadb for each tag from a digest-addressed manifest push that used
