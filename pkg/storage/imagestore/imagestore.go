@@ -984,6 +984,14 @@ func recordManifestWriteState(ctx context.Context, index ispec.Index, reference 
 	}
 
 	currentTags := taggedManifestDigests(index)
+
+	currentDescriptors := make(map[string]ispec.Descriptor, len(index.Manifests))
+	for _, descriptor := range index.Manifests {
+		if tag, ok := descriptor.Annotations[ispec.AnnotationRefName]; ok {
+			currentDescriptors[tag] = descriptor
+		}
+	}
+
 	tags := extraTags
 	if !refIsDigest {
 		tags = []string{reference}
@@ -991,7 +999,17 @@ func recordManifestWriteState(ctx context.Context, index ispec.Index, reference 
 
 	for _, tag := range tags {
 		_, exists := currentTags[tag]
-		state.SetTagCreated(tag, !exists)
+		if !exists {
+			state.SetTagState(tag, storageTypes.ManifestTagState{Created: true})
+
+			continue
+		}
+
+		prior := currentDescriptors[tag]
+		state.SetTagState(tag, storageTypes.ManifestTagState{
+			PreviousDigest:    prior.Digest,
+			PreviousMediaType: prior.MediaType,
+		})
 	}
 }
 

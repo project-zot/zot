@@ -79,12 +79,9 @@ func priorTagManifestsFromMetaDB(ctx context.Context, metaDB mTypes.MetaDB, repo
 	return out, nil
 }
 
-// rollbackDigestManifestTags deletes every tag in tags from the image store (this PUT added them to the
-// index). It runs OnDeleteManifest only for tags in appliedMetaTags: those had a successful meta update for
-// digest and must be reverted. Calling OnDeleteManifest for other tags is unsafe—RemoveRepoReference can
-// drop a tag entry even when metadb still maps that tag to a different digest (e.g. meta not updated yet).
-// When priorTagManifests has an entry for a tag, it re-applies that manifest so moved tags point at their
-// original digest again.
+// rollbackDigestManifestTags removes tags created by the failed digest PUT and restores tags that
+// were retargeted. It runs OnDeleteManifest only for tags in appliedMetaTags whose metadata update
+// succeeded. Pre-existing tags are never removed before their prior manifest is available for restore.
 func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedMetaTags []string, mediaType string,
 	digest godigest.Digest,
 	body []byte, storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
@@ -108,7 +105,8 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 
 	for i := range slices.Backward(appliedMetaTags) {
 		refTag := appliedMetaTags[i]
-		if tagWasPreexisting(ctx, refTag) || priorTagAlreadyPointsToDigest(priorTagManifests, refTag, digest) {
+		if tagWasPreexistingAtDigest(ctx, refTag, digest) ||
+			priorTagAlreadyPointsToDigest(priorTagManifests, refTag, digest) {
 			continue
 		}
 
@@ -119,11 +117,25 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 		}
 	}
 
-	if len(priorTagManifests) == 0 {
-		return
-	}
-
 	for _, refTag := range tags {
+		if prior, known := manifestTagState(ctx, refTag); known {
+			if prior.Created || prior.PreviousDigest == "" || prior.PreviousDigest == digest {
+				continue
+			}
+
+			restoreBody, restoreMediaType, err := restorePreviousTag(ctx, repo, refTag, digest, prior, imgStore, log)
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("tag", refTag).
+					Msg("multi-tag digest push: rollback restore prior manifest failed")
+			} else if metaErr := OnUpdateManifest(ctx, repo, refTag, restoreMediaType, prior.PreviousDigest,
+				restoreBody, storeController, metaDB, log); metaErr != nil {
+				log.Error().Err(metaErr).Str("repository", repo).Str("tag", refTag).
+					Msg("multi-tag digest push: rollback restore prior metadb failed")
+			}
+
+			continue
+		}
+
 		prior, ok := priorTagManifests[refTag]
 		if !ok {
 			continue
@@ -156,6 +168,39 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 	}
 }
 
+func restorePreviousTag(ctx context.Context, repo, reference string, currentDigest godigest.Digest,
+	prior storageTypes.ManifestTagState, imgStore storageTypes.ImageStore, log log.Logger,
+) ([]byte, string, error) {
+	restoreBody, err := imgStore.GetBlobContent(repo, prior.PreviousDigest)
+	if err != nil {
+		return nil, "", err
+	}
+
+	rollbackCtx := storageTypes.WithManifestRollback(ctx, currentDigest)
+	if err := imgStore.DeleteImageManifest(rollbackCtx, repo, reference, false); err != nil {
+		return nil, "", err
+	}
+
+	mediaType := prior.PreviousMediaType
+	if mediaType == "" {
+		mediaType = v1.MediaTypeImageManifest
+	}
+
+	if _, _, err := imgStore.PutImageManifest(ctx, repo, prior.PreviousDigest.String(), mediaType,
+		restoreBody, []string{reference}); err != nil {
+		return nil, "", err
+	}
+
+	if state, ok := storageTypes.ManifestWriteStateFromContext(ctx); ok {
+		state.SetTagState(reference, prior)
+	}
+
+	log.Debug().Str("repository", repo).Str("tag", reference).
+		Str("digest", prior.PreviousDigest.String()).Msg("restored prior manifest after metadata failure")
+
+	return restoreBody, mediaType, nil
+}
+
 // OnUpdateManifest is called when a new manifest is added. It updates metadb according to the type
 // of image pushed(normal images, signatures, etc.). In case of any errors, it makes sure to keep
 // consistency between metadb and the image store.
@@ -177,8 +222,21 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 	if err != nil {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
-		if created, known := manifestTagCreated(ctx, reference); known {
-			if !created {
+		if prior, known := manifestTagState(ctx, reference); known {
+			switch {
+			case prior.Created:
+				// The failed write introduced this tag, so it is safe to remove it.
+			case prior.PreviousDigest == "" || prior.PreviousDigest == digest:
+				return err
+			default:
+				_, _, restoreErr := restorePreviousTag(ctx, repo, reference, digest, prior, imgStore, log)
+				if restoreErr != nil {
+					log.Error().Err(restoreErr).Str("tag", reference).Str("repository", repo).
+						Msg("failed to restore previous manifest after metadata failure")
+
+					return restoreErr
+				}
+
 				return err
 			}
 		} else {
@@ -233,19 +291,25 @@ func tagAlreadyPointsToDigest(ctx context.Context, metaDB mTypes.MetaDB, repo, r
 	return ok && desc.Digest == digest.String(), nil
 }
 
-func manifestTagCreated(ctx context.Context, reference string) (bool, bool) {
-	state, ok := storageTypes.ManifestWriteStateFromContext(ctx)
-	if !ok {
-		return false, false
-	}
+func tagWasPreexisting(ctx context.Context, reference string) bool {
+	state, known := manifestTagState(ctx, reference)
 
-	return state.TagCreated(reference)
+	return known && !state.Created
 }
 
-func tagWasPreexisting(ctx context.Context, reference string) bool {
-	created, known := manifestTagCreated(ctx, reference)
+func tagWasPreexistingAtDigest(ctx context.Context, reference string, digest godigest.Digest) bool {
+	state, known := manifestTagState(ctx, reference)
 
-	return known && !created
+	return known && !state.Created && (state.PreviousDigest == "" || state.PreviousDigest == digest)
+}
+
+func manifestTagState(ctx context.Context, reference string) (storageTypes.ManifestTagState, bool) {
+	state, ok := storageTypes.ManifestWriteStateFromContext(ctx)
+	if !ok {
+		return storageTypes.ManifestTagState{}, false
+	}
+
+	return state.TagState(reference)
 }
 
 func priorTagAlreadyPointsToDigest(priorTagManifests map[string]priorTagManifest, reference string,

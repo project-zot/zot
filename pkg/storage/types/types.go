@@ -19,16 +19,23 @@ type manifestRollbackContextKey struct{}
 
 type manifestWriteStateContextKey struct{}
 
-// ManifestWriteState records which tags were created by the current manifest write.
+// ManifestTagState records the state of a tag before the current manifest write.
+type ManifestTagState struct {
+	Created           bool
+	PreviousDigest    godigest.Digest
+	PreviousMediaType string
+}
+
+// ManifestWriteState records the state of tags before the current manifest write.
 // It is populated while the image-store write lock is held and consumed by metadata
 // rollback so pre-existing tags cannot be removed after a metadata failure.
 type ManifestWriteState struct {
-	createdTags map[string]bool
+	tags map[string]ManifestTagState
 }
 
 // WithManifestWriteState attaches write state to ctx for PutImageManifest and its metadata hook.
 func WithManifestWriteState(ctx context.Context) (context.Context, *ManifestWriteState) {
-	state := &ManifestWriteState{createdTags: make(map[string]bool)}
+	state := &ManifestWriteState{tags: make(map[string]ManifestTagState)}
 
 	return context.WithValue(ctx, manifestWriteStateContextKey{}, state), state
 }
@@ -40,16 +47,32 @@ func ManifestWriteStateFromContext(ctx context.Context) (*ManifestWriteState, bo
 	return state, ok && state != nil
 }
 
-// SetTagCreated records whether the current write created tag.
-func (state *ManifestWriteState) SetTagCreated(tag string, created bool) {
+// SetTagState records the state of tag before the current write.
+func (state *ManifestWriteState) SetTagState(tag string, tagState ManifestTagState) {
 	if state == nil {
 		return
 	}
-	if state.createdTags == nil {
-		state.createdTags = make(map[string]bool)
+	if state.tags == nil {
+		state.tags = make(map[string]ManifestTagState)
 	}
 
-	state.createdTags[tag] = created
+	state.tags[tag] = tagState
+}
+
+// TagState returns the state of tag before the current write.
+func (state *ManifestWriteState) TagState(tag string) (ManifestTagState, bool) {
+	if state == nil {
+		return ManifestTagState{}, false
+	}
+
+	tagState, ok := state.tags[tag]
+
+	return tagState, ok
+}
+
+// SetTagCreated records whether the current write created tag.
+func (state *ManifestWriteState) SetTagCreated(tag string, created bool) {
+	state.SetTagState(tag, ManifestTagState{Created: created})
 }
 
 // TagCreated returns whether the current write created tag and whether that state is known.
@@ -58,9 +81,9 @@ func (state *ManifestWriteState) TagCreated(tag string) (bool, bool) {
 		return false, false
 	}
 
-	created, ok := state.createdTags[tag]
+	tagState, ok := state.TagState(tag)
 
-	return created, ok
+	return tagState.Created, ok
 }
 
 // WithManifestRollback marks a manifest deletion as cleanup for a failed metadata update.

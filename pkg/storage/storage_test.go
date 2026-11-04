@@ -767,6 +767,10 @@ func TestPutImageManifestRecordsTagCreationState(t *testing.T) {
 		created, known = state.TagCreated("prod")
 		So(known, ShouldBeTrue)
 		So(created, ShouldBeFalse)
+
+		prior, known := state.TagState("prod")
+		So(known, ShouldBeTrue)
+		So(prior.PreviousDigest, ShouldEqual, image.Digest())
 	})
 }
 

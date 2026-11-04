@@ -536,6 +536,41 @@ func TestOnUpdateManifest_signatureFailureKeepsPreexistingProtectedTag(t *testin
 	})
 }
 
+func TestOnUpdateManifest_tagOverwriteFailureRestoresPreviousManifest(t *testing.T) {
+	Convey("OnUpdateManifest restores a retargeted tag when metadata update fails", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(rootDir, true, true, log, metrics, nil, nil, nil, nil)
+		storeController.DefaultStore = imgStore
+
+		previous := CreateRandomImage()
+		current := CreateRandomImage()
+		So(WriteImageToFileSystem(previous, "repo", "latest", storeController), ShouldBeNil)
+		So(WriteImageToFileSystem(current, "repo", "current", storeController), ShouldBeNil)
+
+		metaDB := mocks.MetaDBMock{
+			SetRepoReferenceFn: func(context.Context, string, string, mTypes.ImageMeta) error {
+				return errSetRepoRefForHookTest
+			},
+		}
+
+		ctx, _ := stypes.WithManifestWriteState(context.Background())
+		_, _, err := imgStore.PutImageManifest(ctx, "repo", "latest", current.Manifest.MediaType,
+			current.ManifestDescriptor.Data, nil)
+		So(err, ShouldBeNil)
+
+		err = meta.OnUpdateManifest(ctx, "repo", "latest", current.Manifest.MediaType, current.Digest(),
+			current.ManifestDescriptor.Data, storeController, metaDB, log)
+		So(errors.Is(err, errSetRepoRefForHookTest), ShouldBeTrue)
+
+		_, digest, _, err := imgStore.GetImageManifest("repo", "latest")
+		So(err, ShouldBeNil)
+		So(digest, ShouldEqual, previous.Digest())
+	})
+}
+
 func TestOnUpdateManifestDigestTags_rollbackKeepsExistingProtectedTag(t *testing.T) {
 	Convey("digest tag rollback keeps an existing protected tag with the same digest", t, func() {
 		rootDir := t.TempDir()
