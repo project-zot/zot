@@ -2086,25 +2086,12 @@ func (is *ImageStore) deleteBlobUpload(repo, uuid string, wait bool) (bool, erro
 	session := is.uploads.get(blobUploadPath)
 
 	removeUpload := func() error {
-		writer, err := is.storeDriver.Writer(blobUploadPath, true)
-		if err != nil {
-			if errclass.IsStorageObjectMissing(err) {
-				return zerr.ErrUploadNotFound
-			}
-
-			return err
+		err := is.storeDriver.Delete(blobUploadPath)
+		if errclass.IsStorageObjectMissing(err) {
+			return zerr.ErrUploadNotFound
 		}
 
-		defer writer.Close()
-
-		if err := writer.Cancel(context.Background()); err != nil {
-			is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).
-				Msg("failed to delete blob upload")
-
-			return err
-		}
-
-		return nil
+		return err
 	}
 
 	if !wait {

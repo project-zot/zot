@@ -1216,7 +1216,8 @@ func TestGCSStorageAPIs(t *testing.T) {
 			})
 
 			err = imgStore.DeleteBlobUpload("test", upload)
-			So(err, ShouldNotBeNil)
+			// GCS Delete is idempotent, so an unknown upload deletes as a no-op.
+			So(err, ShouldBeNil)
 		})
 
 		Convey("New blob upload streamed", func() {
@@ -1382,7 +1383,8 @@ func TestGCSStorageAPIs(t *testing.T) {
 			})
 
 			err = imgStore.DeleteBlobUpload("test", bupload)
-			So(err, ShouldNotBeNil)
+			// GCS Delete is idempotent, so an unknown upload deletes as a no-op.
+			So(err, ShouldBeNil)
 		})
 
 		Convey("Modify manifest in-place", func() {

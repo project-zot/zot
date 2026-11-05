@@ -2626,8 +2626,6 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(isPresent, ShouldBeTrue)
 
-			So(os.Chmod(imgStore.BlobUploadPath(repoName, blobUploadID), 0o000), ShouldBeNil)
-
 			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldBeNil)
 
@@ -2638,6 +2636,11 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			time.Sleep(1002 * time.Millisecond)
 
+			// The upload is removed by unlinking it from .uploads, so the directory
+			// must be writable; a read-only directory makes the delete fail.
+			uploadsDir := path.Dir(imgStore.BlobUploadPath(repoName, blobUploadID))
+			So(os.Chmod(uploadsDir, 0o555), ShouldBeNil)
+
 			// GC should fail because of bad permissions
 			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldNotBeNil)
@@ -2647,7 +2650,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(isPresent, ShouldBeTrue)
 
-			So(os.Chmod(imgStore.BlobUploadPath(repoName, blobUploadID), 0o777), ShouldBeNil)
+			So(os.Chmod(uploadsDir, 0o755), ShouldBeNil)
 
 			// GC should no longer error
 			err = gc.CleanRepo(ctx, repoName)
