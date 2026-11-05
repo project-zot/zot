@@ -83,6 +83,15 @@ var (
 		},
 		[]string{"storageName", "lockType"},
 	)
+	storageOperationTime = promauto.NewHistogramVec( //nolint: gochecknoglobals
+		prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Name:      "storage_operation_time_seconds",
+			Help:      "Time spent in storage operations, split by operation and part",
+			Buckets:   GetStorageLatencyBuckets(),
+		},
+		[]string{"operation", "part"},
+	)
 	schedulerGenerators = promauto.NewCounter( //nolint: gochecknoglobals
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
@@ -271,6 +280,12 @@ func SetServerInfo(ms MetricServer, lvalues ...string) {
 func ObserveStorageLockLatency(ms MetricServer, latency time.Duration, storageName, lockType string) {
 	ms.SendMetric(func() {
 		storageLockLatency.WithLabelValues(storageName, lockType).Observe(latency.Seconds())
+	})
+}
+
+func ObserveStorageOperationTime(ms MetricServer, duration time.Duration, operation, part string) {
+	ms.SendMetric(func() {
+		storageOperationTime.WithLabelValues(operation, part).Observe(duration.Seconds())
 	})
 }
 

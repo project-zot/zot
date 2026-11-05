@@ -27,6 +27,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/types"
 )
@@ -162,7 +163,18 @@ func (gc GarbageCollect) memo(repo string) *common.WalkMemo {
 func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	// removeUnreferencedBlobs deletes blobs one at a time, and with dedupe each delete may
 	// move or remove content other repositories link to; the store knows what that takes.
+	lockStart := time.Now()
+
 	return gc.imgStore.WithRepoCleanupLock(repo, func() error {
+		lockAcquired := time.Now()
+		monitoring.ObserveStorageOperationTime(gc.metrics, lockAcquired.Sub(lockStart),
+			storageConstants.StorageOpCleanRepo, storageConstants.StoragePartLockWait)
+
+		defer func() {
+			monitoring.ObserveStorageOperationTime(gc.metrics, time.Since(lockAcquired),
+				storageConstants.StorageOpCleanRepo, storageConstants.StoragePartLockHold)
+		}()
+
 		return gc.cleanRepoLocked(ctx, repo)
 	})
 }
