@@ -1,7 +1,6 @@
 package imagestore
 
 import (
-	"context"
 	"errors"
 	"path"
 	"strings"
@@ -32,12 +31,10 @@ func (*successfulDeleteDriver) Name() string {
 	return constants.LocalStorageDriverName
 }
 
-type successfulDeleteWriter struct {
-	driver *successfulDeleteDriver
-}
+func (d *successfulDeleteDriver) Delete(string) error {
+	d.deleted = true
 
-func (d *successfulDeleteDriver) Writer(string, bool) (driver.FileWriter, error) {
-	return &successfulDeleteWriter{driver: d}, nil
+	return nil
 }
 
 func (d *successfulDeleteDriver) Stat(string) (driver.FileInfo, error) {
@@ -46,28 +43,6 @@ func (d *successfulDeleteDriver) Stat(string) (driver.FileInfo, error) {
 	}
 
 	return nil, nil //nolint:nilnil // test driver
-}
-
-func (w *successfulDeleteWriter) Write(data []byte) (int, error) {
-	return len(data), nil
-}
-
-func (w *successfulDeleteWriter) Close() error {
-	return nil
-}
-
-func (w *successfulDeleteWriter) Size() int64 {
-	return 0
-}
-
-func (w *successfulDeleteWriter) Cancel(context.Context) error {
-	w.driver.deleted = true
-
-	return nil
-}
-
-func (w *successfulDeleteWriter) Commit(context.Context) error {
-	return nil
 }
 
 func (d *missingUploadDriver) Stat(string) (driver.FileInfo, error) {
@@ -96,6 +71,11 @@ func TestInvalidUploadIDDoesNotRegisterSession(t *testing.T) {
 	uuids := []string{
 		strings.Repeat("x", maxUploadSessionIDLength+1),
 		"missing\x00one",
+		".",
+		"..",
+		"../blobs",
+		"..\\blobs",
+		"nested/upload",
 	}
 
 	for _, uuid := range uuids {

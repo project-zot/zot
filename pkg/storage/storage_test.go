@@ -1561,7 +1561,12 @@ func TestStorageAPIs(t *testing.T) {
 					})
 
 					err = imgStore.DeleteBlobUpload("test", upload)
-					So(err, ShouldNotBeNil)
+					if testcase.storageType == storageConstants.AzureStorageDriverName {
+						// Azure Delete is idempotent, so an unknown upload deletes as a no-op.
+						So(err, ShouldBeNil)
+					} else {
+						So(err, ShouldNotBeNil)
+					}
 				})
 
 				Convey("New blob upload streamed", func() {
@@ -1736,7 +1741,12 @@ func TestStorageAPIs(t *testing.T) {
 					})
 
 					err = imgStore.DeleteBlobUpload("test", bupload)
-					So(err, ShouldNotBeNil)
+					if testcase.storageType == storageConstants.AzureStorageDriverName {
+						// Azure Delete is idempotent, so an unknown upload deletes as a no-op.
+						So(err, ShouldBeNil)
+					} else {
+						So(err, ShouldNotBeNil)
+					}
 				})
 
 				Convey("Modify manifest in-place", func() {

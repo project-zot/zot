@@ -137,7 +137,8 @@ func (session *uploadSession) tryCleanupSealed(callback func() error) (bool, err
 }
 
 func validateUploadSessionID(uuid string) error {
-	if uuid == "" || len(uuid) > maxUploadSessionIDLength || strings.IndexByte(uuid, 0) >= 0 {
+	if uuid == "" || uuid == "." || uuid == ".." || len(uuid) > maxUploadSessionIDLength ||
+		strings.ContainsAny(uuid, "/\\\x00") {
 		return zerr.ErrUploadNotFound
 	}
 

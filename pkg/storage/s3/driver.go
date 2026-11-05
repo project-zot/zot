@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	gopath "path"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -64,7 +65,82 @@ func (driver *Driver) Delete(path string) error {
 	// Not idempotent today: PathNotFound / Missing is returned to the caller
 	// (unlike GCS/Azure). Making S3 Delete idempotent like those wrappers is a
 	// planned follow-up; local stays non-idempotent.
-	return driver.formatErr(driver.store.Delete(context.Background(), path), path)
+	aborted := false
+
+	if isBlobUploadPath(path) {
+		var err error
+
+		aborted, err = driver.abortExactMultipart(path)
+		if err != nil {
+			return err
+		}
+	}
+
+	err := driver.formatErr(driver.store.Delete(context.Background(), path), path)
+	if aborted && errclass.IsStorageObjectMissing(err) {
+		return nil
+	}
+
+	return err
+}
+
+// isBlobUploadPath reports whether path names an upload session, the only kind
+// of object that can also carry a live multipart upload at the same key.
+func isBlobUploadPath(path string) bool {
+	return gopath.Base(gopath.Dir(path)) == storageConstants.BlobUploadDir
+}
+
+// abortExactMultipart cancels an in-progress multipart upload stored at path itself.
+// A directory is left alone: Delete removes the objects under that prefix.
+// A failed multipart list is returned so the object is not deleted over it.
+func (driver *Driver) abortExactMultipart(path string) (bool, error) {
+	info, err := driver.store.Stat(context.Background(), path)
+	if err != nil && !isPathNotFound(err) {
+		return false, driver.formatErr(err, path)
+	}
+
+	if err == nil && info.IsDir() {
+		return false, nil
+	}
+
+	writer, err := driver.store.Writer(context.Background(), path, true)
+	if err != nil {
+		if isPathNotFound(err) || isAppendUnsupported(err) {
+			return false, nil
+		}
+
+		return false, driver.formatErr(err, path)
+	}
+
+	cancelErr := writer.Cancel(context.Background())
+	closeErr := writer.Close()
+
+	if cancelErr != nil {
+		return false, driver.formatErr(cancelErr, path)
+	}
+
+	if closeErr != nil {
+		return false, driver.formatErr(closeErr, path)
+	}
+
+	return true, nil
+}
+
+func isPathNotFound(err error) bool {
+	_, ok := errors.AsType[storagedriver.PathNotFoundError](err)
+
+	return ok
+}
+
+func isAppendUnsupported(err error) bool {
+	storageErr, ok := errors.AsType[storagedriver.Error](err)
+	if !ok || storageErr.Detail == nil {
+		return false
+	}
+
+	// The distribution S3 driver returns this, and only this, when the
+	// multipart list is empty and the object size is greater than zero.
+	return strings.Contains(storageErr.Detail.Error(), "append to zero-size path")
 }
 
 func (driver *Driver) Stat(path string) (storagedriver.FileInfo, error) {
