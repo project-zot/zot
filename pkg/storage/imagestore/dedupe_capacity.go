@@ -29,7 +29,9 @@ import (
 // writeLocked tells which kind of lock the caller holds, and the same kind is held again on
 // return. The revalidation, the move and the cleanup always run under the write lock: under a
 // read lock, another CheckBlob for the same placeholder could install its full copy between
-// this one's stat and its delete.
+// this one's stat and its delete. The lock hold the caller records for its operation runs from
+// its first acquisition to its last release, so for a blob check that kept a full copy it
+// includes the time the lock was released here; the copy itself is recorded as the copy part.
 func (is *ImageStore) keepFullCopy(ctx context.Context, repo, blobPath, origin string, digest godigest.Digest,
 	writeLocked bool, lockLatency *time.Time,
 ) error {
