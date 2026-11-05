@@ -2638,18 +2638,18 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			time.Sleep(1002 * time.Millisecond)
 
-			// GC should fail because of bad permissions
+			// A blob upload GC cannot delete is logged and skipped, it does not fail the repo pass
 			err = gc.CleanRepo(ctx, repoName)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 
-			// Blob uploads should not be GCed as there was an error
+			// The blob upload is still there, since it could not be deleted
 			isPresent, _, _, err = imgStore.StatBlobUpload(repoName, blobUploadID)
 			So(err, ShouldBeNil)
 			So(isPresent, ShouldBeTrue)
 
 			So(os.Chmod(imgStore.BlobUploadPath(repoName, blobUploadID), 0o777), ShouldBeNil)
 
-			// GC should no longer error
+			// With the permissions fixed, the next pass deletes it
 			err = gc.CleanRepo(ctx, repoName)
 			So(err, ShouldBeNil)
 
@@ -2660,7 +2660,8 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			data, err := os.ReadFile(logPath)
 			So(err, ShouldBeNil)
-			So(string(data), ShouldContainSubstring,
+			So(string(data), ShouldContainSubstring, "failed to delete blob upload")
+			So(string(data), ShouldNotContainSubstring,
 				"failed to run GC for "+path.Join(imgStore.RootDir(), repoName))
 		})
 	})
