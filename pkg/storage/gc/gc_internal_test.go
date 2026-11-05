@@ -2108,6 +2108,73 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(called, ShouldBeTrue)
 		})
 
+		Convey("cleanRepo goes on when a stale blob upload cannot be deleted", func() {
+			indexBuf, err := json.Marshal(ispec.Index{})
+			So(err, ShouldBeNil)
+
+			attempted := []string{}
+			indexWritten := false
+
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return indexBuf, nil
+				},
+				ListBlobUploadsFn: func(repo string) ([]string, error) {
+					return []string{"stuck-upload", "other-upload"}, nil
+				},
+				StatBlobUploadFn: func(repo, uuid string) (bool, int64, time.Time, error) {
+					return true, 1024, time.Now().Add(-2 * time.Hour), nil
+				},
+				DeleteBlobUploadIfIdleFn: func(repo, uuid string) (bool, error) {
+					attempted = append(attempted, uuid)
+					if uuid == "stuck-upload" {
+						return false, errGC
+					}
+
+					return true, nil
+				},
+				PutIndexContentFn: func(repo string, index ispec.Index) error {
+					indexWritten = true
+
+					return nil
+				},
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{}, nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			err = gc.cleanRepo(ctx, repoName)
+			So(err, ShouldBeNil)
+			So(attempted, ShouldResemble, []string{"stuck-upload", "other-upload"})
+			So(indexWritten, ShouldBeTrue)
+		})
+
+		Convey("deleteBlobUploads skips an upload it cannot delete", func() {
+			imgStore := mocks.MockedImageStore{
+				ListBlobUploadsFn: func(repo string) ([]string, error) {
+					return []string{"stuck-upload", "other-upload"}, nil
+				},
+				StatBlobUploadFn: func(repo, uuid string) (bool, int64, time.Time, error) {
+					return true, 1024, time.Now().Add(-2 * time.Hour), nil
+				},
+				DeleteBlobUploadIfIdleFn: func(repo, uuid string) (bool, error) {
+					if uuid == "stuck-upload" {
+						return false, errGC
+					}
+
+					return true, nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
+
+			deleted, err := gc.deleteBlobUploads(repoName, time.Hour)
+			So(err, ShouldBeNil)
+			So(deleted, ShouldEqual, 1)
+		})
+
 		Convey("Error on GetReferencedBlobs in deleteUnreferencedBlobs", func() {
 			returnedIndex := ispec.Index{
 				Manifests: []ispec.Descriptor{
@@ -2192,7 +2259,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			deleted, err := gc.deleteBlobUploads(repoName, time.Hour)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 			So(deleted, ShouldEqual, 0)
 		})
 

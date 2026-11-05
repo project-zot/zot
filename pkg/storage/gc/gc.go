@@ -1211,6 +1211,10 @@ func (gc GarbageCollect) identifyManifestsReferencedInIndex(ctx context.Context,
 }
 
 // deleteBlobUploads deletes temporary blob uploads from storage that are past their gc delay.
+// Cleaning up a stale upload is a side task of GC: an upload that cannot be statted or deleted
+// (for example the S3 driver refusing to open it for append) is logged and skipped, so it does not
+// stop index.json from being rewritten or unreferenced blobs from being deleted. Only a failure to
+// list the uploads is returned.
 func (gc GarbageCollect) deleteBlobUploads(repo string, delay time.Duration) (int, error) {
 	gc.log.Debug().Str("module", "gc").Str("repository", repo).Msg("cleaning unclaimed blob uploads")
 
@@ -1223,8 +1227,6 @@ func (gc GarbageCollect) deleteBlobUploads(repo string, delay time.Duration) (in
 		return 0, err
 	}
 
-	var aggregatedErr error
-
 	deleted := 0
 
 	for _, uuid := range blobUploads {
@@ -1232,8 +1234,6 @@ func (gc GarbageCollect) deleteBlobUploads(repo string, delay time.Duration) (in
 		if err != nil {
 			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("blobUpload", uuid).
 				Msg("failed to stat blob upload")
-
-			aggregatedErr = errors.Join(aggregatedErr, err)
 
 			continue
 		}
@@ -1248,14 +1248,12 @@ func (gc GarbageCollect) deleteBlobUploads(repo string, delay time.Duration) (in
 		if err != nil {
 			gc.log.Error().Err(err).Str("module", "gc").Str("repository", repo).Str("blobUpload", uuid).
 				Str("size", strconv.FormatInt(size, 10)).Str("modified", modtime.String()).Msg("failed to delete blob upload")
-
-			aggregatedErr = errors.Join(aggregatedErr, err)
 		} else if deletedUpload {
 			deleted++
 		}
 	}
 
-	return deleted, aggregatedErr
+	return deleted, nil
 }
 
 // deleteUnreferencedBlobs deletes from storage all blobs not referenced by the repo's index.json
