@@ -32,9 +32,10 @@ const (
 	// Summary.
 	httpRepoLatencySeconds = metricsNamespace + ".http.repo.latency.seconds"
 	// Histogram.
-	httpMethodLatencySeconds  = metricsNamespace + ".http.method.latency.seconds"
-	storageLockLatencySeconds = metricsNamespace + ".storage.lock.latency.seconds"
-	workersTasksDuration      = metricsNamespace + ".scheduler.workers.tasks.duration.seconds"
+	httpMethodLatencySeconds    = metricsNamespace + ".http.method.latency.seconds"
+	storageLockLatencySeconds   = metricsNamespace + ".storage.lock.latency.seconds"
+	storageOperationTimeSeconds = metricsNamespace + ".storage.operation.time.seconds"
+	workersTasksDuration        = metricsNamespace + ".scheduler.workers.tasks.duration.seconds"
 	// GC metrics.
 	gcRuns     = metricsNamespace + ".gc.runs"
 	gcDuration = metricsNamespace + ".gc.duration.seconds"
@@ -258,9 +259,10 @@ func GetSummaries() map[string][]string {
 
 func GetHistograms() map[string][]string {
 	return map[string][]string{
-		httpMethodLatencySeconds:  {"method"},
-		storageLockLatencySeconds: {"storageName", "lockType"},
-		workersTasksDuration:      {"name"},
+		httpMethodLatencySeconds:    {"method"},
+		storageLockLatencySeconds:   {"storageName", "lockType"},
+		storageOperationTimeSeconds: {"operation", "part"},
+		workersTasksDuration:        {"name"},
 	}
 }
 
@@ -532,13 +534,23 @@ func ObserveStorageLockLatency(ms MetricServer, latency time.Duration, storageNa
 	ms.SendMetric(h)
 }
 
+func ObserveStorageOperationTime(ms MetricServer, duration time.Duration, operation, part string) {
+	h := HistogramValue{
+		Name:        storageOperationTimeSeconds,
+		Sum:         duration.Seconds(), // convenient temporary store for Histogram latency value
+		LabelNames:  []string{"operation", "part"},
+		LabelValues: []string{operation, part},
+	}
+	ms.SendMetric(h)
+}
+
 func GetMaxIdleScrapeInterval() time.Duration {
 	return metricsScrapeTimeout + metricsScrapeCheckInterval
 }
 
 func GetBuckets(metricName string) []float64 {
 	switch metricName {
-	case storageLockLatencySeconds:
+	case storageLockLatencySeconds, storageOperationTimeSeconds:
 		return GetStorageLatencyBuckets()
 	default:
 		return GetDefaultBuckets()

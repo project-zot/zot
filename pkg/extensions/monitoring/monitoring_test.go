@@ -79,6 +79,7 @@ func TestExtensionMetrics(t *testing.T) {
 		monitoring.SetStorageUsage(ctlr.Metrics, rootDir, "alpine")
 
 		monitoring.ObserveStorageLockLatency(ctlr.Metrics, time.Millisecond, rootDir, "RWLock")
+		monitoring.ObserveStorageOperationTime(ctlr.Metrics, time.Millisecond, "CheckBlob", "stat")
 
 		resp, err := resty.R().Get(baseURL + "/metrics")
 		So(err, ShouldBeNil)
@@ -92,6 +93,9 @@ func TestExtensionMetrics(t *testing.T) {
 		So(respStr, ShouldContainSubstring, "zot_storage_lock_latency_seconds_bucket")
 		So(respStr, ShouldContainSubstring, "zot_storage_lock_latency_seconds_sum")
 		So(respStr, ShouldContainSubstring, "zot_storage_lock_latency_seconds_bucket")
+		So(respStr, ShouldContainSubstring, "zot_storage_operation_time_seconds_bucket")
+		So(respStr, ShouldContainSubstring,
+			"zot_storage_operation_time_seconds_sum{operation=\"CheckBlob\",part=\"stat\"}")
 	})
 	Convey("Make a new controller with disabled metrics extension", t, func() {
 		conf := config.New()

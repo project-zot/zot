@@ -204,3 +204,23 @@ func TestSendMetricAfterStop(t *testing.T) {
 		}
 	})
 }
+
+func TestStorageOperationTimeHistogram(t *testing.T) {
+	Convey("Storage operation time uses the storage latency buckets and is split by operation and part", t, func() {
+		So(monitoring.GetBuckets("zot.storage.operation.time.seconds"), ShouldResemble, monitoring.GetStorageLatencyBuckets())
+
+		metricsServer := monitoring.NewMetricsServer(true, log.NewTestLogger())
+		defer metricsServer.Stop()
+
+		monitoring.ObserveStorageOperationTime(metricsServer, 2*time.Millisecond, "CheckBlob", "stat")
+		monitoring.ObserveStorageOperationTime(metricsServer, 3*time.Millisecond, "CheckBlob", "stat")
+		monitoring.ObserveStorageOperationTime(metricsServer, time.Millisecond, "CheckBlob", "lockWait")
+
+		So(minimalHistogramCount(metricsServer, "zot.storage.operation.time.seconds", []string{"CheckBlob", "stat"}),
+			ShouldEqual, 2)
+		So(minimalHistogramCount(metricsServer, "zot.storage.operation.time.seconds", []string{"CheckBlob", "lockWait"}),
+			ShouldEqual, 1)
+		So(minimalHistogramCount(metricsServer, "zot.storage.operation.time.seconds", []string{"CleanRepo", "lockWait"}),
+			ShouldEqual, 0)
+	})
+}
