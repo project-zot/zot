@@ -481,6 +481,35 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		So(pass, ShouldBeTrue)
 	})
 
+	Convey("Mandatory annotations with enable unset", t, func() {
+		lintConfig := &extconf.LintConfig{
+			MandatoryAnnotations: []string{"annotation1"},
+		}
+
+		dir := t.TempDir()
+
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
+
+		var index ispec.Index
+
+		linter := lint.NewLinter(lintConfig, log.NewTestLogger())
+		imgStore := local.NewImageStore(dir, false, false,
+			log.NewTestLogger(), monitoring.NewNopMetricServer(), linter, nil, nil, nil)
+
+		indexContent, err := imgStore.GetIndexContent("zot-test")
+		So(err, ShouldBeNil)
+		err = json.Unmarshal(indexContent, &index)
+		So(err, ShouldBeNil)
+
+		manifestDigest := index.Manifests[0].Digest
+
+		pass, err := linter.CheckMandatoryAnnotations("zot-test", manifestDigest, imgStore)
+		So(err, ShouldBeNil)
+		So(pass, ShouldBeTrue)
+	})
+
 	Convey("Mandatory annotations enabled, but no list in config", t, func() {
 		enable := true
 

@@ -158,6 +158,11 @@ func (bpt *CvePageFinder) Page() ([]zcommon.CVE, zcommon.PageInfo) {
 	start := bpt.offset
 	end := bpt.offset + bpt.limit
 
+	// a limit of 0 means no limit, return everything after the offset
+	if bpt.limit == 0 {
+		end = len(bpt.pageBuffer)
+	}
+
 	// we'll return an empty array when the offset is greater than the number of elements
 	if start >= len(bpt.pageBuffer) {
 		start = len(bpt.pageBuffer)
@@ -171,11 +176,6 @@ func (bpt *CvePageFinder) Page() ([]zcommon.CVE, zcommon.PageInfo) {
 	cves := bpt.pageBuffer[start:end]
 
 	pageInfo.ItemCount = len(cves)
-
-	if start == 0 && end == 0 {
-		cves = bpt.pageBuffer
-		pageInfo.ItemCount = len(cves)
-	}
 
 	pageInfo.TotalCount = len(bpt.pageBuffer)
 

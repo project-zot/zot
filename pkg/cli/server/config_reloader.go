@@ -87,7 +87,8 @@ func NewHotReloader(ctlr *api.Controller, filePath, ldapCredentialsPath string) 
 	return hotReloader
 }
 
-func signalHandler(ctlr *api.Controller, hr *HotReloader, sigCh chan os.Signal) {
+// signalHandler shuts down the controller on the first signal, and then closes done.
+func signalHandler(ctlr *api.Controller, hr *HotReloader, sigCh chan os.Signal, done chan<- struct{}) {
 	// if signal then shutdown
 	if sig, ok := <-sigCh; ok {
 		ctlr.Log.Info().Interface("signal", sig).Msg("received signal")
@@ -95,13 +96,18 @@ func signalHandler(ctlr *api.Controller, hr *HotReloader, sigCh chan os.Signal) 
 		hr.Stop()
 		// gracefully shutdown http server
 		ctlr.Shutdown() //nolint: contextcheck
+
+		close(done)
 	}
 }
 
-func initShutDownRoutine(ctlr *api.Controller, hr *HotReloader) {
+// initShutDownRoutine shuts down the controller on SIGTERM, SIGINT or SIGHUP. The returned channel
+// is closed once that shutdown has completed.
+func initShutDownRoutine(ctlr *api.Controller, hr *HotReloader) <-chan struct{} {
 	sigCh := make(chan os.Signal, 1)
+	done := make(chan struct{})
 
-	go signalHandler(ctlr, hr, sigCh)
+	go signalHandler(ctlr, hr, sigCh, done)
 
 	// ignore the async signals that would otherwise stop the server;
 	// the list excludes SIGCHLD (see ignoreAsyncSignals)
@@ -109,6 +115,8 @@ func initShutDownRoutine(ctlr *api.Controller, hr *HotReloader) {
 
 	// handle SIGINT and SIGHUP.
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+
+	return done
 }
 
 func (hr *HotReloader) Stop() {

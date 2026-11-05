@@ -148,6 +148,19 @@ func UserAccessControlFromBearerAccess(access []ResourceAccess) *reqCtx.UserAcce
 	return userAc
 }
 
+// denyAllRepositories installs empty permissions, so Can() denies every repository
+// instead of falling back to the open-registry default used when authz is not set.
+func denyAllRepositories(userAc *reqCtx.UserAccessControl) {
+	userAc.SetIsAdmin(false)
+
+	for _, action := range []string{
+		constants.ReadPermission, constants.CreatePermission,
+		constants.UpdatePermission, constants.DeletePermission,
+	} {
+		userAc.SetGlobPatterns(action, map[string]bool{})
+	}
+}
+
 // hasNonEmptyGlobPatterns reports whether any action map contains at least one
 // repository pattern (used to distinguish scoped repo grants from catalog-only tokens).
 func hasNonEmptyGlobPatterns(patterns ...map[string]bool) bool {

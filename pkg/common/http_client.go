@@ -3,9 +3,12 @@ package common
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+
+	zerr "zotregistry.dev/zot/v2/errors"
 )
 
 func GetTLSConfig(certsPath string, caCertPool *x509.CertPool) (*tls.Config, error) {
@@ -111,7 +114,10 @@ func CreateHTTPClient(clientOptions *HTTPClientOptions) (*http.Client, error) {
 			return nil, err
 		}
 
-		caCertPool.AppendCertsFromPEM(caCert)
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("%w: no PEM certificate found in %s",
+				zerr.ErrBadCACert, clientOptions.CertOptions.RootCaCertFile)
+		}
 	}
 
 	// Load certificates specific to the host if any.

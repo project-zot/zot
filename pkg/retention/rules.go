@@ -89,7 +89,11 @@ func (lp latestPull) Name() string {
 
 func (lp latestPull) Perform(candidates []*types.Candidate) []*types.Candidate {
 	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].PullTimestamp.After(candidates[j].PullTimestamp)
+		if !candidates[i].PullTimestamp.Equal(candidates[j].PullTimestamp) {
+			return candidates[i].PullTimestamp.After(candidates[j].PullTimestamp)
+		}
+
+		return candidateLess(candidates[i], candidates[j])
 	})
 
 	// take top count candidates
@@ -118,7 +122,11 @@ func (lp latestPush) Name() string {
 
 func (lp latestPush) Perform(candidates []*types.Candidate) []*types.Candidate {
 	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].PushTimestamp.After(candidates[j].PushTimestamp)
+		if !candidates[i].PushTimestamp.Equal(candidates[j].PushTimestamp) {
+			return candidates[i].PushTimestamp.After(candidates[j].PushTimestamp)
+		}
+
+		return candidateLess(candidates[i], candidates[j])
 	})
 
 	// take top count candidates
@@ -131,4 +139,14 @@ func (lp latestPush) Perform(candidates []*types.Candidate) []*types.Candidate {
 	}
 
 	return candidates
+}
+
+// candidateLess orders candidates with equal timestamps so count-based rules select the same set
+// regardless of the map iteration order they were collected in.
+func candidateLess(left, right *types.Candidate) bool {
+	if left.Tag != right.Tag {
+		return left.Tag < right.Tag
+	}
+
+	return left.DigestStr < right.DigestStr
 }

@@ -18,6 +18,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -93,14 +94,8 @@ func (rh *RouteHandler) SetupRoutes() {
 		rh.c.Router.HandleFunc(constants.LoginPath, rh.AuthURLHandler())
 
 		// callback path for openID
-		for provider, relyingParty := range rh.c.RelyingParties {
-			if config.IsOauth2Supported(provider) {
-				rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider,
-					rp.CodeExchangeHandler(rh.GithubCodeExchangeCallback(), relyingParty))
-			} else if config.IsOpenIDSupported(provider) {
-				rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider,
-					rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallbackWithProvider(provider)), relyingParty))
-			}
+		for provider := range rh.c.RelyingParties {
+			rh.c.Router.HandleFunc(constants.CallbackBasePath+"/"+provider, rh.openIDCallbackHandler(provider))
 		}
 	}
 
@@ -1947,16 +1942,17 @@ func (rh *RouteHandler) streamBlobToClient(ctx context.Context, response http.Re
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.Header().Set("Content-Type", constants.BinaryMediaType)
 	response.WriteHeader(http.StatusOK)
+	_ = http.NewResponseController(response).Flush()
 
-	if err := copier.Copy(); err != nil {
-		rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
-			Msg("error while streaming blob to client")
+	if err := copier.Copy(ctx); err != nil {
+		rh.logStreamWaitErr(ctx, err, repo, digest, "error while streaming blob to client")
 	}
 
 	return true
 }
 
-// logStreamWaitErr logs a failed wait for a stream to start; a client leaving is debug-level.
+// logStreamWaitErr logs a failed wait for a stream to start, or a failed copy of one; a client
+// leaving is debug-level.
 func (rh *RouteHandler) logStreamWaitErr(ctx context.Context, err error, repo string, digest godigest.Digest,
 	msg string,
 ) {
@@ -2021,10 +2017,10 @@ func (rh *RouteHandler) streamBlobRangeToClient(ctx context.Context,
 	response.Header().Set("Content-Length", strconv.FormatInt(rng.length(), 10))
 	response.Header().Set("Content-Type", constants.BinaryMediaType)
 	response.WriteHeader(http.StatusPartialContent)
+	_ = http.NewResponseController(response).Flush()
 
-	if err := copier.CopyRange(rng.start, rng.end); err != nil {
-		rh.c.Log.Error().Err(err).Str("repo", repo).Str("digest", digest.String()).
-			Msg("error while streaming blob range to client")
+	if err := copier.CopyRange(ctx, rng.start, rng.end); err != nil {
+		rh.logStreamWaitErr(ctx, err, repo, digest, "error while streaming blob range to client")
 	}
 
 	return true
@@ -2643,7 +2639,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 				// PutBlobChunk and go straight to FinishBlobUpload below.
 				shouldPutBlobChunk = false
 			}
-		} else if from, to, err = getContentRange(request); err != nil { // finish chunked upload
+		} else if from, to, err = getContentRange(request); err != nil || (to-from)+1 != contentLen { // finish chunked upload
 			details := zerr.GetDetails(err)
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
@@ -2805,76 +2801,46 @@ type RepositoryList struct {
 func (rh *RouteHandler) listStorageRepositories(lastEntry string, maxEntries int,
 	userAc *reqCtx.UserAccessControl,
 ) ([]string, bool, error) {
-	var moreEntries bool
-
-	var err error
-
-	var repos []string
-
-	remainder := maxEntries
-
-	combineRepoList := make([]string, 0)
-
 	subStore := rh.c.StoreController.SubStore
 
-	subPaths := make([]string, 0)
+	subPaths := make([]string, 0, len(subStore))
 	for subPath := range subStore {
 		subPaths = append(subPaths, subPath)
 	}
 
 	sort.Strings(subPaths)
 
-	storePath := rh.c.StoreController.GetStorePath(lastEntry)
-	if storePath == storage.DefaultStorePath {
-		singleStore := rh.c.StoreController.DefaultStore
+	storePaths := append([]string{storage.DefaultStorePath}, subPaths...)
+	storePaths = storePaths[slices.Index(storePaths, rh.c.StoreController.GetStorePath(lastEntry)):]
 
-		repos, moreEntries, err = singleStore.GetNextRepositories(lastEntry, remainder, AuthzFilterFunc(userAc))
+	repos := make([]string, 0)
+	remainder := maxEntries
+
+	for _, storePath := range storePaths {
+		imgStore := rh.c.StoreController.DefaultStore
+		if storePath != storage.DefaultStorePath {
+			imgStore = subStore[storePath]
+		}
+
+		storeRepos, moreEntries, err := imgStore.GetNextRepositories(lastEntry, remainder, AuthzFilterFunc(userAc))
 		if err != nil {
 			return repos, false, err
 		}
 
-		remainder = maxEntries - len(repos)
+		repos = append(repos, storeRepos...)
 
-		if moreEntries && remainder <= 0 && len(repos) > 0 {
-			// maxEntries has been hit
-			lastEntry = repos[len(repos)-1]
-		} else {
-			// reset for the next substores
-			lastEntry = ""
+		if moreEntries {
+			return repos, true, nil
 		}
 
-		combineRepoList = append(combineRepoList, repos...)
-	}
+		lastEntry = ""
 
-	for _, subPath := range subPaths {
-		imgStore := subStore[subPath]
-
-		if lastEntry != "" && subPath != storePath {
-			continue
-		}
-
-		if remainder > 0 || maxEntries == -1 {
-			repos, moreEntries, err = imgStore.GetNextRepositories(lastEntry, remainder, AuthzFilterFunc(userAc))
-			if err != nil {
-				return combineRepoList, false, err
-			}
-
-			// compute remainder
-			remainder -= len(repos)
-
-			if moreEntries && remainder <= 0 && len(repos) > 0 {
-				// maxEntries has been hit
-				lastEntry = repos[len(repos)-1]
-			} else {
-				// reset for the next substores
-				lastEntry = ""
-			}
-
-			combineRepoList = append(combineRepoList, repos...)
+		if remainder > 0 {
+			remainder -= len(storeRepos)
 		}
 	}
 
-	return combineRepoList, moreEntries, nil
+	return repos, false, nil
 }
 
 // ListRepositories godoc
@@ -2895,9 +2861,23 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 
 	lastEntry := q.Get("last")
 
-	maxEntries, err := strconv.Atoi(q.Get("n"))
-	if err != nil {
-		maxEntries = -1
+	maxEntries := -1
+
+	if nQuery, ok := request.URL.Query()["n"]; ok {
+		if len(nQuery) != 1 {
+			response.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		numRepos, err := strconv.Atoi(nQuery[0])
+		if err != nil || numRepos < 0 {
+			response.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		maxEntries = numRepos
 	}
 
 	// authz context
@@ -3033,7 +3013,14 @@ func (rh *RouteHandler) buildEndSessionURL(provider string) string {
 		return ""
 	}
 
-	relyingParty, ok := rh.c.RelyingParties[provider]
+	lazyRelyingParty, ok := rh.c.RelyingParties[provider]
+	if !ok {
+		return ""
+	}
+
+	// Don't initialize the relying party here: logout must not wait on an unreachable issuer
+	// (e.g. right after a restart during an IdP outage) before clearing the session.
+	relyingParty, ok := lazyRelyingParty.GetIfInitialized()
 	if !ok {
 		return ""
 	}
@@ -3094,6 +3081,25 @@ func composeEndSessionURL(endpoint, clientID, redirectURI string) (string, error
 // "logged out" page.
 func postLogoutRedirectURI(cfg *config.Config) string {
 	return originFromConfig(cfg) + "/login"
+}
+
+// openIDCallbackHandler handles the openid/oauth2 callback of the given provider.
+// The relying party is resolved per request, so it can be lazily initialized.
+func (rh *RouteHandler) openIDCallbackHandler(provider string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		relyingParty, ok := rh.getRelyingParty(w, r, provider)
+		if !ok {
+			return
+		}
+
+		if config.IsOauth2Supported(provider) {
+			rp.CodeExchangeHandler(rh.GithubCodeExchangeCallback(), relyingParty)(w, r)
+
+			return
+		}
+
+		rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallbackWithProvider(provider)), relyingParty)(w, r)
+	}
 }
 
 // GithubCodeExchangeCallback is a github Oauth2 CodeExchange callback.

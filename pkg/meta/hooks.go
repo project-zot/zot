@@ -123,7 +123,7 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 				continue
 			}
 
-			restoreBody, restoreMediaType, err := restorePreviousTag(ctx, repo, refTag, digest, prior, imgStore, log)
+			restoreBody, restoreMediaType, err := restorePreviousTag(ctx, repo, refTag, prior, imgStore, log)
 			if err != nil {
 				log.Error().Err(err).Str("repository", repo).Str("tag", refTag).
 					Msg("multi-tag digest push: rollback restore prior manifest failed")
@@ -168,16 +168,11 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 	}
 }
 
-func restorePreviousTag(ctx context.Context, repo, reference string, currentDigest godigest.Digest,
-	prior storageTypes.ManifestTagState, imgStore storageTypes.ImageStore, log log.Logger,
+func restorePreviousTag(ctx context.Context, repo, reference string, prior storageTypes.ManifestTagState,
+	imgStore storageTypes.ImageStore, log log.Logger,
 ) ([]byte, string, error) {
 	restoreBody, err := imgStore.GetBlobContent(repo, prior.PreviousDigest)
 	if err != nil {
-		return nil, "", err
-	}
-
-	rollbackCtx := storageTypes.WithManifestRollback(ctx, currentDigest)
-	if err := imgStore.DeleteImageManifest(rollbackCtx, repo, reference, false); err != nil {
 		return nil, "", err
 	}
 
@@ -186,8 +181,7 @@ func restorePreviousTag(ctx context.Context, repo, reference string, currentDige
 		mediaType = v1.MediaTypeImageManifest
 	}
 
-	if _, _, err := imgStore.PutImageManifest(ctx, repo, prior.PreviousDigest.String(), mediaType,
-		restoreBody, []string{reference}); err != nil {
+	if err := imgStore.RetagManifest(ctx, repo, reference, prior.PreviousDigest); err != nil {
 		return nil, "", err
 	}
 
@@ -211,84 +205,76 @@ func restorePreviousTag(ctx context.Context, repo, reference string, currentDige
 func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, digest godigest.Digest, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
 ) error {
+	return onUpdateManifest(ctx, repo, reference, mediaType, digest, body, storeController, metaDB, log, nil)
+}
+
+func onUpdateManifest(ctx context.Context, repo, reference, mediaType string, digest godigest.Digest, body []byte,
+	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger, priorDigest *godigest.Digest,
+) error {
 	if zcommon.IsReferrersTag(reference) {
 		return nil
 	}
 
 	imgStore := storeController.GetImageStore(repo)
+	prior := godigest.Digest("")
+	priorKnown := false
+	snapshotErr := error(nil)
+
+	if state, known := manifestTagState(ctx, reference); known {
+		priorKnown = true
+		if !state.Created {
+			prior = state.PreviousDigest
+		}
+	} else if priorDigest != nil {
+		priorKnown = true
+		prior = *priorDigest
+	} else if metaDB != nil && !zcommon.IsDigest(reference) {
+		priors, err := priorTagManifestsFromMetaDB(ctx, metaDB, repo, []string{reference})
+		if err != nil {
+			snapshotErr = err
+			log.Warn().Err(err).Str("repository", repo).Str("reference", reference).
+				Msg("failed to snapshot prior tag from metadb; cannot restore tag if MetaDB update fails")
+		} else if p, ok := priors[reference]; ok {
+			priorKnown = true
+			prior = p.digest
+		} else {
+			priorKnown = true
+		}
+	}
 
 	err := SetImageMetaFromInput(ctx, repo, reference, mediaType, digest, body,
 		imgStore, metaDB, log)
 	if err != nil {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
-		if prior, known := manifestTagState(ctx, reference); known {
-			switch {
-			case prior.Created:
-				// The failed write introduced this tag, so it is safe to remove it.
-			case prior.PreviousDigest == "" || prior.PreviousDigest == digest:
-				return err
-			default:
-				_, _, restoreErr := restorePreviousTag(ctx, repo, reference, digest, prior, imgStore, log)
-				if restoreErr != nil {
-					log.Error().Err(restoreErr).Str("tag", reference).Str("repository", repo).
-						Msg("failed to restore previous manifest after metadata failure")
-
-					return restoreErr
-				}
-
-				return err
-			}
-		} else {
-			tagAlreadyPoints, lookupErr := tagAlreadyPointsToDigest(ctx, metaDB, repo, reference, digest)
-			if lookupErr != nil {
-				log.Error().Err(lookupErr).Str("tag", reference).Str("repository", repo).
-					Msg("failed to inspect existing tag after metadata failure; leaving image store unchanged")
-
-				return err
+		if priorKnown && prior != "" {
+			if restoreErr := imgStore.RetagManifest(ctx, repo, reference, prior); restoreErr != nil {
+				log.Error().Err(restoreErr).Str("reference", reference).Str("repository", repo).
+					Str("digest", prior.String()).Msg("failed to restore previous tag after MetaDB update failure")
 			}
 
-			if tagAlreadyPoints {
-				return err
-			}
+			return err
 		}
 
 		rollbackCtx := ctx
-		if !zcommon.IsDigest(reference) {
+		if snapshotErr == nil && !zcommon.IsDigest(reference) {
 			rollbackCtx = storageTypes.WithManifestRollback(ctx, digest)
 		}
-		if err := imgStore.DeleteImageManifest(rollbackCtx, repo, reference, false); err != nil {
-			log.Error().Err(err).Str("reference", reference).Str("repository", repo).
+		if delErr := imgStore.DeleteImageManifest(rollbackCtx, repo, reference, false); delErr != nil {
+			if errors.Is(delErr, zerr.ErrProtectedTag) {
+				return err
+			}
+
+			log.Error().Err(delErr).Str("reference", reference).Str("repository", repo).
 				Msg("failed to remove image manifest in repo")
 
-			return err
+			return delErr
 		}
 
 		return err
 	}
 
 	return nil
-}
-
-func tagAlreadyPointsToDigest(ctx context.Context, metaDB mTypes.MetaDB, repo, reference string,
-	digest godigest.Digest,
-) (bool, error) {
-	if zcommon.IsDigest(reference) {
-		return false, nil
-	}
-
-	repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
-	if err != nil {
-		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			return false, nil
-		}
-
-		return false, err
-	}
-
-	desc, ok := repoMeta.Tags[reference]
-
-	return ok && desc.Digest == digest.String(), nil
 }
 
 func tagWasPreexisting(ctx context.Context, reference string) bool {
@@ -344,7 +330,13 @@ func OnUpdateManifestDigestTags(ctx context.Context, repo string, tags []string,
 	applied := make([]string, 0, len(tags))
 
 	for _, tag := range tags {
-		if err := OnUpdateManifest(ctx, repo, tag, mediaType, digest, body, storeController, metaDB, log); err != nil {
+		prior := godigest.Digest("")
+		if p, ok := priorTagManifests[tag]; ok {
+			prior = p.digest
+		}
+
+		if err := onUpdateManifest(ctx, repo, tag, mediaType, digest, body, storeController, metaDB, log,
+			&prior); err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 				Msg("multi-tag digest push: meta update failed; rolling back tag query additions")
 

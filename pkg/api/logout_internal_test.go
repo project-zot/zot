@@ -212,7 +212,7 @@ func newTestRouteHandler(t *testing.T) *RouteHandler {
 		Config:         &config.Config{HTTP: config.HTTPConfig{}},
 		Log:            logger,
 		CookieStore:    newTestCookieStore(t),
-		RelyingParties: map[string]rp.RelyingParty{},
+		RelyingParties: map[string]*LazyRelyingParty{},
 	}
 
 	return &RouteHandler{c: ctlr}
@@ -412,7 +412,7 @@ func newTestRouteHandlerWithStore(t *testing.T, store *CookieStore) *RouteHandle
 		Config:         &config.Config{HTTP: config.HTTPConfig{}},
 		Log:            log.NewLogger("debug", ""),
 		CookieStore:    store,
-		RelyingParties: map[string]rp.RelyingParty{},
+		RelyingParties: map[string]*LazyRelyingParty{},
 	}}
 }
 
@@ -463,10 +463,10 @@ func TestLogoutReturnsEndSessionURL(t *testing.T) {
 	// post_logout_redirect_uri.
 	rh := newTestRouteHandler(t)
 	rh.c.Config.HTTP.ExternalURL = "https://zot.example.com"
-	rh.c.RelyingParties["oidc"] = &fakeEndSessionRP{
+	rh.c.RelyingParties["oidc"] = NewInitializedRelyingParty(&fakeEndSessionRP{
 		endSessionURL: "https://idp.example.com/logout",
 		clientID:      "zot-client",
-	}
+	})
 
 	cookies := seedSessionProvider(t, rh, "oidc")
 
@@ -502,10 +502,10 @@ func TestLogoutBuildEndSessionURLComposeError(t *testing.T) {
 	// composeEndSessionURL to reject it; buildEndSessionURL logs the error and returns
 	// "", so the handler degrades to an empty LogoutResponse.
 	rh := newTestRouteHandler(t)
-	rh.c.RelyingParties["oidc"] = &fakeEndSessionRP{
+	rh.c.RelyingParties["oidc"] = NewInitializedRelyingParty(&fakeEndSessionRP{
 		endSessionURL: "/realms/zot/logout", // relative, IsAbs() == false
 		clientID:      "zot-client",
-	}
+	})
 
 	cookies := seedSessionProvider(t, rh, "oidc")
 

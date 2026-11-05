@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -115,6 +116,7 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		compat:      compat,
 		events:      recorder,
 		lifecycle:   newBlobLifecycle(storeDriver, rootDir, metrics),
+		uploads:     newUploadSessionRegistry(),
 	}
 	if len(protectedTagMatchers) > 0 {
 		imgStore.protectedTags = protectedTagMatchers[0]
@@ -384,7 +386,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 // into false. Missing stays quiet (no ValidateRepo List error log for a deleted
 // cursor). Outages fall back to lexical missing-last mode with Warn.
 func (is *ImageStore) catalogLastExists(lastRepo string) bool {
-	if lastRepo == "" {
+	if lastRepo == "" || !zreg.FullNameRegexp.MatchString(lastRepo) {
 		return false
 	}
 
@@ -430,12 +432,6 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 	lastExists := is.catalogLastExists(lastRepo)
 
 	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
-		if entries == maxEntries {
-			moreEntries = true
-
-			return io.EOF
-		}
-
 		if !fileInfo.IsDir() {
 			return nil
 		}
@@ -494,6 +490,12 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 		}
 
 		if afterLast && ok {
+			if entries == maxEntries {
+				moreEntries = true
+
+				return io.EOF
+			}
+
 			entries++
 
 			stores = append(stores, rel)
@@ -1334,6 +1336,102 @@ func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference s
 	return nil
 }
 
+// RetagManifest attaches reference to an existing digest in the repository index.
+// Used to restore a tag after a failed MetaDB update that followed a tag overwrite.
+func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, digest godigest.Digest) error {
+	if err := is.statRepoDir(repo); err != nil {
+		return err
+	}
+
+	if reference == "" || digest == "" {
+		return zerr.ErrBadManifest
+	}
+
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
+	index, err := common.GetIndex(is, repo, is.log)
+	if err != nil {
+		return err
+	}
+
+	// Pick an index row for digest to clone as the restored tag.
+	// Prefer an untagged row (the usual leftover after a tag overwrite) so we do not
+	// copy annotations from another tag that already points at the same digest.
+	var (
+		found         ispec.Descriptor // first matching row; used if no untagged row exists
+		foundUntagged ispec.Descriptor // untagged matching row, when present
+		haveMatch     bool             // any row with this digest
+		haveUntagged  bool             // specifically an untagged row with this digest
+	)
+
+	for _, manifest := range index.Manifests {
+		if manifest.Digest != digest {
+			continue
+		}
+
+		if !haveMatch {
+			found = manifest
+			haveMatch = true
+		}
+
+		_, hasTag := manifest.Annotations[ispec.AnnotationRefName]
+		if !hasTag {
+			foundUntagged = manifest
+			haveUntagged = true
+
+			break
+		}
+	}
+
+	if haveUntagged {
+		found = foundUntagged
+	}
+
+	if !haveMatch {
+		return zerr.ErrManifestNotFound
+	}
+
+	// Drop any current descriptor that already owns this tag name.
+	for midx := 0; midx < len(index.Manifests); {
+		manifest := index.Manifests[midx]
+		if tag, ok := manifest.Annotations[ispec.AnnotationRefName]; ok && tag == reference {
+			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+
+			continue
+		}
+
+		midx++
+	}
+
+	// Drop untagged rows for this digest so the index matches a normal tagged push.
+	for midx := 0; midx < len(index.Manifests); {
+		manifest := index.Manifests[midx]
+		_, hasTag := manifest.Annotations[ispec.AnnotationRefName]
+		if !hasTag && manifest.Digest == digest {
+			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
+
+			continue
+		}
+
+		midx++
+	}
+
+	tagged := found
+	if tagged.Annotations == nil {
+		tagged.Annotations = map[string]string{}
+	} else {
+		tagged.Annotations = maps.Clone(tagged.Annotations)
+	}
+
+	tagged.Annotations[ispec.AnnotationRefName] = reference
+	index.Manifests = append(index.Manifests, tagged)
+
+	return is.PutIndexContent(repo, index)
+}
+
 func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
 	defer func() {
 		is.lifecycle.UpdateStorageUsage(repo)
@@ -1629,6 +1727,11 @@ func (is *ImageStore) PutBlobChunkStreamed(ctx context.Context, repo, uuid strin
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	if err := is.uploads.startInProgress(src); err != nil {
+		return -1, err
+	}
+	defer is.uploads.finishInProgress(src)
+
 	session := is.uploads.get(src)
 	total := int64(-1)
 
@@ -1662,6 +1765,11 @@ func (is *ImageStore) PutBlobChunk(ctx context.Context, repo, uuid string, from,
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	if err := is.uploads.startInProgress(src); err != nil {
+		return -1, err
+	}
+	defer is.uploads.finishInProgress(src)
+
 	session := is.uploads.get(src)
 	total := int64(-1)
 
@@ -1725,6 +1833,11 @@ func (is *ImageStore) FinishBlobUpload(repo, uuid string, body io.Reader, dstDig
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
+	if err := is.uploads.startInProgress(src); err != nil {
+		return err
+	}
+	defer is.uploads.finishInProgress(src)
+
 	session := is.uploads.get(src)
 
 	err := session.finalize(func() error {
@@ -1839,6 +1952,14 @@ func (is *ImageStore) FullBlobUpload(ctx context.Context, repo string, body io.R
 
 	uuid := u.String()
 	src := is.BlobUploadPath(repo, uuid)
+
+	// No partial session exists for a monolithic upload. Hold the in-progress mark
+	// from before the body read through the move, so an unlisted multipart keeps
+	// the repository until the bytes are in the blob store.
+	if err := is.uploads.startInProgress(src); err != nil {
+		return "", -1, err
+	}
+	defer is.uploads.finishInProgress(src)
 
 	// Do not InitRepo before reading the body: that store write lock races GC vs ReadTimeout.
 	// Create .uploads without the lock; initRepo runs after the copy, under the move lock.
@@ -3024,6 +3145,30 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 	}
 
 	if len(blobs) > 0 {
+		return false, nil
+	}
+
+	// Chunk copies and commits are in progress before the bytes are a listed
+	// object. Drivers that keep an open multipart upload off the object listing
+	// report no uploads for that whole window. Delete removes this directory
+	// and every repository nested under it, so blockIfIdle matches an in-progress
+	// upload anywhere in that tree. It refuses new copies and commits under the
+	// directory before it returns, under the same lock that observed none in
+	// progress, and that refusal lasts through the delete.
+	release, idle := is.uploads.blockIfIdle(dir)
+	if !idle {
+		return false, nil
+	}
+	defer release()
+
+	// A commit can finish and clear its in-progress count after the list above
+	// without taking the store lock. The object is listed now.
+	blobUploads, err = is.ListBlobUploads(repo)
+	if err != nil {
+		return false, err
+	}
+
+	if len(blobUploads) > 0 {
 		return false, nil
 	}
 

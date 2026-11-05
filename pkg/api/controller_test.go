@@ -3960,6 +3960,23 @@ func TestNewRelyingPartyOIDC(t *testing.T) {
 			So(rp, ShouldNotBeNil)
 		})
 
+		Convey("discovery URL on a different host than the issuer", func() {
+			oidcProvider := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			oidcProvider.DiscoveryURL = strings.Replace(mockOIDCServer.DiscoveryEndpoint(), "127.0.0.1", "localhost", 1)
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
+
+			rp := api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewTestLogger())
+			So(rp, ShouldNotBeNil)
+		})
+
+		Convey("discovery URL unreachable", func() {
+			oidcProvider := conf.HTTP.Auth.OpenID.Providers["oidc"]
+			oidcProvider.DiscoveryURL = "http://127.0.0.1:1/.well-known/openid-configuration"
+			conf.HTTP.Auth.OpenID.Providers["oidc"] = oidcProvider
+
+			So(func() { _ = api.NewRelyingPartyOIDC(ctx, conf, "oidc", nil, nil, log.NewTestLogger()) }, ShouldPanic)
+		})
+
 		Convey("provider issuer unreachable", func() {
 			oidcProvider := conf.HTTP.Auth.OpenID.Providers["oidc"]
 			oidcProvider.Issuer = ""
@@ -10723,6 +10740,24 @@ func TestPagedRepositoriesWithSubpaths(t *testing.T) {
 			expectedRepos: repoNames[5:9],
 		},
 		{
+			testCaseName:  "a page that fills the default store",
+			pageSize:      "3",
+			last:          "",
+			expectedRepos: repoNames[:3],
+		},
+		{
+			testCaseName:  "a page that fills a substore",
+			pageSize:      "3",
+			last:          "alpine3",
+			expectedRepos: repoNames[3:6],
+		},
+		{
+			testCaseName:  "a page that ends exactly on the last repo",
+			pageSize:      "3",
+			last:          "a/alpine6",
+			expectedRepos: repoNames[6:9],
+		},
+		{
 			testCaseName:  "0",
 			pageSize:      "0",
 			last:          "",
@@ -10807,6 +10842,18 @@ func TestPagedRepositories(t *testing.T) {
 			expectedRepos: repoNames[5:9],
 		},
 		{
+			testCaseName:  "a page that ends exactly on the last repo",
+			pageSize:      "4",
+			last:          repoName + "5",
+			expectedRepos: repoNames[5:9],
+		},
+		{
+			testCaseName:  "an n with more than one digit",
+			pageSize:      "10",
+			last:          "",
+			expectedRepos: repoNames,
+		},
+		{
 			testCaseName:  "0",
 			pageSize:      "0",
 			last:          "",
@@ -10838,6 +10885,20 @@ func TestPagedRepositories(t *testing.T) {
 				testCase.last, testCase.expectedRepos, repoNames[len(repoNames)-1])
 		})
 	}
+
+	Convey("An n that is not a non-negative integer is rejected", t, func() {
+		for _, rawQuery := range []string{"n=a", "n=-1", "n=", "n=1&n=2"} {
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet,
+				baseURL+constants.RoutePrefix+constants.ExtCatalogPrefix+"?"+rawQuery, nil)
+			response := httptest.NewRecorder()
+
+			rthdlr.ListRepositories(response, request)
+
+			resp := response.Result()
+			So(resp.Body.Close(), ShouldBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+		}
+	})
 }
 
 func testHTTPPagedRepositories(t *testing.T, client *resty.Client, baseURL string, testCaseName string,

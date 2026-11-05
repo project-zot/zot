@@ -18,7 +18,6 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage"
 	"zotregistry.dev/zot/v2/pkg/storage/cache"
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
-	test "zotregistry.dev/zot/v2/pkg/test/common"
 )
 
 var ErrTestError = errors.New("TestError")
@@ -284,7 +283,8 @@ func TestRedisHasBlobLogsNoErrorOnHit(t *testing.T) {
 func TestRedisCacheError(t *testing.T) {
 	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()
-		redisURL := "redis://127.0.0.1:" + test.GetFreePort()
+		// Port 0 is never a bound listener, so a parallel test cannot place a Redis there.
+		redisURL := "redis://127.0.0.1:0"
 		connOpts, _ := redis.ParseURL(redisURL)
 		brokenClient := redis.NewClient(connOpts)
 
@@ -308,7 +308,8 @@ func TestRedisCacheError(t *testing.T) {
 		connOpts, _ := redis.ParseURL("redis://" + miniRedis.Addr())
 		workingClient := redis.NewClient(connOpts)
 
-		redisURL := "redis://127.0.0.1:" + test.GetFreePort() // must not match miniRedis.Addr()
+		// Port 0 is never a bound listener, so a parallel test cannot place a Redis there.
+		redisURL := "redis://127.0.0.1:0"
 		connOpts, _ = redis.ParseURL(redisURL)
 		brokenClient := redis.NewClient(connOpts)
 

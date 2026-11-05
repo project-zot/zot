@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -54,6 +55,26 @@ func (t *task) Name() string {
 	return "TestTask"
 }
 
+// generatedTasks records the order in which the scheduler got tasks from generators.
+type generatedTasks struct {
+	lock sync.Mutex
+	msgs []string
+}
+
+func (gt *generatedTasks) add(msg string) {
+	gt.lock.Lock()
+	defer gt.lock.Unlock()
+
+	gt.msgs = append(gt.msgs, msg)
+}
+
+func (gt *generatedTasks) list() []string {
+	gt.lock.Lock()
+	defer gt.lock.Unlock()
+
+	return append([]string(nil), gt.msgs...)
+}
+
 type generator struct {
 	log       log.Logger
 	priority  string
@@ -62,6 +83,8 @@ type generator struct {
 	step      int
 	limit     int
 	taskDelay time.Duration
+	// generated, if set, records the tasks handed to the scheduler
+	generated *generatedTasks
 }
 
 func (g *generator) Name() string {
@@ -84,9 +107,16 @@ func (g *generator) Next() (scheduler.Task, error) {
 		return nil, errInternal
 	}
 
+	msg := fmt.Sprintf("executing %s task; index: %d", g.priority, g.index)
+
+	// once done, the scheduler drops the task
+	if g.generated != nil && !g.done {
+		g.generated.add(msg)
+	}
+
 	return &task{
 		log:   g.log,
-		msg:   fmt.Sprintf("executing %s task; index: %d", g.priority, g.index),
+		msg:   msg,
 		err:   false,
 		delay: g.taskDelay,
 	}, nil
@@ -202,13 +232,21 @@ func TestScheduler(t *testing.T) {
 		// Testing repordering of generators using the same medium priority, as well as reordering with
 		// a low priority generator
 
-		genL := &generator{log: logger, priority: "low priority", limit: 110, taskDelay: time.Nanosecond}
+		generated := &generatedTasks{}
+
+		genL := &generator{
+			log: logger, priority: "low priority", limit: 110, taskDelay: time.Nanosecond, generated: generated,
+		}
 		sch.SubmitGenerator(genL, time.Duration(0), scheduler.LowPriority)
 
-		genM := &generator{log: logger, priority: "medium 1 priority", limit: 110, taskDelay: time.Nanosecond}
+		genM := &generator{
+			log: logger, priority: "medium 1 priority", limit: 110, taskDelay: time.Nanosecond, generated: generated,
+		}
 		sch.SubmitGenerator(genM, time.Duration(0), scheduler.MediumPriority)
 
-		genH := &generator{log: logger, priority: "medium 2 priority", limit: 110, taskDelay: time.Nanosecond}
+		genH := &generator{
+			log: logger, priority: "medium 2 priority", limit: 110, taskDelay: time.Nanosecond, generated: generated,
+		}
 		sch.SubmitGenerator(genH, time.Duration(0), scheduler.MediumPriority)
 
 		sch.RunScheduler()
@@ -235,11 +273,9 @@ func TestScheduler(t *testing.T) {
 		lastPriority := "medium"
 		lastMediumGenerator := "1"
 
-		for line := range strings.SplitSeq(strings.TrimSuffix(string(data), "\n"), "\n") {
-			if !strings.Contains(line, "priority task; index: ") {
-				continue
-			}
-
+		// Check the order in which the scheduler picked the generators, not the order of the log lines:
+		// tasks run on concurrent workers, so under load they finish, and log, out of that order.
+		for _, line := range generated.list() {
 			taskCounter++
 
 			// low priority tasks start executing later
@@ -250,10 +286,10 @@ func TestScheduler(t *testing.T) {
 				So(line, ShouldContainSubstring, "executing medium")
 			}
 
-			// medium priority 2*110 medium priority tasks should have been generated,
-			// medium priority generators should be done
-			// add around 10 low priority tasks to the counter
-			// and an additional margin of 5 to make sure the test is stable
+			// each generator hands out 93 tasks (none at steps divisible by 11 or 13),
+			// so by then all 2*93 medium priority tasks should have been generated,
+			// medium priority generators should be done,
+			// along with around 10 low priority tasks, leaving a margin
 			if taskCounter > 225 {
 				So(line, ShouldContainSubstring, "executing low priority")
 			}

@@ -541,6 +541,11 @@ for example to login with github use http://127.0.0.1:8080/zot/auth/login?provid
 
 callback_ui query parameter is used by zot to redirect to UI after a successful openid/oauth2 authentication
 
+OpenID Connect providers are initialized lazily, on the first login attempt, so zot startup does not depend on
+the provider issuer being reachable. While the issuer is unreachable, the login and callback endpoints of that
+provider respond with `503 Service Unavailable` and initialization is retried on the next attempt; other
+authentication methods (htpasswd, LDAP, API keys) and registry operations keep working.
+
 By default, `callback_ui` must be a relative path (starting with `/`) to prevent open redirects.
 If your UI runs on a different origin (e.g. different port during development), you can allowlist
 absolute redirect origins via:
@@ -627,6 +632,22 @@ zot can be configured to use dex with:
 To login using openid dex provider use http://127.0.0.1:8080/zot/auth/login?provider=oidc
 
 `claimMapping.username` defaults to `email`, and `claimMapping.groups` defaults to `groups`.
+
+zot fetches the discovery document from `<issuer>/.well-known/openid-configuration`. If zot cannot reach the
+issuer's public URL, for example when the identity provider runs in the same cluster behind a gateway that
+blocks internal traffic, set `discoveryurl` to the full URL of the discovery document on an address zot can reach:
+
+```
+"oidc": {
+  "issuer": "https://auth.example.com/realms/zot",
+  "discoveryurl": "http://keycloak.auth.svc:8080/realms/zot/.well-known/openid-configuration",
+  ...
+}
+```
+
+The `issuer` in the fetched document must still equal the configured `issuer`. zot also calls the token, JWKS and
+userinfo endpoints listed in that document, so they must be reachable from zot as well. Keycloak, for example,
+lists internal URLs for these when `hostname-backchannel-dynamic` is enabled.
 
 NOTE: Social login is not supported by command line tools, or other software responsible for pushing/pulling
 images to/from zot.

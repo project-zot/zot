@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -168,5 +171,142 @@ func TestParseStorageStats(t *testing.T) {
 		So(stats.failedRepos, ShouldEqual, 1)
 		So(stats.partialRepos, ShouldEqual, 1)
 		So(stats.complete(), ShouldBeFalse)
+	})
+}
+
+func TestParseStorageParallel(t *testing.T) {
+	logger := log.NewTestLogger()
+
+	validImage := testimage.CreateRandomImage()
+
+	manifestBlob, err := json.Marshal(validImage.Manifest)
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+
+	configBlob, err := json.Marshal(validImage.Config)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+
+	manifestDigest := godigest.FromString("manifest")
+
+	blobFor := func(_ string, digest godigest.Digest) ([]byte, error) {
+		switch digest {
+		case manifestDigest:
+			return manifestBlob, nil
+		case validImage.ConfigDescriptor.Digest:
+			return configBlob, nil
+		default:
+			return nil, zerr.ErrBlobNotFound
+		}
+	}
+
+	reposNamed := func(count int) []string {
+		repos := make([]string, 0, count)
+		for i := range count {
+			repos = append(repos, fmt.Sprintf("repo%d", i))
+		}
+
+		return repos
+	}
+
+	// recordingMetaDB stores the name of every repo it gets an image for in parsedRepos.
+	recordingMetaDB := func(parsedRepos *sync.Map) mocks.MetaDBMock {
+		return mocks.MetaDBMock{
+			SetRepoReferenceFn: func(_ context.Context, repo string, _ string, _ mTypes.ImageMeta) error {
+				parsedRepos.Store(repo, struct{}{})
+
+				return nil
+			},
+		}
+	}
+
+	Convey("repos are parsed concurrently", t, func() {
+		repos := reposNamed(parseStorageWorkers)
+
+		var parsedRepos sync.Map
+
+		metaDB := recordingMetaDB(&parsedRepos)
+
+		// Every StatIndex call waits until all repos have reached StatIndex, which only
+		// happens when they are parsed concurrently. A serial walk times out on each repo.
+		var arrived sync.WaitGroup
+
+		arrived.Add(len(repos))
+
+		allArrived := make(chan struct{})
+
+		go func() {
+			arrived.Wait()
+			close(allArrived)
+		}()
+
+		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) { return repos, nil },
+			StatIndexFn: func(string) (bool, int64, time.Time, error) {
+				arrived.Done()
+
+				select {
+				case <-allArrived:
+					return true, 0, time.Time{}, nil
+				case <-time.After(5 * time.Second):
+					return false, 0, time.Time{}, errParseInternal
+				}
+			},
+			GetIndexContentFn: func(string) ([]byte, error) { return indexBlobFor(manifestDigest, "tag"), nil },
+			GetBlobContentFn:  blobFor,
+		}}
+
+		stats, err := parseStorage(metaDB, store, logger)
+		So(err, ShouldBeNil)
+		So(stats.complete(), ShouldBeTrue)
+
+		for _, repo := range repos {
+			_, ok := parsedRepos.Load(repo)
+			So(ok, ShouldBeTrue)
+		}
+	})
+
+	Convey("no more than parseStorageWorkers repos are parsed at once", t, func() {
+		repos := reposNamed(3 * parseStorageWorkers)
+
+		var parsedRepos sync.Map
+
+		metaDB := recordingMetaDB(&parsedRepos)
+
+		var inFlight, maxInFlight atomic.Int32
+
+		store := storage.StoreController{DefaultStore: mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) { return repos, nil },
+			StatIndexFn: func(string) (bool, int64, time.Time, error) {
+				current := inFlight.Add(1)
+				defer inFlight.Add(-1)
+
+				for {
+					seen := maxInFlight.Load()
+					if current <= seen || maxInFlight.CompareAndSwap(seen, current) {
+						break
+					}
+				}
+
+				time.Sleep(10 * time.Millisecond)
+
+				return true, 0, time.Time{}, nil
+			},
+			GetIndexContentFn: func(string) ([]byte, error) { return indexBlobFor(manifestDigest, "tag"), nil },
+			GetBlobContentFn:  blobFor,
+		}}
+
+		stats, err := parseStorage(metaDB, store, logger)
+		So(err, ShouldBeNil)
+		So(stats.complete(), ShouldBeTrue)
+		So(maxInFlight.Load(), ShouldBeGreaterThan, 1)
+		So(maxInFlight.Load(), ShouldBeLessThanOrEqualTo, parseStorageWorkers)
+
+		for _, repo := range repos {
+			_, ok := parsedRepos.Load(repo)
+			So(ok, ShouldBeTrue)
+		}
 	})
 }

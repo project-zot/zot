@@ -309,6 +309,61 @@ func TestValidateExtensionsConfig(t *testing.T) {
 		So(config.Extensions.Scrub, ShouldNotBeNil)
 		So(*config.Extensions.Scrub.Enable, ShouldBeTrue)
 	})
+
+	Convey("Test lint extension is implicitly enabled", t, func(c C) {
+		config := config.New()
+		content := `{
+			"storage": {
+				"rootDirectory": "%/tmp/zot"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			},
+			"log": {
+				"level": "debug"
+			},
+			"extensions": {
+				"lint": {
+					"mandatoryAnnotations": ["annot1"]
+				}
+			}
+		}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		err := cli.LoadConfiguration(config, tmpfile)
+		So(err, ShouldBeNil)
+		So(config.Extensions.Lint, ShouldNotBeNil)
+		So(config.Extensions.Lint.Enable, ShouldNotBeNil)
+		So(*config.Extensions.Lint.Enable, ShouldBeTrue)
+	})
+
+	Convey("Test lint extension can be explicitly disabled", t, func(c C) {
+		config := config.New()
+		content := `{
+			"storage": {
+				"rootDirectory": "%/tmp/zot"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			},
+			"log": {
+				"level": "debug"
+			},
+			"extensions": {
+				"lint": {
+					"enable": false,
+					"mandatoryAnnotations": ["annot1"]
+				}
+			}
+		}`
+		tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+		err := cli.LoadConfiguration(config, tmpfile)
+		So(err, ShouldBeNil)
+		So(config.Extensions.Lint, ShouldNotBeNil)
+		So(config.Extensions.Lint.Enable, ShouldNotBeNil)
+		So(*config.Extensions.Lint.Enable, ShouldBeFalse)
+	})
 }
 
 func TestServeExtensions(t *testing.T) {

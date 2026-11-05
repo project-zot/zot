@@ -22,6 +22,7 @@ build:
 "${{REPO_NAME:zb}}":
   annotations:
     org.opencontainers.image.description: "a performance benchmark tool for OCI conformant registries"
+    org.opencontainers.image.source: "https://github.com/project-zot/zot"
   os: ${{OS}}
   arch: ${{ARCH}}
   from:

@@ -182,3 +182,25 @@ func minimalGauge(metricsServer monitoring.MetricServer, name string, labelValue
 
 	return 0, false
 }
+
+func TestSendMetricAfterStop(t *testing.T) {
+	Convey("Metric sends return after the minimal metrics server stops", t, func() {
+		metricsServer := monitoring.NewMetricsServer(true, log.NewTestLogger())
+		metricsServer.Stop()
+
+		sent := make(chan struct{})
+
+		go func() {
+			defer close(sent)
+
+			metricsServer.SendMetric(monitoring.CounterValue{})
+			metricsServer.ForceSendMetric(monitoring.CounterValue{})
+		}()
+
+		select {
+		case <-sent:
+		case <-time.After(5 * time.Second):
+			t.Fatal("metric send blocked after Stop")
+		}
+	})
+}

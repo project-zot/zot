@@ -30,11 +30,11 @@ func NewLinter(config *config.LintConfig, log log.Logger) *Linter {
 func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godigest.Digest,
 	imgStore storageTypes.ImageStore,
 ) (bool, error) {
-	if linter.config == nil {
-		return true, nil
-	}
-
-	if (linter.config != nil && !*linter.config.Enable) || len(linter.config.MandatoryAnnotations) == 0 {
+	// The config loader defaults Enable to true when the lint section is present,
+	// like the other extensions, so a nil Enable is only seen here when the config
+	// is built in code. Treat it as disabled instead of dereferencing it.
+	if linter.config == nil || linter.config.Enable == nil || !*linter.config.Enable ||
+		len(linter.config.MandatoryAnnotations) == 0 {
 		return true, nil
 	}
 

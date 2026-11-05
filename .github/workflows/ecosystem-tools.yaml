@@ -75,6 +75,7 @@ jobs:
           with-npm: ${{ matrix.with-npm }}
           with-userns: ${{ matrix.with-userns }}
           with-valkey: ${{ matrix.with-valkey }}
+          with-mitmproxy: ${{ matrix.shard == 'host-deps' && 'true' || 'false' }}
 
       - name: Run blackbox CI shard
         run: |

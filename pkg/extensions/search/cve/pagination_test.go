@@ -359,6 +359,35 @@ func TestCVEPagination(t *testing.T) {
 				}
 			})
 
+			Convey("offset without limit", func() {
+				cveIds := []string{}
+				for i := range 30 {
+					cveIds = append(cveIds, fmt.Sprintf("CVE%d", i))
+				}
+
+				sort.Strings(cveIds)
+
+				cves, cveSummary, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "", "", "",
+					zcommon.PageInput{Offset: 25, SortBy: cveinfo.AlphabeticAsc})
+				So(err, ShouldBeNil)
+				So(len(cves), ShouldEqual, 5)
+				So(pageInfo.ItemCount, ShouldEqual, 5)
+				So(pageInfo.TotalCount, ShouldEqual, 30)
+				So(cveSummary.Count, ShouldEqual, 30)
+
+				for i, cve := range cves {
+					So(cve.ID, ShouldEqual, cveIds[i+25])
+				}
+
+				// an offset past the last CVE still returns an empty page
+				cves, _, pageInfo, err = cveInfo.GetCVEListForImage(ctx, "repo1", "1.0.0", "", "", "",
+					zcommon.PageInput{Offset: 30, SortBy: cveinfo.AlphabeticAsc})
+				So(err, ShouldBeNil)
+				So(cves, ShouldBeEmpty)
+				So(pageInfo.ItemCount, ShouldEqual, 0)
+				So(pageInfo.TotalCount, ShouldEqual, 30)
+			})
+
 			Convey("limit > len(cves)", func() {
 				cves, cveSummary, pageInfo, err := cveInfo.GetCVEListForImage(ctx, "repo1", "0.1.0", "", "", "", zcommon.PageInput{
 					Limit:  6,
