@@ -647,19 +647,18 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 
 	dir := is.rootDir
 
+	timing := operationTiming{operation: storageConstants.StorageOpGetNextRepository}
+	defer timing.publish(is.metrics)
+
 	lockStart := time.Now()
 
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
 	lockAcquired := time.Now()
-	monitoring.ObserveStorageOperationTime(is.metrics, lockAcquired.Sub(lockStart),
-		storageConstants.StorageOpGetNextRepository, storageConstants.StoragePartLockWait)
+	timing.observe(storageConstants.StoragePartLockWait, lockStart)
 
-	defer func() {
-		monitoring.ObserveStorageOperationTime(is.metrics, time.Since(lockAcquired),
-			storageConstants.StorageOpGetNextRepository, storageConstants.StoragePartLockHold)
-	}()
+	defer timing.observe(storageConstants.StoragePartLockHold, lockAcquired)
 
 	_, err := is.storeDriver.List(dir)
 	if err != nil {
@@ -2217,8 +2216,27 @@ func (is *ImageStore) CheckBlobWithSize(ctx context.Context, repo string, digest
 	return is.checkBlob(ctx, repo, digest, size)
 }
 
-func (is *ImageStore) observeBlobCheck(part string, start time.Time) {
-	monitoring.ObserveStorageOperationTime(is.metrics, time.Since(start), storageConstants.StorageOpCheckBlob, part)
+// operationTiming collects the timed parts of one storage operation while its lock is held.
+// The minimal metrics server hands each observation to a worker over an unbuffered channel,
+// so the parts are published only once the lock has been released.
+type operationTiming struct {
+	operation string
+	parts     []operationPart
+}
+
+type operationPart struct {
+	name     string
+	duration time.Duration
+}
+
+func (timing *operationTiming) observe(part string, start time.Time) {
+	timing.parts = append(timing.parts, operationPart{name: part, duration: time.Since(start)})
+}
+
+func (timing *operationTiming) publish(metrics monitoring.MetricServer) {
+	for _, part := range timing.parts {
+		monitoring.ObserveStorageOperationTime(metrics, part.duration, timing.operation, part.name)
+	}
 }
 
 // checkBlob implements CheckBlob and CheckBlobWithSize, a negative expectedSize means unknown.
@@ -2232,6 +2250,9 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 
 	blobPath := is.BlobPath(repo, digest)
 
+	timing := operationTiming{operation: storageConstants.StorageOpCheckBlob}
+	defer timing.publish(is.metrics)
+
 	lockStart := time.Now()
 
 	if is.dedupe && !is.isCacheNil() {
@@ -2243,13 +2264,13 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 	}
 
 	lockAcquired := time.Now()
-	is.observeBlobCheck(storageConstants.StoragePartLockWait, lockStart)
+	timing.observe(storageConstants.StoragePartLockWait, lockStart)
 
-	defer is.observeBlobCheck(storageConstants.StoragePartLockHold, lockAcquired)
+	defer timing.observe(storageConstants.StoragePartLockHold, lockAcquired)
 
 	statStart := time.Now()
 	binfo, err := is.storeDriver.Stat(blobPath)
-	is.observeBlobCheck(storageConstants.StoragePartStat, statStart)
+	timing.observe(storageConstants.StoragePartStat, statStart)
 
 	if err != nil {
 		// Only fall back to the cache when Stat classified Missing. Transient/
@@ -2263,7 +2284,7 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 
 		cacheStart := time.Now()
 		dstRecord, err := is.checkCacheBlob(digest)
-		is.observeBlobCheck(storageConstants.StoragePartCacheLookup, cacheStart)
+		timing.observe(storageConstants.StoragePartCacheLookup, cacheStart)
 
 		if err != nil {
 			if errclass.IsBlobUnavailable(err) {
@@ -2280,7 +2301,7 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 
 		copyStart := time.Now()
 		blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
-		is.observeBlobCheck(storageConstants.StoragePartCopy, copyStart)
+		timing.observe(storageConstants.StoragePartCopy, copyStart)
 
 		if err != nil {
 			return false, -1, mapStorageErr(err)
@@ -2304,7 +2325,7 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 		// put deduped blob in cache
 		putStart := time.Now()
 		err = is.cache.PutBlob(digest, blobPath)
-		is.observeBlobCheck(storageConstants.StoragePartCacheUpdate, putStart)
+		timing.observe(storageConstants.StoragePartCacheUpdate, putStart)
 
 		if err != nil {
 			is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
@@ -2320,7 +2341,7 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 			// try to find blob size in blob descriptors, if blob can not be found
 			descriptorStart := time.Now()
 			desc, err := common.GetBlobDescriptorFromRepo(is, repo, digest, is.log)
-			is.observeBlobCheck(storageConstants.StoragePartDescriptorLookup, descriptorStart)
+			timing.observe(storageConstants.StoragePartDescriptorLookup, descriptorStart)
 
 			if err != nil {
 				// blob not found in descriptors, can not compare, just return
@@ -2365,7 +2386,7 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 	// Placeholder: the content copy is at the path the cache records.
 	cacheStart := time.Now()
 	dstRecord, err := is.checkCacheBlob(digest)
-	is.observeBlobCheck(storageConstants.StoragePartCacheLookup, cacheStart)
+	timing.observe(storageConstants.StoragePartCacheLookup, cacheStart)
 
 	if err != nil {
 		// Cache miss / not-found is a normal condition when the blob truly doesn't exist.
@@ -2380,7 +2401,7 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 
 	copyStart := time.Now()
 	blobSize, err := is.copyBlob(ctx, repo, blobPath, dstRecord)
-	is.observeBlobCheck(storageConstants.StoragePartCopy, copyStart)
+	timing.observe(storageConstants.StoragePartCopy, copyStart)
 
 	if err != nil {
 		return false, -1, mapStorageErr(err)
@@ -2407,7 +2428,7 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 	// put deduped blob in cache
 	putStart := time.Now()
 	err = is.cache.PutBlob(digest, blobPath)
-	is.observeBlobCheck(storageConstants.StoragePartCacheUpdate, putStart)
+	timing.observe(storageConstants.StoragePartCacheUpdate, putStart)
 
 	if err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")

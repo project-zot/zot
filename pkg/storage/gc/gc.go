@@ -165,18 +165,25 @@ func (gc GarbageCollect) cleanRepo(ctx context.Context, repo string) error {
 	// move or remove content other repositories link to; the store knows what that takes.
 	lockStart := time.Now()
 
-	return gc.imgStore.WithRepoCleanupLock(repo, func() error {
-		lockAcquired := time.Now()
-		monitoring.ObserveStorageOperationTime(gc.metrics, lockAcquired.Sub(lockStart),
-			storageConstants.StorageOpCleanRepo, storageConstants.StoragePartLockWait)
+	var lockAcquired time.Time
 
-		defer func() {
-			monitoring.ObserveStorageOperationTime(gc.metrics, time.Since(lockAcquired),
-				storageConstants.StorageOpCleanRepo, storageConstants.StoragePartLockHold)
-		}()
+	var lockHold time.Duration
+
+	err := gc.imgStore.WithRepoCleanupLock(repo, func() error {
+		lockAcquired = time.Now()
+		defer func() { lockHold = time.Since(lockAcquired) }()
 
 		return gc.cleanRepoLocked(ctx, repo)
 	})
+
+	if !lockAcquired.IsZero() {
+		monitoring.ObserveStorageOperationTime(gc.metrics, lockAcquired.Sub(lockStart),
+			storageConstants.StorageOpCleanRepo, storageConstants.StoragePartLockWait)
+		monitoring.ObserveStorageOperationTime(gc.metrics, lockHold,
+			storageConstants.StorageOpCleanRepo, storageConstants.StoragePartLockHold)
+	}
+
+	return err
 }
 
 func (gc GarbageCollect) cleanRepoLocked(ctx context.Context, repo string) error {
