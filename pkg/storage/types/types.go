@@ -153,6 +153,8 @@ type ImageStore interface { //nolint:interfacebloat
 	// index (typically an untagged descriptor left by a tag overwrite). It does not write
 	// blobs, run the linter, or emit image-updated events.
 	RetagManifest(ctx context.Context, repo, reference string, digest godigest.Digest) error
+	// RetagManifestIfDigest atomically retags reference only when it still points at expectedDigest.
+	RetagManifestIfDigest(ctx context.Context, repo, reference string, expectedDigest, digest godigest.Digest) error
 	BlobUploadPath(repo, uuid string) string
 	StatBlobUpload(repo, uuid string) (bool, int64, time.Time, error)
 	ListBlobUploads(repo string) ([]string, error)

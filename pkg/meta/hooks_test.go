@@ -81,6 +81,12 @@ func (f *failRetagImageStore) RetagManifest(ctx context.Context, repo, reference
 	return f.retagErr
 }
 
+func (f *failRetagImageStore) RetagManifestIfDigest(ctx context.Context, repo, reference string,
+	expectedDigest, digest godigest.Digest,
+) error {
+	return f.retagErr
+}
+
 func TestOnUpdateManifestDigestTags_emptyTags(t *testing.T) {
 	Convey("OnUpdateManifestDigestTags with no tags is a no-op (nil MetaDB: no GetRepoMeta/SetRepoReference path)",
 		t, func() {

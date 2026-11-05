@@ -26,16 +26,17 @@ type MockedImageStore struct {
 	GetImageManifestFn    func(repo string, reference string) ([]byte, godigest.Digest, string, error)
 	PutImageManifestFn    func(ctx context.Context, repo string, reference string, mediaType string, body []byte,
 		extraTags []string) (godigest.Digest, godigest.Digest, error)
-	DeleteImageManifestFn  func(ctx context.Context, repo string, reference string, detectCollision bool) error
-	RetagManifestFn        func(ctx context.Context, repo, reference string, digest godigest.Digest) error
-	BlobUploadPathFn       func(repo string, uuid string) string
-	StatBlobUploadFn       func(repo string, uuid string) (bool, int64, time.Time, error)
-	ListBlobUploadsFn      func(repo string) ([]string, error)
-	NewBlobUploadFn        func(ctx context.Context, repo string) (string, error)
-	GetBlobUploadFn        func(repo string, uuid string) (int64, error)
-	BlobUploadInfoFn       func(repo string, uuid string) (int64, error)
-	PutBlobChunkStreamedFn func(ctx context.Context, repo string, uuid string, body io.Reader) (int64, error)
-	PutBlobChunkFn         func(ctx context.Context, repo string, uuid string, from int64, to int64,
+	DeleteImageManifestFn   func(ctx context.Context, repo string, reference string, detectCollision bool) error
+	RetagManifestFn         func(ctx context.Context, repo, reference string, digest godigest.Digest) error
+	RetagManifestIfDigestFn func(ctx context.Context, repo, reference string, expectedDigest, digest godigest.Digest) error
+	BlobUploadPathFn        func(repo string, uuid string) string
+	StatBlobUploadFn        func(repo string, uuid string) (bool, int64, time.Time, error)
+	ListBlobUploadsFn       func(repo string) ([]string, error)
+	NewBlobUploadFn         func(ctx context.Context, repo string) (string, error)
+	GetBlobUploadFn         func(repo string, uuid string) (int64, error)
+	BlobUploadInfoFn        func(repo string, uuid string) (int64, error)
+	PutBlobChunkStreamedFn  func(ctx context.Context, repo string, uuid string, body io.Reader) (int64, error)
+	PutBlobChunkFn          func(ctx context.Context, repo string, uuid string, from int64, to int64,
 		body io.Reader) (int64, error)
 	FinishBlobUploadFn func(repo string, uuid string, body io.Reader, digest godigest.Digest) error
 	FullBlobUploadFn   func(ctx context.Context, repo string, body io.Reader,
@@ -226,6 +227,16 @@ func (is MockedImageStore) DeleteImageManifest(ctx context.Context, name string,
 func (is MockedImageStore) RetagManifest(ctx context.Context, repo, reference string, digest godigest.Digest) error {
 	if is.RetagManifestFn != nil {
 		return is.RetagManifestFn(ctx, repo, reference, digest)
+	}
+
+	return nil
+}
+
+func (is MockedImageStore) RetagManifestIfDigest(ctx context.Context, repo, reference string,
+	expectedDigest, digest godigest.Digest,
+) error {
+	if is.RetagManifestIfDigestFn != nil {
+		return is.RetagManifestIfDigestFn(ctx, repo, reference, expectedDigest, digest)
 	}
 
 	return nil

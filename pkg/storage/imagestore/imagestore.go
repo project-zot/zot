@@ -1338,13 +1338,32 @@ func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference s
 
 // RetagManifest attaches reference to an existing digest in the repository index.
 // Used to restore a tag after a failed MetaDB update that followed a tag overwrite.
-func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, digest godigest.Digest) error {
+func (is *ImageStore) RetagManifest(ctx context.Context, repo, reference string, digest godigest.Digest) error {
+	return is.retagManifest(ctx, repo, reference, "", digest)
+}
+
+// RetagManifestIfDigest atomically retags reference when it still points at expectedDigest.
+// A changed current digest returns ErrManifestConflict without modifying the index.
+func (is *ImageStore) RetagManifestIfDigest(ctx context.Context, repo, reference string,
+	expectedDigest, digest godigest.Digest,
+) error {
+	return is.retagManifest(ctx, repo, reference, expectedDigest, digest)
+}
+
+func (is *ImageStore) retagManifest(_ context.Context, repo, reference string,
+	expectedDigest, digest godigest.Digest,
+) error {
 	if err := is.statRepoDir(repo); err != nil {
 		return err
 	}
 
 	if reference == "" || digest == "" {
 		return zerr.ErrBadManifest
+	}
+	if expectedDigest != "" {
+		if err := expectedDigest.Validate(); err != nil {
+			return zerr.ErrBadManifest
+		}
 	}
 
 	var lockLatency time.Time
@@ -1355,6 +1374,16 @@ func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, d
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
 		return err
+	}
+
+	currentTag, currentTagFound := common.GetManifestDescByReference(index, reference)
+	if expectedDigest != "" {
+		if !currentTagFound {
+			return zerr.ErrManifestNotFound
+		}
+		if currentTag.Digest != expectedDigest {
+			return zerr.ErrManifestConflict
+		}
 	}
 
 	// Pick an index row for digest to clone as the restored tag.
@@ -1406,6 +1435,32 @@ func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, d
 		midx++
 	}
 
+	// Preserve the displaced digest as an untagged descriptor when this tag was its
+	// last reference. A digest push may have removed that row while assigning the tag.
+	if currentTagFound {
+		hasOtherReference := false
+
+		for _, manifest := range index.Manifests {
+			if manifest.Digest == currentTag.Digest {
+				hasOtherReference = true
+
+				break
+			}
+		}
+
+		if !hasOtherReference {
+			preserved := currentTag
+			if preserved.Annotations == nil {
+				preserved.Annotations = map[string]string{}
+			} else {
+				preserved.Annotations = maps.Clone(preserved.Annotations)
+			}
+
+			delete(preserved.Annotations, ispec.AnnotationRefName)
+			index.Manifests = append(index.Manifests, preserved)
+		}
+	}
+
 	// Drop untagged rows for this digest so the index matches a normal tagged push.
 	for midx := 0; midx < len(index.Manifests); {
 		manifest := index.Manifests[midx]
@@ -1429,7 +1484,7 @@ func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, d
 	tagged.Annotations[ispec.AnnotationRefName] = reference
 	index.Manifests = append(index.Manifests, tagged)
 
-	return is.PutIndexContent(repo, index)
+	return is.putIndexContent(repo, index, false)
 }
 
 func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
@@ -2937,8 +2992,14 @@ func (is *ImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
 }
 
 func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
-	if err := is.checkProtectedTagChanges(repo, index); err != nil {
-		return err
+	return is.putIndexContent(repo, index, true)
+}
+
+func (is *ImageStore) putIndexContent(repo string, index ispec.Index, checkProtected bool) error {
+	if checkProtected {
+		if err := is.checkProtectedTagChanges(repo, index); err != nil {
+			return err
+		}
 	}
 
 	dir := path.Join(is.rootDir, repo)

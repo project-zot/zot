@@ -399,7 +399,7 @@ func remoteStorageTargetKey(driverParams map[string]any) (string, error) {
 	fields := map[string][]string{
 		constants.S3StorageDriverName:    {"bucket", "rootdirectory", "regionendpoint", "endpoint"},
 		constants.GCSStorageDriverName:   {"bucket", "rootdirectory", "endpoint"},
-		constants.AzureStorageDriverName: {"accountname", "container", "rootdirectory", "realm", "endpoint"},
+		constants.AzureStorageDriverName: {"accountname", "container", "rootdirectory", "realm", "endpoint", "serviceurl"},
 	}
 
 	for _, field := range fields[storeName] {

@@ -123,7 +123,7 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 				continue
 			}
 
-			restoreBody, restoreMediaType, err := restorePreviousTag(ctx, repo, refTag, prior, imgStore, log)
+			restoreBody, restoreMediaType, err := restorePreviousTag(ctx, repo, refTag, digest, prior, imgStore, log)
 			if err != nil {
 				log.Error().Err(err).Str("repository", repo).Str("tag", refTag).
 					Msg("multi-tag digest push: rollback restore prior manifest failed")
@@ -168,8 +168,8 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 	}
 }
 
-func restorePreviousTag(ctx context.Context, repo, reference string, prior storageTypes.ManifestTagState,
-	imgStore storageTypes.ImageStore, log log.Logger,
+func restorePreviousTag(ctx context.Context, repo, reference string, currentDigest godigest.Digest,
+	prior storageTypes.ManifestTagState, imgStore storageTypes.ImageStore, log log.Logger,
 ) ([]byte, string, error) {
 	restoreBody, err := imgStore.GetBlobContent(repo, prior.PreviousDigest)
 	if err != nil {
@@ -181,7 +181,7 @@ func restorePreviousTag(ctx context.Context, repo, reference string, prior stora
 		mediaType = v1.MediaTypeImageManifest
 	}
 
-	if err := imgStore.RetagManifest(ctx, repo, reference, prior.PreviousDigest); err != nil {
+	if err := imgStore.RetagManifestIfDigest(ctx, repo, reference, currentDigest, prior.PreviousDigest); err != nil {
 		return nil, "", err
 	}
 
@@ -248,7 +248,7 @@ func onUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
 		if priorKnown && prior != "" {
-			if restoreErr := imgStore.RetagManifest(ctx, repo, reference, prior); restoreErr != nil {
+			if restoreErr := imgStore.RetagManifestIfDigest(ctx, repo, reference, digest, prior); restoreErr != nil {
 				log.Error().Err(restoreErr).Str("reference", reference).Str("repository", repo).
 					Str("digest", prior.String()).Msg("failed to restore previous tag after MetaDB update failure")
 			}
