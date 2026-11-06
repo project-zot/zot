@@ -16,6 +16,7 @@ import (
 
 	"zotregistry.dev/zot/v2/pkg/api"
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 )
@@ -282,6 +283,60 @@ func TestRepoByteQuotaAllowsCurrentSizeAndRejectsGrowth(t *testing.T) {
 
 		So(UploadImage(first, baseURL, "byte-quota", "v1"), ShouldBeNil)
 		So(UploadImage(second, baseURL, "byte-quota", "v2"), ShouldEqual, ErrPutBlob)
+	})
+}
+
+func TestProtectedTagConflictPrecedesByteQuota(t *testing.T) {
+	Convey("a protected tag overwrite returns conflict even when quota would reject the manifest", t, func() {
+		first := CreateImageWith().RandomLayers(1, 10).RandomConfig().Build()
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.MaxRepoBytes = int64(first.Size())
+		conf.Storage.ProtectedTags = protectedtags.Config{Exact: []string{"prod"}}
+
+		ctlr := api.NewController(conf)
+		ctlrManager := test.NewControllerManager(ctlr)
+		baseURL := ctlrManager.StartAndWait()
+		defer ctlrManager.StopServer()
+
+		So(UploadImage(first, baseURL, "protected-quota", "prod"), ShouldBeNil)
+
+		candidate := first.Manifest
+		candidate.Annotations = map[string]string{"quota-test": strings.Repeat("x", 128)}
+		candidateBody, err := json.Marshal(candidate)
+		So(err, ShouldBeNil)
+
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(candidateBody).
+			Put(baseURL + "/v2/protected-quota/manifests/prod")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusConflict)
+	})
+}
+
+func TestProtectedTagInvalidManifestKeepsValidationError(t *testing.T) {
+	Convey("an invalid manifest does not become a protected tag conflict", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.MaxRepoBytes = 1 << 30
+		conf.Storage.ProtectedTags = protectedtags.Config{Exact: []string{"prod"}}
+
+		ctlr := api.NewController(conf)
+		ctlrManager := test.NewControllerManager(ctlr)
+		baseURL := ctlrManager.StartAndWait()
+		defer ctlrManager.StopServer()
+
+		So(UploadImage(CreateRandomImage(), baseURL, "protected-invalid", "prod"), ShouldBeNil)
+
+		resp, err := resty.R().
+			SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody([]byte(`{}`)).
+			Put(baseURL + "/v2/protected-invalid/manifests/prod")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 	})
 }
 

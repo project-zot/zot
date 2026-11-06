@@ -969,6 +969,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "409": {
+                        "description": "protected tag conflict",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "413": {
                         "description": "request entity too large",
                         "schema": {

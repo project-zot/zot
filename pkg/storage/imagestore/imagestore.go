@@ -30,6 +30,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/protectedtags"
 	zreg "zotregistry.dev/zot/v2/pkg/regexp"
 	"zotregistry.dev/zot/v2/pkg/scheduler"
 	common "zotregistry.dev/zot/v2/pkg/storage/common"
@@ -49,19 +50,20 @@ const (
 
 // ImageStore provides the image storage operations.
 type ImageStore struct {
-	rootDir     string
-	storeDriver storageTypes.Driver
-	lock        *sync.RWMutex
-	log         zlog.Logger
-	metrics     monitoring.MetricServer
-	events      events.Recorder
-	cache       storageTypes.Cache
-	lifecycle   blobLifecycle
-	dedupe      bool
-	linter      common.Lint
-	commit      bool
-	compat      []compat.MediaCompatibility
-	uploads     uploadSessionRegistry
+	rootDir       string
+	storeDriver   storageTypes.Driver
+	lock          *sync.RWMutex
+	log           zlog.Logger
+	metrics       monitoring.MetricServer
+	events        events.Recorder
+	cache         storageTypes.Cache
+	lifecycle     blobLifecycle
+	dedupe        bool
+	linter        common.Lint
+	commit        bool
+	compat        []compat.MediaCompatibility
+	protectedTags *protectedtags.Matcher
+	uploads       uploadSessionRegistry
 	// dedupeRebuildDone is set once RunDedupeBlobs has walked all blobs, i.e. the
 	// cache accounts for every pre-existing blob; see deleteBlob.
 	dedupeRebuildDone atomic.Bool
@@ -93,6 +95,7 @@ func (is *ImageStore) DirExists(d string) bool {
 func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlog.Logger,
 	metrics monitoring.MetricServer, linter common.Lint, storeDriver storageTypes.Driver,
 	cacheDriver storageTypes.Cache, compat []compat.MediaCompatibility, recorder events.Recorder,
+	protectedTagMatchers ...*protectedtags.Matcher,
 ) storageTypes.ImageStore {
 	if err := storeDriver.EnsureDir(rootDir); err != nil {
 		log.Error().Err(err).Str("rootDir", rootDir).Msg("failed to create root dir")
@@ -114,6 +117,9 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		events:      recorder,
 		lifecycle:   newBlobLifecycle(storeDriver, rootDir, metrics),
 		uploads:     newUploadSessionRegistry(),
+	}
+	if len(protectedTagMatchers) > 0 {
+		imgStore.protectedTags = protectedTagMatchers[0]
 	}
 
 	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
@@ -819,6 +825,206 @@ func (is *ImageStore) GetImageManifest(repo, reference string) ([]byte, godigest
 	return buf, manifestDesc.Digest, manifestDesc.MediaType, nil
 }
 
+func protectedTagError(tag string) error {
+	return zerr.NewError(zerr.ErrProtectedTag).AddDetail("tag", tag)
+}
+
+func taggedManifestDigests(index ispec.Index) map[string]godigest.Digest {
+	tags := make(map[string]godigest.Digest)
+
+	for _, manifest := range index.Manifests {
+		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
+		if ok {
+			tags[tag] = manifest.Digest
+		}
+	}
+
+	return tags
+}
+
+func (is *ImageStore) checkProtectedTagWrite(index ispec.Index, reference string, refIsDigest bool,
+	extraTags []string, digest godigest.Digest,
+) error {
+	if !is.protectedTags.Enabled() {
+		return nil
+	}
+
+	currentTags := taggedManifestDigests(index)
+	tags := extraTags
+	if !refIsDigest {
+		tags = []string{reference}
+	}
+
+	for _, tag := range tags {
+		if !is.protectedTags.Matches(tag) {
+			continue
+		}
+
+		currentDigest, exists := currentTags[tag]
+		if exists && currentDigest != digest {
+			return protectedTagError(tag)
+		}
+	}
+
+	return nil
+}
+
+// CheckProtectedTagWrite performs the protection-only part of a valid manifest write before
+// quota projection. PutImageManifest repeats validation and the protection check while holding
+// the storage write lock.
+func (is *ImageStore) CheckProtectedTagWrite(repo, reference, mediaType string, body []byte,
+	extraTags []string,
+) error {
+	if !is.protectedTags.Enabled() {
+		return nil
+	}
+
+	digest, err := common.GetAndValidateRequestDigest(body, reference, is.log)
+	if err != nil {
+		if errors.Is(err, zerr.ErrBadManifest) || len(extraTags) > 0 {
+			return nil
+		}
+
+		// A non-digest reference is a tag. GetAndValidateRequestDigest returns the
+		// canonical body digest together with the reference parse error in this case.
+		refIsDigest := false
+
+		err = is.checkProtectedTagWriteForValidManifest(repo, reference, mediaType, body, refIsDigest,
+			extraTags, digest)
+	} else {
+		err = is.checkProtectedTagWriteForValidManifest(repo, reference, mediaType, body, true,
+			extraTags, digest)
+	}
+
+	if errors.Is(err, zerr.ErrProtectedTag) {
+		return err
+	}
+
+	return nil
+}
+
+func (is *ImageStore) checkProtectedTagWriteForValidManifest(repo, reference, mediaType string,
+	body []byte, refIsDigest bool, extraTags []string, digest godigest.Digest,
+) error {
+	return is.WithRepoReadLock(repo, func() error {
+		if err := common.ValidateManifest(is, repo, reference, mediaType, body, is.compat, is.log); err != nil {
+			return err
+		}
+
+		index, err := common.GetIndex(is, repo, is.log)
+		if err != nil {
+			return err
+		}
+
+		return is.checkProtectedTagWrite(index, reference, refIsDigest, extraTags, digest)
+	})
+}
+
+func (is *ImageStore) checkProtectedTagDelete(index ispec.Index, reference string) error {
+	if !is.protectedTags.Enabled() {
+		return nil
+	}
+
+	if zcommon.IsDigest(reference) {
+		for _, manifest := range index.Manifests {
+			if manifest.Digest.String() != reference {
+				continue
+			}
+
+			tag, ok := manifest.Annotations[ispec.AnnotationRefName]
+			if ok && is.protectedTags.Matches(tag) {
+				return protectedTagError(tag)
+			}
+		}
+
+		return nil
+	}
+
+	if !is.protectedTags.Matches(reference) {
+		return nil
+	}
+
+	for _, manifest := range index.Manifests {
+		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
+		if ok && tag == reference {
+			return protectedTagError(reference)
+		}
+	}
+
+	return nil
+}
+
+// checkProtectedTagChanges ensures an index replacement cannot retarget or remove
+// an existing protected tag through an internal caller that bypasses manifest APIs.
+func (is *ImageStore) checkProtectedTagChanges(repo string, next ispec.Index) error {
+	if !is.protectedTags.Enabled() {
+		return nil
+	}
+
+	current, err := common.GetIndex(is, repo, is.log)
+	if err != nil {
+		if errors.Is(err, zerr.ErrRepoNotFound) {
+			current = ispec.Index{}
+		} else {
+			return err
+		}
+	}
+
+	currentTags := taggedManifestDigests(current)
+	nextTags := taggedManifestDigests(next)
+
+	for tag, currentDigest := range currentTags {
+		if !is.protectedTags.Matches(tag) {
+			continue
+		}
+
+		nextDigest, exists := nextTags[tag]
+		if !exists || nextDigest != currentDigest {
+			return protectedTagError(tag)
+		}
+	}
+
+	return nil
+}
+
+func recordManifestWriteState(ctx context.Context, index ispec.Index, reference string, refIsDigest bool,
+	extraTags []string,
+) {
+	state, ok := storageTypes.ManifestWriteStateFromContext(ctx)
+	if !ok {
+		return
+	}
+
+	currentTags := taggedManifestDigests(index)
+
+	currentDescriptors := make(map[string]ispec.Descriptor, len(index.Manifests))
+	for _, descriptor := range index.Manifests {
+		if tag, ok := descriptor.Annotations[ispec.AnnotationRefName]; ok {
+			currentDescriptors[tag] = descriptor
+		}
+	}
+
+	tags := extraTags
+	if !refIsDigest {
+		tags = []string{reference}
+	}
+
+	for _, tag := range tags {
+		_, exists := currentTags[tag]
+		if !exists {
+			state.SetTagState(tag, storageTypes.ManifestTagState{Created: true})
+
+			continue
+		}
+
+		prior := currentDescriptors[tag]
+		state.SetTagState(tag, storageTypes.ManifestTagState{
+			PreviousDigest:    prior.Digest,
+			PreviousMediaType: prior.MediaType,
+		})
+	}
+}
+
 // PutImageManifest adds an image manifest to the repository.
 // When extraTags is non-empty, the reference must be a digest; each entry becomes an
 // org.opencontainers.image.ref.name on a separate index descriptor (distribution-spec
@@ -873,6 +1079,13 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 	if err != nil {
 		return "", "", err
 	}
+
+	err = is.checkProtectedTagWrite(index, reference, refIsDigest, extraTags, mDigest)
+	if err != nil {
+		return "", "", err
+	}
+
+	recordManifestWriteState(ctx, index, reference, refIsDigest, extraTags)
 
 	// create a new descriptor
 	desc := ispec.Descriptor{
@@ -1135,13 +1348,32 @@ func (is *ImageStore) DeleteImageManifest(ctx context.Context, repo, reference s
 
 // RetagManifest attaches reference to an existing digest in the repository index.
 // Used to restore a tag after a failed MetaDB update that followed a tag overwrite.
-func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, digest godigest.Digest) error {
+func (is *ImageStore) RetagManifest(ctx context.Context, repo, reference string, digest godigest.Digest) error {
+	return is.retagManifest(ctx, repo, reference, "", digest)
+}
+
+// RetagManifestIfDigest atomically retags reference when it still points at expectedDigest.
+// A changed current digest returns ErrManifestConflict without modifying the index.
+func (is *ImageStore) RetagManifestIfDigest(ctx context.Context, repo, reference string,
+	expectedDigest, digest godigest.Digest,
+) error {
+	return is.retagManifest(ctx, repo, reference, expectedDigest, digest)
+}
+
+func (is *ImageStore) retagManifest(_ context.Context, repo, reference string,
+	expectedDigest, digest godigest.Digest,
+) error {
 	if err := is.statRepoDir(repo); err != nil {
 		return err
 	}
 
 	if reference == "" || digest == "" {
 		return zerr.ErrBadManifest
+	}
+	if expectedDigest != "" {
+		if err := expectedDigest.Validate(); err != nil {
+			return zerr.ErrBadManifest
+		}
 	}
 
 	var lockLatency time.Time
@@ -1152,6 +1384,16 @@ func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, d
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
 		return err
+	}
+
+	currentTag, currentTagFound := common.GetManifestDescByReference(index, reference)
+	if expectedDigest != "" {
+		if !currentTagFound {
+			return zerr.ErrManifestNotFound
+		}
+		if currentTag.Digest != expectedDigest {
+			return zerr.ErrManifestConflict
+		}
 	}
 
 	// Pick an index row for digest to clone as the restored tag.
@@ -1203,6 +1445,32 @@ func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, d
 		midx++
 	}
 
+	// Preserve the displaced digest as an untagged descriptor when this tag was its
+	// last reference. A digest push may have removed that row while assigning the tag.
+	if currentTagFound {
+		hasOtherReference := false
+
+		for _, manifest := range index.Manifests {
+			if manifest.Digest == currentTag.Digest {
+				hasOtherReference = true
+
+				break
+			}
+		}
+
+		if !hasOtherReference {
+			preserved := currentTag
+			if preserved.Annotations == nil {
+				preserved.Annotations = map[string]string{}
+			} else {
+				preserved.Annotations = maps.Clone(preserved.Annotations)
+			}
+
+			delete(preserved.Annotations, ispec.AnnotationRefName)
+			index.Manifests = append(index.Manifests, preserved)
+		}
+	}
+
 	// Drop untagged rows for this digest so the index matches a normal tagged push.
 	for midx := 0; midx < len(index.Manifests); {
 		manifest := index.Manifests[midx]
@@ -1226,7 +1494,7 @@ func (is *ImageStore) RetagManifest(_ context.Context, repo, reference string, d
 	tagged.Annotations[ispec.AnnotationRefName] = reference
 	index.Manifests = append(index.Manifests, tagged)
 
-	return is.PutIndexContent(repo, index)
+	return is.putIndexContent(repo, index, false)
 }
 
 func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference string, detectCollisions bool) error {
@@ -1236,6 +1504,19 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
+		return err
+	}
+
+	if rollbackDigest, ok := storageTypes.ManifestRollbackDigest(ctx); ok && !zcommon.IsDigest(reference) {
+		manifestDesc, found := common.GetManifestDescByReference(index, reference)
+		if !found {
+			return zerr.ErrManifestNotFound
+		}
+
+		if manifestDesc.Digest != rollbackDigest {
+			return zerr.ErrManifestConflict
+		}
+	} else if err := is.checkProtectedTagDelete(index, reference); err != nil {
 		return err
 	}
 
@@ -2807,6 +3088,16 @@ func (is *ImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
 }
 
 func (is *ImageStore) PutIndexContent(repo string, index ispec.Index) error {
+	return is.putIndexContent(repo, index, true)
+}
+
+func (is *ImageStore) putIndexContent(repo string, index ispec.Index, checkProtected bool) error {
+	if checkProtected {
+		if err := is.checkProtectedTagChanges(repo, index); err != nil {
+			return err
+		}
+	}
+
 	dir := path.Join(is.rootDir, repo)
 
 	indexPath := path.Join(dir, ispec.ImageIndexFile)
