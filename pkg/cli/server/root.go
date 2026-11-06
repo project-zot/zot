@@ -331,7 +331,7 @@ func isPathInside(path1, path2 string) bool {
 // - 2: path1 is inside path2
 // - 3: path2 is inside path1.
 func pathsConflict(path1, path2 string) int {
-	if strings.EqualFold(path1, path2) {
+	if strings.EqualFold(filepath.Clean(path1), filepath.Clean(path2)) {
 		return 1
 	}
 
