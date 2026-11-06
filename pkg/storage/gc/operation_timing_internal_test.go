@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,22 @@ type cleanupLockStore struct {
 	mocks.MockedImageStore
 	lockDelay time.Duration
 	lockErr   error
+}
+
+// indexReads makes GetIndexContent succeed for the unlocked scan and fail, after a delay, for
+// the read the commit makes under the cleanup lock.
+func indexReads(err error) func(string) ([]byte, error) {
+	var calls atomic.Int32
+
+	return func(string) ([]byte, error) {
+		if calls.Add(1) == 1 {
+			return []byte(`{"schemaVersion":2,"manifests":[]}`), nil
+		}
+
+		time.Sleep(15 * time.Millisecond)
+
+		return nil, err
+	}
 }
 
 func (s cleanupLockStore) WithRepoCleanupLock(_ string, wrappedFunc func() error) error {
@@ -56,11 +73,7 @@ func TestCleanRepoOperationTime(t *testing.T) {
 
 		store := cleanupLockStore{lockDelay: 20 * time.Millisecond}
 		store.RootDirFn = func() string { return "/store" }
-		store.GetIndexContentFn = func(string) ([]byte, error) {
-			time.Sleep(15 * time.Millisecond)
-
-			return nil, indexErr
-		}
+		store.GetIndexContentFn = indexReads(indexErr)
 
 		Convey("the wait and the hold are recorded separately", func() {
 			metrics := monitoring.NewMetricsServer(true, log)
