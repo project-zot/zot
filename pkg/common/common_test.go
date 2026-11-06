@@ -55,6 +55,9 @@ func TestCommon(t *testing.T) {
 
 		isDir := common.DirExists(file.Name())
 		So(isDir, ShouldBeFalse)
+
+		// stat fails with ENOTDIR for a path below a file
+		So(common.DirExists(path.Join(file.Name(), "child")), ShouldBeFalse)
 	})
 
 	Convey("Test ArtifactTypeNotation const has same value as in notaryproject", t, func() {
