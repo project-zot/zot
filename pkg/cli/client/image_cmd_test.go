@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"regexp"
@@ -952,6 +953,40 @@ func TestDisplayIndex(t *testing.T) {
 
 			runDisplayIndexTests(baseURL)
 		})
+	})
+}
+
+func TestDisplayIndexWithoutManifests(t *testing.T) {
+	Convey("An image index listing no manifests is displayed when search is disabled", t, func() {
+		searchEnabled := false
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &searchEnabled},
+		}
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+		cm := test.NewControllerManager(ctlr)
+
+		baseURL := cm.StartAndWait()
+		defer cm.StopServer()
+
+		index := []byte(`{"schemaVersion":2,"mediaType":"` + ispec.MediaTypeImageIndex + `","manifests":[]}`)
+
+		resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).SetBody(index).
+			Put(baseURL + "/v2/repo/manifests/empty")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		buff := &bytes.Buffer{}
+		searchConfig := getTestSearchConfig(baseURL, client.NewSearchService())
+		searchConfig.ResultWriter = buff
+		So(client.SearchAllImages(searchConfig), ShouldBeNil)
+
+		actual := strings.TrimSpace(regexp.MustCompile(`\s+`).ReplaceAllString(buff.String(), " "))
+		So(actual, ShouldContainSubstring, "REPOSITORY TAG OS/ARCH DIGEST SIGNED SIZE")
+		So(actual, ShouldContainSubstring, "repo empty * "+godigest.FromBytes(index).Encoded()[:8]+" false")
 	})
 }
 
