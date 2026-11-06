@@ -26,6 +26,14 @@ import (
 // one deadline for all blobs torn down together, since teardown holds the reference's flight.
 const streamDrainTimeout = 30 * time.Second
 
+const (
+	// streamResumeAttempts is how many times a download reopens a blob upstream cut short, before
+	// the blob fails.
+	streamResumeAttempts = 3
+	// streamResumeDelay is waited before each reopen.
+	streamResumeDelay = time.Second
+)
+
 type ChunkingStreamManager struct {
 	tempStore       StreamTempStore
 	storeController storage.StoreController
@@ -46,8 +54,12 @@ type ChunkingStreamManager struct {
 	maxConcurrentStreams int
 	// drainTimeout is streamDrainTimeout; a field so tests can shorten it.
 	drainTimeout time.Duration
-	logger       log.Logger
-	streamLock   sync.Mutex
+	// resumeAttempts and resumeDelay are streamResumeAttempts and streamResumeDelay; fields so
+	// tests can change them.
+	resumeAttempts int
+	resumeDelay    time.Duration
+	logger         log.Logger
+	streamLock     sync.Mutex
 }
 
 // streamKey namespaces a blob digest by the source registry streaming it (see activeStreams).
@@ -69,6 +81,8 @@ func NewChunkingStreamManager(storeController storage.StoreController, maxConcur
 		refCounts:            map[string]int{},
 		maxConcurrentStreams: normalizeMaxConcurrentStreams(maxConcurrentStreams),
 		drainTimeout:         streamDrainTimeout,
+		resumeAttempts:       streamResumeAttempts,
+		resumeDelay:          streamResumeDelay,
 		logger:               logger,
 	}
 }
@@ -129,6 +143,8 @@ func (sm *ChunkingStreamManager) ConnectClient(repo, blobDigest string, writer i
 	// Subscribe under streamLock: the caller writes a 200 next, so teardown must already see this
 	// client and keep the temp file.
 	announceChan, subscriptionID := stream.Subscribe()
+
+	sm.prioritizeStream(repo, streamKey(source, blobDigest), stream)
 
 	copier := NewInFlightBlobCopier(stream, stream.OnDiskPath(), writer, announceChan, subscriptionID, sm.logger)
 	sm.logger.Debug().Str("repo", repo).Str("blob", blobDigest).Msg("connected client for blob")
@@ -223,15 +239,36 @@ type streamedBlob struct {
 // into its stream's temp file, which clients read as it fills. A stream another staged reference's
 // sync is already downloading is waited for instead, so concurrent syncs share one download.
 //
+// If priority is not nil, a client that connects to a blob whose download has not started also
+// opens it with priority, so it doesn't queue behind the other blobs for fetch's throttle. The
+// first of the two to start feeds the blob and the other drops its reader.
+//
 // It returns the temp file of each blob that completed, by digest. The sync links them into its
 // layout, where ImageCopy finds them present and doesn't download them again, so a streamed blob
 // is held on disk once. A failed blob is left out, and ImageCopy downloads it as usual.
 //
 // Downloads run concurrently; regclient's per-host throttle (reqConcurrent) bounds them.
 func (sm *ChunkingStreamManager) DownloadStreamedBlobs(ctx context.Context, repo, reference string,
-	fetch BlobFetcher,
+	fetch, priority BlobFetcher,
 ) map[godigest.Digest]string {
 	blobs := sm.streamedBlobs(repo, reference)
+
+	// Claim before enabling the priority download, so a failed priority open can't fail a blob
+	// this sync is about to download.
+	claimed := make([]bool, len(blobs))
+	for i, streamed := range blobs {
+		claimed[i] = streamed.stream.Claim()
+	}
+
+	if priority != nil {
+		// Cancelled on return: a priority download still queued at its throttle, for a blob this
+		// download got to first, must not hold upstream capacity after the sync moved on.
+		priorityCtx, cancelPriority := context.WithCancel(ctx)
+		defer cancelPriority()
+
+		sm.setPriorityFetch(repo, reference, &priorityFetch{ctx: priorityCtx, fetch: priority})
+		defer sm.setPriorityFetch(repo, reference, nil)
+	}
 
 	var (
 		completeMu sync.Mutex
@@ -240,13 +277,13 @@ func (sm *ChunkingStreamManager) DownloadStreamedBlobs(ctx context.Context, repo
 
 	complete := make(map[godigest.Digest]string, len(blobs))
 
-	for _, streamed := range blobs {
+	for i, streamed := range blobs {
 		wg.Go(func() {
 			var err error
 
 			// A waiter holds no regclient throttle slot, and a download waits on nothing but
 			// upstream, so two syncs waiting on each other's blobs can't deadlock.
-			if streamed.stream.Claim() {
+			if claimed[i] {
 				err = sm.downloadStream(ctx, streamed, fetch)
 			} else {
 				err = streamed.stream.Wait(ctx)
@@ -301,6 +338,108 @@ func (sm *ChunkingStreamManager) streamedBlobs(repo, reference string) []streame
 func (sm *ChunkingStreamManager) downloadStream(ctx context.Context, streamed streamedBlob, fetch BlobFetcher) error {
 	upstream, err := fetch(ctx, streamed.desc)
 	if err != nil {
+		if streamed.stream.FailStart(err) {
+			return err
+		}
+
+		// A priority download is feeding the blob, or about to.
+		return streamed.stream.Wait(ctx)
+	}
+
+	// Teardown, or the priority download, may have started the stream first.
+	if !streamed.stream.InitReader(upstream, streamed.desc) {
+		_ = upstream.Close()
+
+		return streamed.stream.Wait(ctx)
+	}
+
+	defer upstream.Close()
+
+	// A priority download still opening this blob has lost; don't let it wait out the throttle.
+	streamed.stream.CancelPriority()
+
+	sm.logger.Debug().Str("blob", streamed.desc.Digest.String()).Msg("downloading streamed blob")
+
+	return streamed.stream.FillResumable(ctx, sm.resumeWith(fetch))
+}
+
+// setPriorityFetch sets, or with nil clears, the priority download of repo:reference's staged
+// blobs.
+func (sm *ChunkingStreamManager) setPriorityFetch(repo, reference string, priority *priorityFetch) {
+	sm.streamLock.Lock()
+	defer sm.streamLock.Unlock()
+
+	staged, ok := sm.streamingRefs[repo+":"+reference]
+	if !ok {
+		return
+	}
+
+	staged.priority = priority
+
+	if priority == nil {
+		return
+	}
+
+	// Clients that connected before the sync reached its download are waiting too.
+	for key := range staged.streamKeys {
+		if stream, ok := sm.activeStreams[key]; ok && stream.HasClients() {
+			sm.startPriorityDownload(priority, key, stream)
+		}
+	}
+}
+
+// prioritizeStream starts an out-of-band download of a blob a client just connected to, if a sync
+// of a manifest staged under repo is downloading it. Must be called with streamLock held.
+func (sm *ChunkingStreamManager) prioritizeStream(repo, key string, stream *ChunkedBlobReader) {
+	prefix := repo + ":"
+
+	for refKey, staged := range sm.streamingRefs {
+		if _, ok := staged.streamKeys[key]; ok && staged.priority != nil && strings.HasPrefix(refKey, prefix) {
+			sm.startPriorityDownload(staged.priority, key, stream)
+
+			return
+		}
+	}
+}
+
+// startPriorityDownload downloads stream with priority, unless its download has started or a
+// priority download was already claimed. Must be called with streamLock held.
+func (sm *ChunkingStreamManager) startPriorityDownload(priority *priorityFetch, key string, stream *ChunkedBlobReader) {
+	if stream.Started() {
+		return
+	}
+
+	// Per blob, so the sync's download can cancel just this one once it has started the blob.
+	ctx, cancel := context.WithCancel(priority.ctx)
+
+	if !stream.ClaimPriority(cancel) {
+		cancel()
+
+		return
+	}
+
+	streamed := streamedBlob{desc: sm.blobInfoMap[key], stream: stream}
+
+	go func() {
+		defer cancel()
+
+		sm.logger.Debug().Str("blob", streamed.desc.Digest.String()).
+			Msg("a client is waiting on the blob, downloading it with priority")
+
+		if err := sm.downloadPriorityStream(ctx, priority.fetch, streamed); err != nil {
+			sm.logger.Warn().Err(err).Str("blob", streamed.desc.Digest.String()).
+				Msg("priority download of streamed blob failed")
+		}
+	}()
+}
+
+// downloadPriorityStream fills streamed's stream from fetch, unless the sync's download started it
+// first. The caller has claimed it with ClaimPriority.
+func (sm *ChunkingStreamManager) downloadPriorityStream(ctx context.Context, fetch BlobFetcher,
+	streamed streamedBlob,
+) error {
+	upstream, err := fetch(ctx, streamed.desc)
+	if err != nil {
 		streamed.stream.FailStart(err)
 
 		return err
@@ -308,14 +447,16 @@ func (sm *ChunkingStreamManager) downloadStream(ctx context.Context, streamed st
 
 	defer upstream.Close()
 
-	// Only teardown can close a claimed stream first; nothing would read this one.
 	if !streamed.stream.InitReader(upstream, streamed.desc) {
-		return zerr.ErrStreamIncomplete
+		return nil
 	}
 
-	sm.logger.Debug().Str("blob", streamed.desc.Digest.String()).Msg("downloading streamed blob")
+	return streamed.stream.FillResumable(ctx, sm.resumeWith(fetch))
+}
 
-	return streamed.stream.Fill()
+// resumeWith is how a download using fetch continues a blob upstream cut short.
+func (sm *ChunkingStreamManager) resumeWith(fetch BlobFetcher) *fillResume {
+	return &fillResume{fetch: fetch, maxAttempts: sm.resumeAttempts, delay: sm.resumeDelay}
 }
 
 // prepareActiveStreamForBlob creates desc's stream from source, or adds a reference to an existing

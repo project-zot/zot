@@ -96,6 +96,9 @@ type BaseService struct {
 	// SyncRepo index/child ensures).
 	imageFlight   singleflight.Group
 	streamManager StreamManager
+	// priorityRC is a second client with its own per-host throttle, for downloads of streamed
+	// blobs a client is waiting on. Nil unless the registry streams.
+	priorityRC *regclient.RegClient
 
 	clientLock sync.RWMutex
 	log        log.Logger
@@ -252,6 +255,19 @@ func (service *BaseService) initClient() error {
 
 	service.rc = client
 	service.hosts = hosts
+
+	service.priorityRC = nil
+
+	if service.config.IsStreamEnabled() {
+		priorityClient, _, err := newClient(service.config, service.credentials, service.log)
+		if err != nil {
+			service.log.Err(err).Msg("failed to create priority registry client")
+
+			return err
+		}
+
+		service.priorityRC = priorityClient
+	}
 
 	service.remote = NewRemoteRegistry(
 		service.rc,
@@ -1132,7 +1148,17 @@ func (service *BaseService) downloadStreamedBlobs(ctx context.Context, localRepo
 		return service.rc.BlobGet(ctx, remoteImageRef, desc)
 	}
 
-	for digest, streamFile := range service.streamManager.DownloadStreamedBlobs(ctx, localRepo, reference, fetch) {
+	var priority BlobFetcher
+
+	if priorityRC := service.priorityRC; priorityRC != nil {
+		priority = func(ctx context.Context, desc descriptor.Descriptor) (*blob.BReader, error) {
+			return priorityRC.BlobGet(ctx, remoteImageRef, desc)
+		}
+	}
+
+	for digest, streamFile := range service.streamManager.DownloadStreamedBlobs(
+		ctx, localRepo, reference, fetch, priority,
+	) {
 		// The path regclient's ocidir checks before downloading a blob.
 		layoutFile := path.Join(layoutDir, "blobs", digest.Algorithm().String(), digest.Encoded())
 
