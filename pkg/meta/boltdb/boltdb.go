@@ -854,6 +854,37 @@ func (bdw *BoltDB) GetRepoSizeWithCandidate(ctx context.Context, repo string, re
 	return current, projected, err
 }
 
+func (bdw *BoltDB) GetRepoSizeWithBlobCandidate(ctx context.Context, repo string, digest godigest.Digest,
+	size int64,
+) (int64, int64, error) {
+	var current, projected int64
+
+	err := bdw.DB.View(func(transaction *bbolt.Tx) error {
+		repoMeta, metaErr := getProtoRepoMeta(repo, transaction.Bucket([]byte(RepoMetaBuck)))
+		if metaErr != nil && !errors.Is(metaErr, zerr.ErrRepoMetaNotFound) {
+			return metaErr
+		}
+
+		currentSize := int64(0)
+		if metaErr == nil && repoMeta != nil {
+			currentSize = repoMeta.Size
+		}
+
+		repoBlobsBytes := transaction.Bucket([]byte(RepoBlobsBuck)).Get([]byte(repo))
+		repoBlobs, blobsErr := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+		if blobsErr != nil {
+			return blobsErr
+		}
+
+		var projectErr error
+		current, projected, projectErr = common.ProjectRepoSizeWithBlob(currentSize, repoBlobs, digest, size)
+
+		return projectErr
+	})
+
+	return current, projected, err
+}
+
 func (bdw *BoltDB) GetFullImageMeta(ctx context.Context, repo string, tag string) (mTypes.FullImageMeta, error) {
 	protoRepoMeta := &proto_go.RepoMeta{}
 	protoImageMeta := &proto_go.ImageMeta{}

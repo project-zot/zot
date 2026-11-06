@@ -1012,6 +1012,26 @@ func (dwr *DynamoDB) GetRepoSizeWithCandidate(ctx context.Context, repo string, 
 	return current, projected, nil
 }
 
+func (dwr *DynamoDB) GetRepoSizeWithBlobCandidate(ctx context.Context, repo string, digest godigest.Digest,
+	size int64,
+) (int64, int64, error) {
+	protoRepoMeta, metaErr := dwr.getProtoRepoMetaWithConsistency(ctx, repo, true)
+	currentSize := int64(0)
+	if metaErr != nil && !errors.Is(metaErr, zerr.ErrRepoMetaNotFound) {
+		return 0, 0, metaErr
+	}
+	if metaErr == nil && protoRepoMeta != nil {
+		currentSize = protoRepoMeta.Size
+	}
+
+	repoBlobs, blobsErr := dwr.getProtoRepoBlobsWithConsistency(ctx, repo, true)
+	if blobsErr != nil {
+		return 0, 0, blobsErr
+	}
+
+	return common.ProjectRepoSizeWithBlob(currentSize, repoBlobs, digest, size)
+}
+
 func (dwr *DynamoDB) GetFullImageMeta(ctx context.Context, repo string, tag string) (mTypes.FullImageMeta, error) {
 	protoRepoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
 	if err != nil {

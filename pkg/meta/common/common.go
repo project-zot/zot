@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,44 @@ import (
 	proto_go "zotregistry.dev/zot/v2/pkg/meta/proto/gen"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 )
+
+// EnforceByteQuota rejects a size increase that would exceed limit. Writes that do not grow the
+// repository remain allowed so operators can recover after lowering a quota below current usage.
+func EnforceByteQuota(currentSize, projectedSize, limit int64) error {
+	if limit <= 0 || projectedSize <= limit || projectedSize <= currentSize {
+		return nil
+	}
+
+	return zerr.NewError(zerr.ErrRepoByteQuotaExceeded).
+		AddDetail("current", strconv.FormatInt(currentSize, 10)).
+		AddDetail("projected", strconv.FormatInt(projectedSize, 10)).
+		AddDetail("limit", strconv.FormatInt(limit, 10))
+}
+
+// ProjectRepoSizeWithBlob returns the stored Size and the projected Size if digest were added
+// to the repository. Digests already present in repoBlobs are treated as reuse (projected == current).
+func ProjectRepoSizeWithBlob(currentSize int64, repoBlobs *proto_go.RepoBlobs, digest godigest.Digest, size int64,
+) (int64, int64, error) {
+	if currentSize < 0 {
+		return currentSize, math.MaxInt64, fmt.Errorf("%w: stored size is negative", zerr.ErrInvalidRepoSize)
+	}
+
+	if size < 0 {
+		return currentSize, math.MaxInt64, fmt.Errorf("%w: blob size is negative", zerr.ErrInvalidRepoSizeCandidate)
+	}
+
+	if repoBlobs != nil && repoBlobs.Blobs != nil {
+		if _, exists := repoBlobs.Blobs[digest.String()]; exists {
+			return currentSize, currentSize, nil
+		}
+	}
+
+	if size > 0 && currentSize > math.MaxInt64-size {
+		return currentSize, math.MaxInt64, fmt.Errorf("%w: aggregate size overflow", zerr.ErrInvalidRepoSize)
+	}
+
+	return currentSize, currentSize + size, nil
+}
 
 func SignatureAlreadyExists(signatureSlice []mTypes.SignatureInfo, sm mTypes.SignatureMetadata) bool {
 	return slices.ContainsFunc(signatureSlice, func(sigInfo mTypes.SignatureInfo) bool {
