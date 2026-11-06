@@ -297,7 +297,11 @@ func (p *requestsPool) doJob(ctx context.Context, job *httpJob) {
 			return
 		}
 
-		platformStr := getPlatformStr(image.Manifests[0].Platform)
+		// an index is allowed to list no manifests
+		var platformStr string
+		if len(image.Manifests) > 0 {
+			platformStr = getPlatformStr(image.Manifests[0].Platform)
+		}
 
 		str, err := image.string(job.config.OutputFormat, len(job.imageName), len(job.tagName), len(platformStr), verbose)
 		if err != nil {
