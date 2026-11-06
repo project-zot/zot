@@ -1505,6 +1505,19 @@ storage:
 		So(err.Error(), ShouldContainSubstring, "substore (route: /a)")
 		So(err.Error(), ShouldContainSubstring, "substore (route: /b)")
 
+		// the same directory spelled differently is still the same directory.
+		contentBytes = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot/"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile, contentBytes, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile}
+		err = cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "cannot use the same root directory")
+
 		// sub paths that point to default root directory should not be allowed.
 		contentBytes = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true"},"/b": {"rootDirectory": "/zot-a"}}},
