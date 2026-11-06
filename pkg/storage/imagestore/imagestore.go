@@ -1941,6 +1941,8 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 		// prevent overwrite original blob; when dst already is the origin's content (the same file
 		// remotely, a hardlink of it locally), there is nothing to link, and the size check below
 		// still repairs wrong content
+		keepFullCopy := false
+
 		if !is.storeDriver.SameFile(dst, dstRecord) {
 			if err := is.lifecycle.LinkBlob(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Str("component", "dedupe").
@@ -1949,11 +1951,24 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 				return err
 			}
 
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
-					Msg("failed to insert blob record")
+			if err := is.cache.PutDuplicate(dstDigest, dst); err != nil {
+				switch {
+				// the record was removed since it was read: start over, so that the upload becomes
+				// the origin instead of the copy just linked
+				case errors.Is(err, zerr.ErrCacheMiss):
+					continue
+				// the record cannot track another copy: keep the content in this copy instead
+				case errors.Is(err, zerr.ErrCacheFull):
+					is.log.Warn().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+						Msg("dedupe record is full, keeping a full copy of the blob")
 
-				return err
+					keepFullCopy = true
+				default:
+					is.log.Error().Err(err).Str("blobPath", dst).Str("component", "dedupe").
+						Msg("failed to insert blob record")
+
+					return err
+				}
 			}
 		}
 
@@ -1990,6 +2005,18 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, _ string
 			}
 
 			// the repair consumed the snapshot only: the upload is removed below, as after a link
+		}
+
+		if keepFullCopy {
+			// the upload is the verified content: it replaces the link made above
+			if err := is.storeDriver.Move(src, dst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dst", dst).Str("component", "dedupe").
+					Msg("failed to rename blob")
+
+				return err
+			}
+
+			return nil
 		}
 
 		// remove temp blobupload
@@ -2311,10 +2338,14 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 
 		// put deduped blob in cache
 		putStart := time.Now()
-		err = is.cache.PutBlob(digest, blobPath)
+		err = is.cache.PutDuplicate(digest, blobPath)
 		timing.observe(storageConstants.StoragePartCacheUpdate, putStart)
 
 		if err != nil {
+			if errors.Is(err, zerr.ErrCacheFull) {
+				return is.keepFullCopyOfBlob(ctx, repo, blobPath, dstRecord, digest, blobSize, &lockLatency, &timing)
+			}
+
 			is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
 
 			return false, -1, mapStorageErr(err)
@@ -2414,11 +2445,40 @@ func (is *ImageStore) checkBlob(ctx context.Context, repo string, digest godiges
 
 	// put deduped blob in cache
 	putStart := time.Now()
-	err = is.cache.PutBlob(digest, blobPath)
+	err = is.cache.PutDuplicate(digest, blobPath)
 	timing.observe(storageConstants.StoragePartCacheUpdate, putStart)
 
 	if err != nil {
+		if errors.Is(err, zerr.ErrCacheFull) {
+			return is.keepFullCopyOfBlob(ctx, repo, blobPath, dstRecord, digest, blobSize, &lockLatency, &timing)
+		}
+
 		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").Msg("failed to insert blob record")
+
+		return false, -1, mapStorageErr(err)
+	}
+
+	return true, blobSize, nil
+}
+
+// keepFullCopyOfBlob is CheckBlob's answer to a dedupe record that cannot track another copy.
+// The copy is recorded as the operation's copy part; the lock hold the operation records is
+// not split around the release keepFullCopy makes, see there.
+func (is *ImageStore) keepFullCopyOfBlob(ctx context.Context, repo, blobPath, origin string,
+	digest godigest.Digest, blobSize int64, lockLatency *time.Time, timing *operationTiming,
+) (bool, int64, error) {
+	is.log.Warn().Str("blobPath", blobPath).Str("digest", digest.String()).Str("component", "dedupe").
+		Msg("dedupe record is full, keeping a full copy of the blob")
+
+	writeLocked := is.dedupe && !is.isCacheNil()
+
+	copyStart := time.Now()
+	err := is.keepFullCopy(ctx, repo, blobPath, origin, digest, writeLocked, lockLatency)
+	timing.observe(storageConstants.StoragePartCopy, copyStart)
+
+	if err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Str("component", "dedupe").
+			Msg("failed to keep a full copy of the blob")
 
 		return false, -1, mapStorageErr(err)
 	}
@@ -2481,26 +2541,82 @@ func (is *ImageStore) checkCacheBlob(digest godigest.Digest) (string, error) {
 		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
 		// Only sync the cache when the blob is actually gone. A transient Stat
-		// failure must not DeleteBlob (which can promote a placeholder on Redis) or be
-		// reported as a miss that rebuild then "repairs" with another path.
+		// failure must not change the origin or be reported as a miss that rebuild
+		// then "repairs" with another path.
 		if !errclass.IsStorageObjectMissing(err) {
 			return "", mapStorageErr(err)
 		}
 
-		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
+		origin, repairErr := is.replaceMissingOrigin(digest, dstRecord)
+		if repairErr != nil {
+			is.log.Error().Err(repairErr).Str("digest", digest.String()).Str("blobPath", dstRecord).
 				Msg("failed to remove blob path from cache")
 
-			return "", err
+			return "", repairErr
 		}
 
-		return "", mapStorageErr(err)
+		if origin == "" {
+			return "", mapStorageErr(err)
+		}
+
+		dstRecord = origin
 	}
 
 	is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Str("component", "cache").
 		Msg("found dedupe record")
 
 	return dstRecord, nil
+}
+
+// replaceMissingOrigin makes a copy that holds digest's content the origin, in place of
+// missingOrigin, which is gone from storage, and returns that copy. The cache drivers promote an
+// arbitrary tracked path when an origin is deleted, which on remote storage can be an empty
+// placeholder, and reads through such an origin fail while another copy holds the content. The
+// origin is changed only if it is still missingOrigin; if another writer changed it meanwhile,
+// or no tracked copy holds the content, missingOrigin is dropped from the record as before and
+// "" is returned.
+func (is *ImageStore) replaceMissingOrigin(digest godigest.Digest, missingOrigin string) (string, error) {
+	records, err := is.cache.GetAllBlobs(digest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		return "", err
+	}
+
+	for _, record := range records {
+		candidate := is.cacheRecordPath(record)
+		if candidate == "" || path.Clean(candidate) == path.Clean(missingOrigin) {
+			continue
+		}
+
+		binfo, err := is.storeDriver.Stat(candidate)
+		if err != nil {
+			if errclass.IsStorageObjectMissing(err) {
+				continue
+			}
+
+			return "", mapStorageErr(err)
+		}
+
+		if lacksContent(digest, binfo.Size()) {
+			continue
+		}
+
+		if err := is.cache.ReplaceBlob(digest, missingOrigin, candidate); err != nil {
+			if errors.Is(err, zerr.ErrCacheConflict) {
+				return "", nil
+			}
+
+			return "", err
+		}
+
+		// missingOrigin is a duplicate now, and still gone from storage
+		if err := is.cache.DeleteBlob(digest, missingOrigin); err != nil {
+			return "", err
+		}
+
+		return candidate, nil
+	}
+
+	return "", is.cache.DeleteBlob(digest, missingOrigin)
 }
 
 func (is *ImageStore) getCachedBlobPath(digest godigest.Digest) (string, error) {
@@ -3068,6 +3184,13 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 	binfo, err := is.storeDriver.Stat(blobPath)
 	if err != nil {
 		if errclass.IsStorageObjectMissing(err) {
+			// A copy that has gone may still be the cache origin, after a hand-off that moved its
+			// content but could not publish the new origin. checkCacheBlob replaces such an origin
+			// with a copy that holds the content.
+			if !is.isCacheNil() {
+				_, _ = is.checkCacheBlob(digest)
+			}
+
 			return mapStorageErr(err)
 		}
 
@@ -3197,7 +3320,10 @@ func (is *ImageStore) originLostContent(digest godigest.Digest, originPath strin
 // be deleted, to another copy the cache records, and makes that copy the origin. A copy storage confirms is
 // missing is dropped from the cache and the next one tried, so that one lost copy cannot block
 // the delete for good. It reports whether the hand-off removed fromPath; with no other copy, it
-// did not.
+// did not. The origin is changed only if it is still the one just read; if another writer changed
+// it in between, ErrCacheConflict is returned and the caller starts over, unless the hand-off
+// has already moved the content: then toPath is the only copy of it this node knows of, and it
+// is recorded in the cache whatever the record says now.
 func (is *ImageStore) handOffOrigin(digest godigest.Digest, fromPath string, fromInfo driver.FileInfo,
 ) (bool, error) {
 	records, err := is.cache.GetAllBlobs(digest)
@@ -3228,10 +3354,66 @@ func (is *ImageStore) handOffOrigin(digest godigest.Digest, fromPath string, fro
 		}
 
 		// toPath now holds the content, so a failure from here on cannot lose it
-		return removedFrom, is.cache.SetOrigin(digest, toPath)
+		err = is.moveOrigin(digest, toPath)
+		if errors.Is(err, zerr.ErrCacheConflict) && removedFrom {
+			is.log.Warn().Str("from", fromPath).Str("to", toPath).Str("component", "dedupe").
+				Msg("blob record changed during the hand-off, recording the copy that holds the content")
+
+			err = is.recordContentCopy(digest, toPath)
+		}
+
+		return removedFrom, err
 	}
 
 	return false, nil
+}
+
+// recordContentCopy makes sure the cache leads to blobPath, which holds digest's content, after
+// another writer changed the record while this node moved the content there: typically a delete
+// of blobPath's previous, empty copy on another node, which dropped blobPath from the record.
+// If the record still names a copy that holds content, blobPath is added as a copy of it; if it
+// names a copy without content, or there is no record, blobPath becomes the origin.
+func (is *ImageStore) recordContentCopy(digest godigest.Digest, blobPath string) error {
+	record, err := is.cache.GetBlob(digest)
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
+		return err
+	}
+
+	if record != "" {
+		lost, err := is.originLostContent(digest, is.cacheRecordPath(record))
+		if err != nil {
+			return err
+		}
+
+		if !lost {
+			err := is.cache.PutDuplicate(digest, blobPath)
+			if err == nil || !errors.Is(err, zerr.ErrCacheMiss) {
+				return err
+			}
+		}
+	}
+
+	return is.cache.SetOrigin(digest, blobPath)
+}
+
+// moveOrigin makes toPath the cache origin of digest, replacing the origin read from the cache
+// now. Only a write that finds the origin unchanged goes through.
+func (is *ImageStore) moveOrigin(digest godigest.Digest, toPath string) error {
+	record, err := is.cache.GetBlob(digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return zerr.ErrCacheConflict
+		}
+
+		return err
+	}
+
+	origin := is.cacheRecordPath(record)
+	if path.Clean(origin) == path.Clean(toPath) {
+		return nil
+	}
+
+	return is.cache.ReplaceBlob(digest, origin, toPath)
 }
 
 // deleteMustWaitForWalk reports whether deleting the content copy described by binfo has to
@@ -3553,10 +3735,8 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			}
 
 			// cache dedupe blob
-			if ok := is.cache.HasBlob(digest, blobPath); !ok {
-				if err := is.cache.PutBlob(digest, blobPath); err != nil {
-					return err
-				}
+			if _, err := is.recordRebuiltCopy(digest, blobPath); err != nil {
+				return err
 			}
 
 		// A copy without content that is not a placeholder is corrupt: it can be neither the
@@ -3581,22 +3761,37 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 			// if we have an original blob cached then we can safely dedupe the rest of them
 			// (LinkBlob skips the original itself)
 			if originalBlob != "" {
+				/* Record the copy before linking over it: on remote storage the link leaves a
+				placeholder, which only the cache leads to. A copy the record cannot take, because
+				it is full, keeps its content instead; CheckBlob and DedupeBlob leave such copies
+				too, and a later rebuild sees them again. */
+				recorded, err := is.recordRebuiltCopy(digest, blobPath)
+				if err != nil {
+					return err
+				}
+
+				if !recorded {
+					continue
+				}
+
 				if err := is.lifecycle.LinkBlob(originalBlob, blobPath); err != nil {
 					is.log.Error().Err(err).Str("path", blobPath).Str("component", "dedupe").Msg("failed to dedupe blob")
 
 					return err
 				}
-			} else {
-				// First content-bearing path is the preserved origin. Do not reassign
-				// after linking a later full copy: that would point originalBlob at a
-				// path we just emptied and empty the real origin on the next iteration.
-				originalBlob = blobPath
 
-				// Repair even when no placeholder was seen first: PutBlob alone cannot replace
-				// a stale empty origin left in the cache.
-				if err := is.cache.SetOrigin(digest, originalBlob); err != nil {
-					return err
-				}
+				continue
+			}
+
+			// First content-bearing path is the preserved origin. Do not reassign
+			// after linking a later full copy: that would point originalBlob at a
+			// path we just emptied and empty the real origin on the next iteration.
+			originalBlob = blobPath
+
+			// Repair even when no placeholder was seen first: PutBlob alone cannot replace
+			// a stale empty origin left in the cache.
+			if err := is.cache.SetOrigin(digest, originalBlob); err != nil {
+				return err
 			}
 
 			// cache it
@@ -3612,6 +3807,29 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 		Msg("deduping blobs for digest finished successfully")
 
 	return nil
+}
+
+// recordRebuiltCopy records blobPath as a copy of digest during the dedupe rebuild, unless it is
+// recorded already, and reports whether it is recorded now. A record that cannot take another
+// copy is not an error for the rebuild: the copy is left as it is, unrecorded, and reported.
+func (is *ImageStore) recordRebuiltCopy(digest godigest.Digest, blobPath string) (bool, error) {
+	if is.cache.HasBlob(digest, blobPath) {
+		return true, nil
+	}
+
+	err := is.cache.PutBlob(digest, blobPath)
+	if err == nil {
+		return true, nil
+	}
+
+	if errors.Is(err, zerr.ErrCacheFull) {
+		is.log.Warn().Err(err).Str("path", blobPath).Str("digest", digest.String()).Str("component", "dedupe").
+			Msg("dedupe record is full, leaving the copy unrecorded")
+
+		return false, nil
+	}
+
+	return false, err
 }
 
 // anyBlobExists reports whether any of these paths is still present. A path that has gone
