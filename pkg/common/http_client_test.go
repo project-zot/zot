@@ -267,3 +267,21 @@ func TestCreateHTTPClientExplicitPairTakesPrecedence(t *testing.T) {
 		So(first.Subject.CommonName, ShouldEqual, "bob")
 	})
 }
+
+func TestCreateHTTPClientCertsDirCannotBeExamined(t *testing.T) {
+	Convey("a certs.d directory that can't be examined means no per-host certs", t, func() {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		// stat of $HOME/.config/containers/certs.d/<host> fails with ENOTDIR
+		So(os.WriteFile(path.Join(home, ".config"), nil, 0o600), ShouldBeNil)
+
+		client, err := common.CreateHTTPClient(&common.HTTPClientOptions{
+			TLSEnabled: true,
+			VerifyTLS:  true,
+			Host:       "localhost",
+		})
+		So(err, ShouldBeNil)
+		So(client, ShouldNotBeNil)
+	})
+}

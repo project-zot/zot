@@ -3,15 +3,12 @@ package common
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
 	"net"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -109,21 +106,12 @@ func DirExists(d string) bool {
 
 	fileInfo, err := os.Stat(d) //nolint: gosec
 	if err != nil {
-		if e, ok := err.(*fs.PathError); ok && errors.Is(e.Err, syscall.ENAMETOOLONG) || //nolint: errorlint
-			errors.Is(e.Err, syscall.EINVAL) {
-			return false
-		}
-	}
-
-	if err != nil && os.IsNotExist(err) {
+		// fileInfo is nil on any error, and a path that can't be examined
+		// (missing, permission denied, below a file, ...) is not a usable directory
 		return false
 	}
 
-	if !fileInfo.IsDir() {
-		return false
-	}
-
-	return true
+	return fileInfo.IsDir()
 }
 
 // MarshalThroughStruct is used to filter a json fields by using an intermediate struct.
