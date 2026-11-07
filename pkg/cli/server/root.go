@@ -1793,13 +1793,10 @@ func validateGCRules(retention config.ImageRetention, logger zlog.Logger) error 
 }
 
 // validateRegistryManifestCheckInterval rejects a manifestCheckInterval that cannot take effect.
-// The interval only throttles on-demand manifest checks, so it is meaningless without onDemand.
+// The interval only throttles or disables on-demand manifest checks, so it is meaningless
+// without onDemand.
 func validateRegistryManifestCheckInterval(regCfg syncconf.RegistryConfig) error {
-	if regCfg.ManifestCheckInterval < 0 {
-		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "manifestCheckInterval cannot be negative")
-	}
-
-	if regCfg.ManifestCheckInterval > 0 && !regCfg.OnDemand {
+	if regCfg.ManifestCheckInterval != 0 && !regCfg.OnDemand {
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "manifestCheckInterval requires onDemand to be enabled")
 	}
 
@@ -1817,7 +1814,7 @@ func validateRegistryOnDemandInBackground(regCfg syncconf.RegistryConfig) error 
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "onDemandInBackground requires onDemand to be enabled")
 	}
 
-	if regCfg.ManifestCheckInterval > 0 {
+	if regCfg.ManifestCheckInterval != 0 {
 		return fmt.Errorf("%w: %s", zerr.ErrBadConfig,
 			"onDemandInBackground is incompatible with manifestCheckInterval")
 	}

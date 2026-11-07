@@ -1496,7 +1496,7 @@ Configure each registry sync:
 				"maxConcurrentStreams": 32,         # with stream: cap on distinct blobs streaming at once, shared by all streaming registries (all must agree); past it, requests use blocking on-demand sync (default: 32)
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"platforms": ["linux/amd64"],       # periodic sync default: sparse-copy these OS/arch[/variant] children; omit/empty = all. Overridden by content[].platforms when set. On-demand ignores both. Extra slash tokens beyond three are ignored by platform.Parse (not rejected).
-				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream. Requires onDemand.
+				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream; when negative (e.g. -1) a locally present tag is never checked upstream. Requires onDemand.
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
@@ -1587,6 +1587,21 @@ local. Notes:
  - requests by digest are unaffected, a locally present digest is already served without contacting upstream
  - a local miss, for instance after garbage collection, always falls back to a normal sync
  - the last check time is kept in memory, so the first request after a restart checks upstream again
+
+Set a negative value, such as `-1`, to never check a locally present tag against upstream, for
+instance for release tags that are never repushed, or when upstream is often unreachable:
+
+```
+			"registries": [{
+				"urls": ["https://registry-1.docker.io"],
+				"onDemand": true,
+				"manifestCheckInterval": -1
+			}]
+```
+
+A locally present tag is then served without contacting upstream, also when it was copied into
+storage instead of synced, and also after a restart. A tag that is not present locally is still
+synced on demand. A tag repushed upstream is not updated.
 
 ### On-demand sync in the background
 
