@@ -218,7 +218,11 @@ func TestGarbageCollectOnDemand(t *testing.T) {
 		})
 
 		Convey("SweepNow reports a sweep the scheduler will not run", func() {
-			onDemand := gc.NewGarbageCollect(imgStore, metaDB, opts, nil, log, metrics).
+			windowOpts := opts
+			// keep the periodic sweep from starting before the shutdown, as shutdown would leave it running
+			windowOpts.TimeWindow = timeWindowExcludingNow()
+
+			onDemand := gc.NewGarbageCollect(imgStore, metaDB, windowOpts, nil, log, metrics).
 				CleanImageStorePeriodically(time.Hour, sch)
 
 			sch.RunScheduler()
