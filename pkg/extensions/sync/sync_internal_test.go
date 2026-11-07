@@ -3468,6 +3468,27 @@ func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 
 		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
 	})
+
+	Convey("A negative interval only applies to the repos its registry's content rules match", t, func() {
+		newService := func(prefix string, interval time.Duration) *BaseService {
+			service, err := New(syncconf.RegistryConfig{
+				URLs:                  []string{"http://localhost:9999"},
+				OnDemand:              true,
+				Content:               []syncconf.Content{{Prefix: prefix}},
+				ManifestCheckInterval: interval,
+			}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			return service
+		}
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(newService("immutable/**", -1))
+		onDemand.Add(newService("mutable/**", 0))
+
+		So(onDemand.ShouldCheckUpstreamManifest("immutable/app", "latest"), ShouldBeFalse)
+		So(onDemand.ShouldCheckUpstreamManifest("mutable/app", "latest"), ShouldBeTrue)
+	})
 }
 
 func TestGetRepoListPagination(t *testing.T) {

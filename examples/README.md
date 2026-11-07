@@ -1601,7 +1601,8 @@ instance for release tags that are never repushed, or when upstream is often unr
 
 A locally present tag is then served without contacting upstream, also when it was copied into
 storage instead of synced, and also after a restart. A tag that is not present locally is still
-synced on demand. A tag repushed upstream is not updated.
+synced on demand. A tag repushed upstream is not updated. With `content` rules, this applies only
+to the repositories they match.
 
 ### On-demand sync in the background
 
