@@ -1601,6 +1601,12 @@ func (gen *GCTaskGenerator) IsReady() bool {
 	// window reopens the next day.
 	startingNewSweep := len(gen.processedRepos) == 0 && gen.nextRun.IsZero()
 
+	// Don't start a new sweep while tasks of the last one are still queued or running, so that
+	// the status reports when each sweep finishes.
+	if startingNewSweep && gen.sweep.hasPendingTasks() {
+		return false
+	}
+
 	if startingNewSweep && !gen.forceSweep.Load() && !gen.timeWindow.Contains(now) {
 		if !gen.loggedWindowDefer {
 			if gen.gc.log.Logger != nil {

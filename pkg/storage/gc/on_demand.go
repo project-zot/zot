@@ -225,6 +225,14 @@ func (s *sweepState) finishIfDone() {
 	s.last.FinishedAt = time.Now()
 }
 
+// hasPendingTasks reports whether tasks handed out by the sweep haven't finished yet.
+func (s *sweepState) hasPendingTasks() bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	return s.inflight > 0
+}
+
 func (s *sweepState) status() RunStatus {
 	s.lock.Lock()
 	defer s.lock.Unlock()
