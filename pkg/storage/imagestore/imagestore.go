@@ -1296,13 +1296,28 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 		}
 	}
 
+	var cleanupErr error
+
 	if toDelete {
 		p := path.Join(dir, ispec.ImageBlobsDir, manifestDesc.Digest.Algorithm().String(),
 			manifestDesc.Digest.Encoded())
 
 		err = is.storeDriver.Delete(p)
 		if err != nil {
-			return err
+			if errclass.IsStorageObjectMissing(err) {
+				is.log.Warn().Str("reference", reference).Str("repository", repo).
+					Str("digest", manifestDesc.Digest.String()).
+					Msg("unreferenced manifest blob was already removed")
+			} else {
+				// index.json is the logical deletion commit. Preserve the cleanup
+				// error so callers can distinguish it from a pre-commit failure;
+				// any remaining blob is an orphan that GC can retry later.
+				is.log.Error().Err(err).Str("reference", reference).Str("repository", repo).
+					Str("digest", manifestDesc.Digest.String()).
+					Msg("failed to delete unreferenced manifest blob; leaving it for garbage collection")
+
+				cleanupErr = fmt.Errorf("%w: %w", zerr.ErrManifestBlobCleanup, err)
+			}
 		}
 	}
 
@@ -1311,7 +1326,7 @@ func (is *ImageStore) deleteImageManifest(ctx context.Context, repo, reference s
 			events.EventContextFromContext(ctx))
 	}
 
-	return nil
+	return cleanupErr
 }
 
 // BlobUploadPath returns the upload path for a blob in this store.

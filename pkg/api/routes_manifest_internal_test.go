@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -21,12 +24,220 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/meta"
 	"zotregistry.dev/zot/v2/pkg/meta/boltdb"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
+	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	image "zotregistry.dev/zot/v2/pkg/test/image-utils"
+	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
+
+type manifestDeleteFaultDriver struct {
+	storageTypes.Driver
+
+	manifestPath      string
+	indexPath         string
+	deleteErr         error
+	deleteBeforeError bool
+	writeErr          error
+}
+
+func (d *manifestDeleteFaultDriver) Delete(deletePath string) error {
+	if deletePath == d.manifestPath && d.deleteErr != nil {
+		if d.deleteBeforeError {
+			if err := d.Driver.Delete(deletePath); err != nil {
+				return err
+			}
+		}
+
+		return d.deleteErr
+	}
+
+	return d.Driver.Delete(deletePath)
+}
+
+func (d *manifestDeleteFaultDriver) WriteFile(writePath string, content []byte) (int, error) {
+	if writePath == d.indexPath && d.writeErr != nil {
+		return 0, d.writeErr
+	}
+
+	return d.Driver.WriteFile(writePath, content)
+}
+
+func newManifestDeleteFixture(t *testing.T, faultDriver *manifestDeleteFaultDriver) (
+	*RouteHandler, storageTypes.ImageStore, *boltdb.BoltDB, image.Image, image.Image, *mocks.EventRecorderMock,
+) {
+	t.Helper()
+
+	rootDir := t.TempDir()
+	logger := log.NewTestLogger()
+	faultDriver.Driver = local.New(true)
+	eventCapture := &mocks.EventRecorderMock{}
+	store := imagestore.NewImageStore(rootDir, rootDir, false, true, logger,
+		monitoring.NewNopMetricServer(), nil, faultDriver, nil, nil, eventCapture)
+	controller := storage.StoreController{DefaultStore: store}
+
+	metaRoot := t.TempDir()
+	boltDriver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: metaRoot})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, boltDriver.Close()) })
+	metaDB, err := boltdb.New(boltDriver, logger)
+	require.NoError(t, err)
+
+	firstImage := image.CreateRandomImage()
+	secondImage := image.CreateRandomImage()
+	for _, item := range []struct {
+		img image.Image
+		ref string
+	}{
+		{img: firstImage, ref: "first"},
+		{img: secondImage, ref: "keep"},
+	} {
+		require.NoError(t, image.WriteImageToFileSystem(item.img, "repo", item.ref, controller))
+
+		body, marshalErr := json.Marshal(item.img.Manifest)
+		require.NoError(t, marshalErr)
+		mediaType := item.img.ManifestDescriptor.MediaType
+		if mediaType == "" {
+			mediaType = ispec.MediaTypeImageManifest
+		}
+		require.NoError(t, meta.OnUpdateManifest(t.Context(), "repo", item.ref, mediaType,
+			item.img.Digest(), body, controller, metaDB, logger))
+	}
+
+	faultDriver.manifestPath = store.BlobPath("repo", firstImage.Digest())
+	faultDriver.indexPath = path.Join(rootDir, "repo", ispec.ImageIndexFile)
+
+	controllerAPI := &Controller{
+		Config:          config.New(),
+		Log:             logger,
+		MetaDB:          metaDB,
+		StoreController: controller,
+	}
+
+	return &RouteHandler{c: controllerAPI}, store, metaDB, firstImage, secondImage, eventCapture
+}
+
+func invokeDeleteManifest(t *testing.T, handler *RouteHandler, digest godigest.Digest) *httptest.ResponseRecorder {
+	t.Helper()
+
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodDelete,
+		"/v2/repo/manifests/"+digest.String(), http.NoBody)
+	request = mux.SetURLVars(request, map[string]string{
+		"name":      "repo",
+		"reference": digest.String(),
+	})
+	response := httptest.NewRecorder()
+	handler.DeleteManifest(response, request)
+
+	return response
+}
+
+func TestDeleteManifestCompletesMetaDBCleanupAfterBlobDeleteError(t *testing.T) {
+	for _, testCase := range []struct {
+		name              string
+		err               error
+		deleteBeforeError bool
+		blobDeleted       bool
+	}{
+		{
+			name:              "transient after remote commit",
+			err:               errclass.MarkTransient(errors.New("manifest delete acknowledgement lost")), //nolint:err113 // test
+			deleteBeforeError: true,
+			blobDeleted:       true,
+		},
+		{
+			name:        "permanent before remote commit",
+			err:         errclass.MarkPermanent(errors.New("manifest delete permission denied")), //nolint:err113 // test
+			blobDeleted: false,
+		},
+		{
+			name:              "permanent after remote commit",
+			err:               errclass.MarkPermanent(errors.New("manifest delete acknowledgement lost")), //nolint:err113 // test
+			deleteBeforeError: true,
+			blobDeleted:       true,
+		},
+		{
+			name:              "already missing blob",
+			err:               errclass.MarkMissing(errors.New("manifest blob already removed")), //nolint:err113 // test
+			deleteBeforeError: true,
+			blobDeleted:       true,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			faultDriver := &manifestDeleteFaultDriver{
+				deleteErr:         testCase.err,
+				deleteBeforeError: testCase.deleteBeforeError,
+			}
+			handler, store, metaDB, firstImage, secondImage, eventCapture := newManifestDeleteFixture(t, faultDriver)
+
+			response := invokeDeleteManifest(t, handler, firstImage.Digest())
+			require.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
+
+			_, _, _, err := store.GetImageManifest("repo", firstImage.Digest().String())
+			require.ErrorIs(t, err, zerr.ErrManifestNotFound)
+			_, storedDigest, _, err := store.GetImageManifest("repo", secondImage.Digest().String())
+			require.NoError(t, err)
+			require.Equal(t, secondImage.Digest(), storedDigest)
+
+			_, err = os.Stat(faultDriver.manifestPath)
+			if testCase.blobDeleted {
+				require.ErrorIs(t, err, os.ErrNotExist)
+			} else {
+				require.NoError(t, err)
+			}
+
+			indexContent, err := store.GetIndexContent("repo")
+			require.NoError(t, err)
+			var index ispec.Index
+			require.NoError(t, json.Unmarshal(indexContent, &index))
+			require.Len(t, index.Manifests, 1)
+			require.Equal(t, secondImage.Digest(), index.Manifests[0].Digest)
+
+			repoMeta, err := metaDB.GetRepoMeta(t.Context(), "repo")
+			require.NoError(t, err)
+			require.NotContains(t, repoMeta.Tags, "first")
+			require.Equal(t, secondImage.Digest().String(), repoMeta.Tags["keep"].Digest)
+
+			searchResults, err := metaDB.SearchTags(t.Context(), "repo:first")
+			require.NoError(t, err)
+			require.Empty(t, searchResults)
+
+			eventCapture.Lock()
+			require.Len(t, eventCapture.ImageDeletedCalls, 1)
+			require.Equal(t, firstImage.Digest().String(), eventCapture.ImageDeletedCalls[0].Digest)
+			eventCapture.Unlock()
+		})
+	}
+}
+
+func TestDeleteManifestKeepsStateWhenIndexCommitFails(t *testing.T) {
+	faultDriver := &manifestDeleteFaultDriver{
+		writeErr: errclass.MarkTransient(errors.New("index write failed")), //nolint:err113 // test
+	}
+	handler, store, metaDB, firstImage, secondImage, _ := newManifestDeleteFixture(t, faultDriver)
+
+	response := invokeDeleteManifest(t, handler, firstImage.Digest())
+	require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+
+	_, storedDigest, _, err := store.GetImageManifest("repo", firstImage.Digest().String())
+	require.NoError(t, err)
+	require.Equal(t, firstImage.Digest(), storedDigest)
+	_, _, _, err = store.GetImageManifest("repo", secondImage.Digest().String())
+	require.NoError(t, err)
+
+	_, err = os.Stat(faultDriver.manifestPath)
+	require.NoError(t, err)
+
+	repoMeta, err := metaDB.GetRepoMeta(t.Context(), "repo")
+	require.NoError(t, err)
+	require.Equal(t, firstImage.Digest().String(), repoMeta.Tags["first"].Digest)
+	require.Equal(t, secondImage.Digest().String(), repoMeta.Tags["keep"].Digest)
+}
 
 func TestWritePutImageManifestErrorMissingBlob(t *testing.T) {
 	t.Parallel()

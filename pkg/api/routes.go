@@ -1079,7 +1079,8 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 
 	err = imgStore.DeleteImageManifest(ctx, name, reference, detectCollision)
-	if err != nil { //nolint: dupl
+	cleanupCommitted := errors.Is(err, zerr.ErrManifestBlobCleanup)
+	if err != nil && !cleanupCommitted { //nolint: dupl
 		details := zerr.GetDetails(err)
 		if writeStorageClassError(response, err) {
 			rh.c.Log.Error().Err(err).Msg("failed to delete manifest due to storage failure")
@@ -1114,6 +1115,10 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		}
 
 		return
+	}
+	if cleanupCommitted {
+		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
+			Msg("manifest deleted logically; blob cleanup deferred to garbage collection")
 	}
 
 	if rh.c.MetaDB != nil {
