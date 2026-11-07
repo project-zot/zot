@@ -106,6 +106,9 @@ linters:
           - godot
         path: pkg/extensions/extension_mgmt.go
       - linters:
+          - godot
+        path: pkg/extensions/extension_mgmt_gc.go
+      - linters:
           - lll
           - varnamelen
         path: pkg/extensions/search/schema.resolvers.go
