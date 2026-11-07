@@ -86,6 +86,32 @@ func TestGarbageCollectOnDemand(t *testing.T) {
 			So(onDemand.Status().FinishedAt.IsZero(), ShouldBeFalse)
 		})
 
+		Convey("SweepNow runs a sweep with a zero interval, after the startup sweep", func() {
+			onDemand := gc.NewGarbageCollect(imgStore, metaDB, opts, nil, log, metrics).
+				CleanImageStorePeriodically(0, sch)
+
+			sch.RunScheduler()
+			defer sch.Shutdown()
+
+			So(waitFor(func() bool { return !onDemand.Status().FinishedAt.IsZero() }), ShouldBeTrue)
+			firstFinish := onDemand.Status().FinishedAt
+
+			// let the scheduler set the done generator aside
+			time.Sleep(500 * time.Millisecond)
+
+			orphan := uploadOrphanBlob(imgStore)
+			time.Sleep(10 * time.Millisecond) // let the orphan get older than the GC delay
+
+			So(onDemand.SweepNow(), ShouldBeNil)
+			So(waitFor(func() bool {
+				status := onDemand.Status()
+
+				return !status.Running && status.FinishedAt.After(firstFinish)
+			}), ShouldBeTrue)
+
+			So(blobExists(imgStore, orphan), ShouldBeFalse)
+		})
+
 		Convey("SweepNow runs a sweep before the interval passes", func() {
 			onDemand := gc.NewGarbageCollect(imgStore, metaDB, opts, nil, log, metrics).
 				CleanImageStorePeriodically(time.Hour, sch)

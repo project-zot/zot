@@ -529,8 +529,9 @@ func (gen *generator) getRanking() float64 {
 	return math.Pow(10, float64(gen.priority)) / (1 + float64(gen.taskCount)) //nolint:mnd
 }
 
-// RunGeneratorNow makes a periodic generator which is waiting for its interval to pass
-// ready to run again, without changing its interval. A generator which is already running is left as is.
+// RunGeneratorNow makes a generator which is done ready to run again: a periodic generator which is
+// waiting for its interval to pass, without changing its interval, or a one-shot generator which already ran.
+// A generator which is already running is left as is.
 // It returns false if the generator was not submitted to this scheduler, or the scheduler is shutting down.
 func (scheduler *Scheduler) RunGeneratorNow(taskGenerator TaskGenerator) bool {
 	if scheduler.inShutdown() {
@@ -546,12 +547,24 @@ func (scheduler *Scheduler) RunGeneratorNow(taskGenerator TaskGenerator) bool {
 				continue
 			}
 
-			if gen.done {
-				gen.lastRun = time.Time{}
-			}
+			gen.done = false
 
 			return true
 		}
+	}
+
+	// a one-shot generator which is done is set aside, so move it back to be pushed once it is ready
+	for i, gen := range scheduler.doneGenerators {
+		if gen.taskGenerator != taskGenerator {
+			continue
+		}
+
+		gen.done = false
+
+		scheduler.doneGenerators = append(scheduler.doneGenerators[:i], scheduler.doneGenerators[i+1:]...)
+		scheduler.waitingGenerators = append(scheduler.waitingGenerators, gen)
+
+		return true
 	}
 
 	return false

@@ -567,6 +567,29 @@ func TestRunGeneratorNow(t *testing.T) {
 		So(waitFor(func() bool { return runs.Load() == 2 }, 5*time.Second), ShouldBeTrue)
 	})
 
+	Convey("A one-shot generator which is done runs again when requested", t, func() {
+		sch := scheduler.NewScheduler(config.New(), monitoring.NewNopMetricServer(), log.NewTestLogger())
+
+		runs := &atomic.Int64{}
+		gen := &onceGenerator{runs: runs}
+		sch.SubmitGenerator(gen, 0, scheduler.MediumPriority)
+
+		sch.RunScheduler()
+		defer sch.Shutdown()
+
+		for run := int64(1); run <= 3; run++ {
+			So(waitFor(func() bool { return runs.Load() == run }, 5*time.Second), ShouldBeTrue)
+
+			// let the scheduler set the done generator aside
+			time.Sleep(500 * time.Millisecond)
+			So(runs.Load(), ShouldEqual, run)
+
+			if run < 3 {
+				So(sch.RunGeneratorNow(gen), ShouldBeTrue)
+			}
+		}
+	})
+
 	Convey("An unknown generator is reported as not found", t, func() {
 		sch := scheduler.NewScheduler(config.New(), monitoring.NewNopMetricServer(), log.NewTestLogger())
 
