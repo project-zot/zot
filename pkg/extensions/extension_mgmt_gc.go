@@ -35,6 +35,8 @@ type GCHandler struct {
 // @Failure 409 {string}   string   "gc disabled for the store, or already running"
 // @Failure 500 {string}   string   "internal server error"
 // @Failure 503 {string}   string   "gc could not be scheduled, retry later"
+//
+// The run is asynchronous: GetGCStatus reports its progress and result.
 func (h *GCHandler) RunGC(response http.ResponseWriter, request *http.Request) {
 	onDemand, store, repo, ok := h.parseRequest(response, request)
 	if !ok {
@@ -84,6 +86,8 @@ func (h *GCHandler) RunGC(response http.ResponseWriter, request *http.Request) {
 // @Failure 404 {string}   string   "store not found, or gc never requested for the repository"
 // @Failure 409 {string}   string   "gc disabled for the store"
 // @Failure 500 {string}   string   "internal server error"
+//
+// The status is kept in memory, so a restart or a config reload clears it.
 func (h *GCHandler) GetGCStatus(response http.ResponseWriter, request *http.Request) {
 	onDemand, _, repo, ok := h.parseRequest(response, request)
 	if !ok {
