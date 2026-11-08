@@ -3187,6 +3187,163 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 	})
 }
 
+func TestCleanRepoDefersMetaDBPruningUntilIndexCommit(t *testing.T) {
+	Convey("cleanRepo commits the index before applying its MetaDB pruning plan", t, func() {
+		const repo = "gc-meta-plan"
+		const tag = "drop"
+
+		digest := godigest.FromString("gc-meta-plan-manifest")
+		index := ispec.Index{
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageIndex,
+			Manifests: []ispec.Descriptor{{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    digest,
+				Annotations: map[string]string{
+					ispec.AnnotationRefName: tag,
+				},
+			}},
+		}
+
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		manifestBuf, err := json.Marshal(ispec.Manifest{
+			SchemaVersion: 2,
+			MediaType:     ispec.MediaTypeImageManifest,
+		})
+		So(err, ShouldBeNil)
+
+		falseVal := false
+		gcOptions := Options{
+			Delay: time.Hour,
+			ImageRetention: config.ImageRetention{
+				Delay: time.Hour,
+				Policies: []config.RetentionPolicy{{
+					Repositories:   []string{"**"},
+					DeleteUntagged: &falseVal,
+					KeepTags: []config.KeepTagsPolicy{{
+						Patterns: []string{"^keep$"},
+					}},
+				}},
+			},
+		}
+
+		runGC := func(putErr error) (bool, bool, ispec.Index, ispec.Index, int, error) {
+			metaDeleted := false
+			putSawMetaDeletion := false
+			writtenIndex := ispec.Index{}
+			persistedIndex := index
+			putCalls := 0
+
+			imgStore := mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return indexBuf, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return manifestBuf, nil
+				},
+				GetAllBlobsFn: func(repo string) ([]godigest.Digest, error) {
+					return []godigest.Digest{digest}, nil
+				},
+				PutIndexContentFn: func(repo string, updatedIndex ispec.Index) error {
+					putCalls++
+					putSawMetaDeletion = metaDeleted
+					if putCalls == 1 {
+						writtenIndex = updatedIndex
+					}
+					persistedIndex = updatedIndex
+
+					if putErr != nil && putCalls == 1 {
+						return putErr
+					}
+
+					return nil
+				},
+			}
+
+			metaDB := mocks.MetaDBMock{
+				GetRepoMetaFn: func(ctx context.Context, repo string) (types.RepoMeta, error) {
+					return types.RepoMeta{
+						Name: repo,
+						Tags: map[types.Tag]types.Descriptor{
+							tag: {Digest: digest.String(), MediaType: ispec.MediaTypeImageManifest},
+						},
+						Statistics: map[types.ImageDigest]types.DescriptorStatistics{
+							digest.String(): {},
+						},
+					}, nil
+				},
+				RemoveRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest) error {
+					metaDeleted = true
+
+					return nil
+				},
+			}
+
+			gc := NewGarbageCollect(imgStore, metaDB, gcOptions, zlog.NewAuditLogger("debug", ""),
+				zlog.NewTestLogger(), monitoring.NewNopMetricServer())
+
+			return metaDeleted, putSawMetaDeletion, writtenIndex, persistedIndex, putCalls,
+				gc.cleanRepo(context.Background(), repo)
+		}
+
+		Convey("keeps MetaDB unchanged when PutIndexContent fails", func() {
+			metaDeleted, putSawMetaDeletion, writtenIndex, persistedIndex, putCalls, err := runGC(errGC)
+
+			So(errors.Is(err, errGC), ShouldBeTrue)
+			So(metaDeleted, ShouldBeFalse)
+			So(putSawMetaDeletion, ShouldBeFalse)
+			So(putCalls, ShouldEqual, 2)
+			So(writtenIndex.Manifests, ShouldHaveLength, 1)
+			_, hasTag := writtenIndex.Manifests[0].Annotations[ispec.AnnotationRefName]
+			So(hasTag, ShouldBeFalse)
+			So(persistedIndex.Manifests, ShouldHaveLength, 1)
+			_, hasTag = persistedIndex.Manifests[0].Annotations[ispec.AnnotationRefName]
+			So(hasTag, ShouldBeTrue)
+		})
+
+		Convey("applies MetaDB pruning after a successful index commit", func() {
+			metaDeleted, putSawMetaDeletion, _, _, putCalls, err := runGC(nil)
+
+			So(err, ShouldBeNil)
+			So(metaDeleted, ShouldBeTrue)
+			So(putSawMetaDeletion, ShouldBeFalse)
+			So(putCalls, ShouldEqual, 1)
+		})
+	})
+}
+
+func TestCommitMetaDBPlanStopsAfterError(t *testing.T) {
+	Convey("commitMetaDBPlan stops after the first strict metadata error", t, func() {
+		firstCalled := false
+		secondCalled := false
+
+		gc := GarbageCollect{
+			metaPlan: &gcMetaDBPlan{
+				operations: []func() error{
+					func() error {
+						firstCalled = true
+
+						return errGC
+					},
+					func() error {
+						secondCalled = true
+
+						return nil
+					},
+				},
+			},
+		}
+
+		err := gc.commitMetaDBPlan()
+
+		So(errors.Is(err, errGC), ShouldBeTrue)
+		So(firstCalled, ShouldBeTrue)
+		So(secondCalled, ShouldBeFalse)
+	})
+}
+
 func TestCleanRepoWithStaleManifestEntries(t *testing.T) {
 	ctx := context.Background()
 
