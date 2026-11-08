@@ -830,7 +830,9 @@ func authzFailWithReason(
 func bearerAuthzFailWithReason(
 	w http.ResponseWriter, r *http.Request, identity string, authConfig *config.AuthConfig, delay int, reason string,
 ) {
-	time.Sleep(time.Duration(delay) * time.Second)
+	if identity != "" {
+		time.Sleep(time.Duration(delay) * time.Second)
+	}
 	setBearerAuthChallengeForNonSessionClient(w, r, authConfig, requestedBearerResourceAction(r))
 
 	w.Header().Set("Content-Type", "application/json")
