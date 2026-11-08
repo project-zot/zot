@@ -4393,18 +4393,31 @@ func TestManifestCheckIntervalConfig(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "manifestCheckInterval requires onDemand to be enabled")
 		})
 
-		Convey("Reject a negative manifestCheckInterval", func() {
+		Convey("Accept a negative manifestCheckInterval to never check stored tags upstream", func() {
 			content := `{"storage":{"rootDirectory":"/tmp/zot"},
 				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
-				"onDemand": true, "manifestCheckInterval": "-10m"}]}}}`
+				"onDemand": true, "manifestCheckInterval": -1}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.Extensions.Sync.Registries[0].ManifestCheckInterval, ShouldBeLessThan, 0)
+		})
+
+		Convey("Reject a negative manifestCheckInterval when onDemand is false", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": false, "pollInterval": "12h", "manifestCheckInterval": -1}]}}}`
 			cfg := config.New()
 			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 			err := cli.LoadConfiguration(cfg, tmpfile)
 			So(err, ShouldNotBeNil)
 			So(err, ShouldWrap, zerr.ErrBadConfig)
-			So(err.Error(), ShouldContainSubstring, "manifestCheckInterval cannot be negative")
+			So(err.Error(), ShouldContainSubstring, "manifestCheckInterval requires onDemand to be enabled")
 		})
 
 		Convey("manifestCheckInterval coexists with a periodic upstream on another registry", func() {
@@ -4458,6 +4471,20 @@ func TestOnDemandInBackgroundConfig(t *testing.T) {
 				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 				"onDemand": true, "onDemandInBackground": true, "manifestCheckInterval": "1h"}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "onDemandInBackground is incompatible with manifestCheckInterval")
+		})
+
+		Convey("Reject onDemandInBackground with a negative manifestCheckInterval", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "onDemandInBackground": true, "manifestCheckInterval": -1}]}}}`
 			cfg := config.New()
 			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
 			err := cli.LoadConfiguration(cfg, tmpfile)

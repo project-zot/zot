@@ -365,9 +365,20 @@ func (service *BaseService) IsImageLocal(repo, reference string, digest godigest
 }
 
 // ShouldCheckUpstream reports whether an upstream manifest check is due for repo:reference.
-// It is always true when manifestCheckInterval is not configured, which keeps the default
-// behaviour of validating every on-demand request against upstream.
+// The answers of all registries are combined, and a false from any of them skips the check.
+//   - manifestCheckInterval is 0 (default): always true, so every on-demand request is
+//     validated against upstream.
+//   - manifestCheckInterval is positive: false while a successful check of repo:reference
+//     is more recent than the interval.
+//   - manifestCheckInterval is negative: false when this registry has no content rules, or
+//     one of them matches repo, so a stored reference is served without contacting upstream.
+//     True when its content rules don't match repo, so a registry that doesn't serve repo
+//     can't skip the check for the registries that do. The tracker is not used.
 func (service *BaseService) ShouldCheckUpstream(repo, reference string) bool {
+	if service.config.ManifestCheckInterval < 0 {
+		return len(service.config.Content) > 0 && service.contentManager.GetContentByLocalRepo(repo) == nil
+	}
+
 	if service.checkTracker == nil {
 		return true
 	}

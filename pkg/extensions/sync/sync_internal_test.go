@@ -3324,6 +3324,18 @@ func TestBaseServiceShouldCheckUpstream(t *testing.T) {
 		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
 	})
 
+	Convey("With a negative manifestCheckInterval no reference is checked upstream", t, func() {
+		service, err := New(syncconf.RegistryConfig{
+			URLs:                  []string{"http://localhost:9999"},
+			OnDemand:              true,
+			ManifestCheckInterval: -1,
+		}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+		So(service.checkTracker, ShouldBeNil)
+		So(service.ShouldCheckUpstream("repo", "latest"), ShouldBeFalse)
+		So(service.ShouldCheckUpstream("repo", "v1.0.0"), ShouldBeFalse)
+	})
+
 	Convey("New wires the tracker only when the interval is configured", t, func() {
 		withInterval, err := New(syncconf.RegistryConfig{
 			URLs:                  []string{"http://localhost:9999"},
@@ -3455,6 +3467,27 @@ func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 		onDemand.Add(&mockCheckService{})
 
 		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
+	})
+
+	Convey("A negative interval only applies to the repos its registry's content rules match", t, func() {
+		newService := func(prefix string, interval time.Duration) *BaseService {
+			service, err := New(syncconf.RegistryConfig{
+				URLs:                  []string{"http://localhost:9999"},
+				OnDemand:              true,
+				Content:               []syncconf.Content{{Prefix: prefix}},
+				ManifestCheckInterval: interval,
+			}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
+			So(err, ShouldBeNil)
+
+			return service
+		}
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(newService("immutable/**", -1))
+		onDemand.Add(newService("mutable/**", 0))
+
+		So(onDemand.ShouldCheckUpstreamManifest("immutable/app", "latest"), ShouldBeFalse)
+		So(onDemand.ShouldCheckUpstreamManifest("mutable/app", "latest"), ShouldBeTrue)
 	})
 }
 

@@ -5873,6 +5873,79 @@ func TestOnDemandWithDigest(t *testing.T) {
 	})
 }
 
+func TestOnDemandNegativeManifestCheckInterval(t *testing.T) {
+	Convey("A negative manifestCheckInterval serves stored tags without an upstream check", t, func() {
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		srcBaseURL := scm.StartAndWait()
+
+		defer scm.StopServer()
+
+		// pull a tag through a downstream, then move that tag upstream to a new image
+		syncTagThenMoveIt := func(interval time.Duration) (string, *resty.Client, godigest.Digest) {
+			var tlsVerify bool
+
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable: &defaultVal,
+				Registries: []syncconf.RegistryConfig{{
+					URLs:                  []string{srcBaseURL},
+					OnDemand:              true,
+					TLSVerify:             &tlsVerify,
+					MaxRetries:            &maxRetries,
+					ManifestCheckInterval: interval,
+				}},
+			}
+
+			dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
+
+			dcm := test.NewControllerManager(dctlr)
+			destBaseURL := dcm.StartAndWait()
+
+			t.Cleanup(dcm.StopServer)
+
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			storedDigest := godigest.FromBytes(resp.Body())
+
+			So(UploadImage(CreateRandomImage(), srcBaseURL, testImage, testImageTag), ShouldBeNil)
+
+			return destBaseURL, destClient, storedDigest
+		}
+
+		Convey("A stored tag keeps the stored image", func() {
+			destBaseURL, destClient, storedDigest := syncTagThenMoveIt(-1)
+
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(godigest.FromBytes(resp.Body()), ShouldEqual, storedDigest)
+
+			Convey("A tag that is not stored is still synced on demand", func() {
+				image := CreateRandomImage()
+				So(UploadImage(image, srcBaseURL, testImage, "0.0.2"), ShouldBeNil)
+
+				resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/0.0.2")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(godigest.FromBytes(resp.Body()), ShouldEqual, image.Digest())
+			})
+		})
+
+		Convey("Without the interval the moved tag is synced again", func() {
+			destBaseURL, destClient, storedDigest := syncTagThenMoveIt(0)
+
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(godigest.FromBytes(resp.Body()), ShouldNotEqual, storedDigest)
+		})
+	})
+}
+
 func TestOnDemandRetryGoroutineErr(t *testing.T) {
 	Convey("Verify ondemand sync retries in background on error", t, func() {
 		regex := ".*"

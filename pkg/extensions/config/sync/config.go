@@ -64,7 +64,11 @@ type RegistryConfig struct {
 	// locally and syncs the image into storage in the background. Clients that rely only
 	// on this registry will see 404 until sync completes. Requires OnDemand; incompatible
 	// with ManifestCheckInterval. Default is false when unset.
-	OnDemandInBackground  *bool
+	OnDemandInBackground *bool
+	// ManifestCheckInterval controls how often an on-demand request for a stored tag is checked
+	// against upstream: 0 checks every request, a positive interval skips the check for that
+	// long after a successful one, and a negative value never checks a stored tag.
+	// Requires OnDemand.
 	ManifestCheckInterval time.Duration
 	CertDir               string
 	MaxRetries            *int
