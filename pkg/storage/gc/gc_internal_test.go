@@ -4457,6 +4457,248 @@ func runGCGenerator(ctx context.Context, gen *GCTaskGenerator, visited map[strin
 	return nil
 }
 
+func TestGCEmptyDirectoriesExistingNamespaces(t *testing.T) {
+	Convey("a sweep removes empty namespaces and preserves storage content", t, func() {
+		rootDir := path.Join(t.TempDir(), "custom-storage")
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+		gen := &GCTaskGenerator{
+			imgStore: imgStore,
+			gc:       NewGarbageCollect(imgStore, nil, Options{}, nil, log, metrics),
+		}
+		gen.Reset()
+
+		emptyDirs := []string{"customer/foo", "foo", "test", "user/foo", "mixed/empty/deep"}
+		protectedDirs := []string{
+			"_sessions", "_trivy", "_stream", "lost+found", "blobs", ".uploads", ".sync",
+			"mixed/blobs", "mixed/.uploads", "mixed/.sync", "layout/child", "index/child",
+		}
+		for _, dir := range append(emptyDirs, protectedDirs...) {
+			So(os.MkdirAll(path.Join(rootDir, dir), 0o700), ShouldBeNil)
+		}
+
+		// Children of reserved trees and incomplete layouts must not be visited.
+		for _, dir := range protectedDirs {
+			So(os.MkdirAll(path.Join(rootDir, dir, "untouched"), 0o700), ShouldBeNil)
+		}
+
+		files := []string{"cache.db", "meta.db", "mixed/live/marker", "layout/oci-layout", "index/index.json"}
+		So(os.MkdirAll(path.Join(rootDir, "mixed/live"), 0o700), ShouldBeNil)
+		for _, file := range files {
+			So(os.WriteFile(path.Join(rootDir, file), []byte("keep"), 0o600), ShouldBeNil)
+		}
+
+		outside := t.TempDir()
+		So(os.Mkdir(path.Join(outside, "empty"), 0o700), ShouldBeNil)
+		So(os.Symlink(outside, path.Join(rootDir, "outside-link")), ShouldBeNil)
+		So(os.Symlink(path.Join(rootDir, "_sessions"), path.Join(rootDir, "inside-link")), ShouldBeNil)
+
+		So(runGCGenerator(context.Background(), gen, map[string]int{}), ShouldBeNil)
+		So(gen.IsDone(), ShouldBeTrue)
+		for _, dir := range append(emptyDirs, "customer", "user", "mixed/empty") {
+			_, err := os.Stat(path.Join(rootDir, dir))
+			So(os.IsNotExist(err), ShouldBeTrue)
+		}
+
+		for _, dir := range append(protectedDirs, "", "mixed") {
+			info, err := os.Stat(path.Join(rootDir, dir))
+			So(err, ShouldBeNil)
+			So(info.IsDir(), ShouldBeTrue)
+		}
+
+		for _, dir := range protectedDirs {
+			_, err := os.Stat(path.Join(rootDir, dir, "untouched"))
+			So(err, ShouldBeNil)
+		}
+
+		for _, file := range files {
+			content, err := os.ReadFile(path.Join(rootDir, file))
+			So(err, ShouldBeNil)
+			So(string(content), ShouldEqual, "keep")
+		}
+
+		for _, link := range []string{"inside-link", "outside-link"} {
+			info, err := os.Lstat(path.Join(rootDir, link))
+			So(err, ShouldBeNil)
+			So(info.Mode()&os.ModeSymlink, ShouldNotEqual, 0)
+		}
+
+		_, err := os.Stat(path.Join(outside, "empty"))
+		So(err, ShouldBeNil)
+		So(removeEmptyNamespaces(rootDir, "customer"), ShouldBeNil)
+	})
+}
+
+func TestGCEmptyDirectoriesAfterRepositoryRemoval(t *testing.T) {
+	Convey("the following sweep removes ancestors of a collected repository", t, func() {
+		rootDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+		ctx := context.Background()
+		controller := storage.StoreController{DefaultStore: imgStore}
+		img := CreateRandomImage()
+		So(WriteImageToFileSystem(img, "user/foo/bar", "v1", controller), ShouldBeNil)
+		So(imgStore.DeleteImageManifest(ctx, "user/foo/bar", "v1", true), ShouldBeNil)
+		blobs, err := imgStore.GetAllBlobs("user/foo/bar")
+		So(err, ShouldBeNil)
+		old := time.Now().Add(-2 * time.Hour)
+		for _, digest := range blobs {
+			So(os.Chtimes(imgStore.BlobPath("user/foo/bar", digest), old, old), ShouldBeNil)
+		}
+
+		So(WriteImageToFileSystem(img, "customer/live", "v1", controller), ShouldBeNil)
+		manifestBefore, _, _, err := imgStore.GetImageManifest("customer/live", "v1")
+		So(err, ShouldBeNil)
+		young := uploadGCManifest(ctx, imgStore, "customer/young", "young", []byte("young-layer"))
+		uploadID, err := imgStore.NewBlobUpload(ctx, "customer/upload")
+		So(err, ShouldBeNil)
+		So(os.MkdirAll(path.Join(rootDir, "customer/live/empty/child"), 0o700), ShouldBeNil)
+		So(os.MkdirAll(path.Join(rootDir, "customer/empty"), 0o700), ShouldBeNil)
+
+		gen := &GCTaskGenerator{
+			imgStore: imgStore,
+			gc: NewGarbageCollect(imgStore, nil, Options{
+				Delay: time.Hour,
+			}, nil, log, metrics),
+		}
+		gen.Reset()
+		So(runGCGenerator(ctx, gen, map[string]int{}), ShouldBeNil)
+		So(gen.IsDone(), ShouldBeTrue)
+		_, err = os.Stat(path.Join(rootDir, "user/foo/bar"))
+		So(os.IsNotExist(err), ShouldBeTrue)
+		_, err = os.Stat(path.Join(rootDir, "user/foo"))
+		So(err, ShouldBeNil)
+
+		gen.Reset()
+		So(os.MkdirAll(path.Join(rootDir, "new/empty"), 0o700), ShouldBeNil)
+		So(runGCGenerator(ctx, gen, map[string]int{}), ShouldBeNil)
+		So(gen.IsDone(), ShouldBeTrue)
+		for _, dir := range []string{"user/foo/bar", "user/foo", "user", "customer/empty", "new"} {
+			_, err := os.Stat(path.Join(rootDir, dir))
+			So(os.IsNotExist(err), ShouldBeTrue)
+		}
+
+		for _, dir := range []string{"", "customer", "customer/live/empty/child", "customer/young", "customer/upload"} {
+			_, err := os.Stat(path.Join(rootDir, dir))
+			So(err, ShouldBeNil)
+		}
+
+		manifestAfter, _, _, err := imgStore.GetImageManifest("customer/live", "v1")
+		So(err, ShouldBeNil)
+		So(manifestAfter, ShouldResemble, manifestBefore)
+		for _, desc := range append([]ispec.Descriptor{img.Manifest.Config}, img.Manifest.Layers...) {
+			content, err := os.ReadFile(imgStore.BlobPath("customer/live", desc.Digest))
+			So(err, ShouldBeNil)
+			So(godigest.FromBytes(content), ShouldEqual, desc.Digest)
+		}
+
+		assertGCBlobs(rootDir, "customer/young", young, true)
+		uploads, err := imgStore.ListBlobUploads("customer/upload")
+		So(err, ShouldBeNil)
+		So(uploads, ShouldContain, uploadID)
+	})
+}
+
+func TestGCEmptyDirectoriesModes(t *testing.T) {
+	Convey("namespace cleanup only runs for local non-dry-run stores", t, func() {
+		rootDir := t.TempDir()
+		So(os.MkdirAll(path.Join(rootDir, "empty/nested"), 0o700), ShouldBeNil)
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		var imgStore storageTypes.ImageStore
+		var opts Options
+
+		Convey("dry-run preserves the tree", func() {
+			imgStore = local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+			opts.ImageRetention.DryRun = true
+		})
+
+		Convey("a remote store never cleans its local-looking root", func() {
+			imgStore = mocks.MockedImageStore{
+				NameFn:    func() string { return storageConstants.S3StorageDriverName },
+				RootDirFn: func() string { return rootDir },
+			}
+		})
+
+		gen := &GCTaskGenerator{
+			imgStore: imgStore,
+			gc:       NewGarbageCollect(imgStore, nil, opts, nil, log, metrics),
+		}
+		gen.Reset()
+		So(runGCGenerator(context.Background(), gen, map[string]int{}), ShouldBeNil)
+		So(gen.IsDone(), ShouldBeTrue)
+		_, err := os.Stat(path.Join(rootDir, "empty/nested"))
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestGCEmptyDirectoriesRetry(t *testing.T) {
+	for _, failure := range []string{"file root", "unreadable namespace"} {
+		t.Run(failure, func(t *testing.T) {
+			Convey("a failed sweep can be retried without resetting the generator", t, func() {
+				rootDir := t.TempDir()
+				log := zlog.NewTestLogger()
+				metrics := monitoring.NewNopMetricServer()
+				imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+				gen := &GCTaskGenerator{
+					imgStore: imgStore,
+					gc:       NewGarbageCollect(imgStore, nil, Options{}, nil, log, metrics),
+				}
+				gen.Reset()
+				failedPath := rootDir
+				if failure == "file root" {
+					So(os.Remove(rootDir), ShouldBeNil)
+					So(os.WriteFile(rootDir, []byte("keep"), 0o600), ShouldBeNil)
+				} else {
+					failedPath = path.Join(rootDir, "blocked")
+					So(os.Mkdir(failedPath, 0o700), ShouldBeNil)
+					So(os.WriteFile(path.Join(failedPath, "marker"), []byte("keep"), 0o600), ShouldBeNil)
+					So(os.Chmod(failedPath, 0), ShouldBeNil)
+					defer os.Chmod(failedPath, 0o700) //nolint:errcheck
+					if _, err := os.ReadDir(failedPath); err == nil {
+						t.Skip("directory permissions are not enforced")
+					}
+				}
+
+				task, err := gen.Next()
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, failedPath)
+				So(task, ShouldBeNil)
+				So(gen.IsDone(), ShouldBeFalse)
+				So(gen.nextRun.IsZero(), ShouldBeTrue)
+				So(gen.processedRepos, ShouldBeEmpty)
+
+				if failure == "file root" {
+					content, err := os.ReadFile(rootDir)
+					So(err, ShouldBeNil)
+					So(string(content), ShouldEqual, "keep")
+					So(os.Remove(rootDir), ShouldBeNil)
+					So(os.Mkdir(rootDir, 0o700), ShouldBeNil)
+				} else {
+					So(os.Chmod(failedPath, 0o700), ShouldBeNil)
+					content, err := os.ReadFile(path.Join(failedPath, "marker"))
+					So(err, ShouldBeNil)
+					So(string(content), ShouldEqual, "keep")
+				}
+
+				So(os.MkdirAll(path.Join(rootDir, "empty/nested"), 0o700), ShouldBeNil)
+				So(runGCGenerator(context.Background(), gen, map[string]int{}), ShouldBeNil)
+				So(gen.IsDone(), ShouldBeTrue)
+				_, err = os.Stat(path.Join(rootDir, "empty"))
+				So(os.IsNotExist(err), ShouldBeTrue)
+
+				// The file-root repair leaves a completely empty storage root.
+				gen.Reset()
+				So(runGCGenerator(context.Background(), gen, map[string]int{}), ShouldBeNil)
+				_, err = os.Stat(rootDir)
+				So(err, ShouldBeNil)
+			})
+		})
+	}
+}
+
 func TestGCTaskGeneratorStorageErrClasses(t *testing.T) {
 	repos := []string{"a/repo", "b", "c/repo"}
 	classes := []struct {
