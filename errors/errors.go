@@ -110,6 +110,7 @@ var (
 	ErrBadRange                         = errors.New("bad range for streaming blob")
 	ErrBadLayerCount                    = errors.New("manifest layers count doesn't correspond to config history")
 	ErrManifestConflict                 = errors.New("multiple manifests found")
+	ErrProtectedTag                     = errors.New("protected tag cannot be changed")
 	ErrManifestRestoreAttempted         = errors.New("manifest restore to image store attempted after a metadb failure")
 	ErrImageMetaNotFound                = errors.New("image meta not found")
 	ErrInvalidRepoSize                  = errors.New("invalid repository size")

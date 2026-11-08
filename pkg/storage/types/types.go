@@ -15,6 +15,90 @@ import (
 
 type FilterRepoFunc func(repo string) (bool, error)
 
+type manifestRollbackContextKey struct{}
+
+type manifestWriteStateContextKey struct{}
+
+// ManifestTagState records the state of a tag before the current manifest write.
+type ManifestTagState struct {
+	Created           bool
+	PreviousDigest    godigest.Digest
+	PreviousMediaType string
+}
+
+// ManifestWriteState records the state of tags before the current manifest write.
+// It is populated while the image-store write lock is held and consumed by metadata
+// rollback so pre-existing tags cannot be removed after a metadata failure.
+type ManifestWriteState struct {
+	tags map[string]ManifestTagState
+}
+
+// WithManifestWriteState attaches write state to ctx for PutImageManifest and its metadata hook.
+func WithManifestWriteState(ctx context.Context) (context.Context, *ManifestWriteState) {
+	state := &ManifestWriteState{tags: make(map[string]ManifestTagState)}
+
+	return context.WithValue(ctx, manifestWriteStateContextKey{}, state), state
+}
+
+// ManifestWriteStateFromContext returns manifest write state attached to ctx.
+func ManifestWriteStateFromContext(ctx context.Context) (*ManifestWriteState, bool) {
+	state, ok := ctx.Value(manifestWriteStateContextKey{}).(*ManifestWriteState)
+
+	return state, ok && state != nil
+}
+
+// SetTagState records the state of tag before the current write.
+func (state *ManifestWriteState) SetTagState(tag string, tagState ManifestTagState) {
+	if state == nil {
+		return
+	}
+	if state.tags == nil {
+		state.tags = make(map[string]ManifestTagState)
+	}
+
+	state.tags[tag] = tagState
+}
+
+// TagState returns the state of tag before the current write.
+func (state *ManifestWriteState) TagState(tag string) (ManifestTagState, bool) {
+	if state == nil {
+		return ManifestTagState{}, false
+	}
+
+	tagState, ok := state.tags[tag]
+
+	return tagState, ok
+}
+
+// SetTagCreated records whether the current write created tag.
+func (state *ManifestWriteState) SetTagCreated(tag string, created bool) {
+	state.SetTagState(tag, ManifestTagState{Created: created})
+}
+
+// TagCreated returns whether the current write created tag and whether that state is known.
+func (state *ManifestWriteState) TagCreated(tag string) (bool, bool) {
+	if state == nil {
+		return false, false
+	}
+
+	tagState, ok := state.TagState(tag)
+
+	return tagState.Created, ok
+}
+
+// WithManifestRollback marks a manifest deletion as cleanup for a failed metadata update.
+// The storage layer uses the digest to avoid deleting a tag that was changed concurrently.
+func WithManifestRollback(ctx context.Context, digest godigest.Digest) context.Context {
+	return context.WithValue(ctx, manifestRollbackContextKey{}, digest)
+}
+
+// ManifestRollbackDigest returns the digest associated with a metadata rollback cleanup.
+func ManifestRollbackDigest(ctx context.Context) (godigest.Digest, bool) {
+	digest, ok := ctx.Value(manifestRollbackContextKey{}).(godigest.Digest)
+
+	return digest, ok && digest != ""
+}
+
 type StoreController interface {
 	GetImageStore(name string) ImageStore
 	GetDefaultImageStore() ImageStore
@@ -69,6 +153,8 @@ type ImageStore interface { //nolint:interfacebloat
 	// index (typically an untagged descriptor left by a tag overwrite). It does not write
 	// blobs, run the linter, or emit image-updated events.
 	RetagManifest(ctx context.Context, repo, reference string, digest godigest.Digest) error
+	// RetagManifestIfDigest atomically retags reference only when it still points at expectedDigest.
+	RetagManifestIfDigest(ctx context.Context, repo, reference string, expectedDigest, digest godigest.Digest) error
 	BlobUploadPath(repo, uuid string) string
 	StatBlobUpload(repo, uuid string) (bool, int64, time.Time, error)
 	ListBlobUploads(repo string) ([]string, error)

@@ -2104,6 +2104,54 @@ func TestRetagManifest(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(latest.Digest, ShouldEqual, prior)
 			So(latest.Annotations[ispec.AnnotationRefName], ShouldEqual, "latest")
+
+			indexBuf, err := store.GetIndexContent("repo")
+			So(err, ShouldBeNil)
+
+			var updatedIndex ispec.Index
+			So(json.Unmarshal(indexBuf, &updatedIndex), ShouldBeNil)
+
+			displacedFound := false
+			displacedUntagged := false
+
+			for _, desc := range updatedIndex.Manifests {
+				if desc.Digest == newer {
+					displacedFound = true
+					_, displacedUntagged = desc.Annotations[ispec.AnnotationRefName]
+
+					break
+				}
+			}
+			So(displacedFound, ShouldBeTrue)
+			So(displacedUntagged, ShouldBeFalse)
+		})
+
+		Convey("rejects a concurrent tag change without modifying the index", func() {
+			rootDir := t.TempDir()
+			store := newStore(rootDir)
+			ctx := context.Background()
+			So(store.InitRepo(ctx, "repo"), ShouldBeNil)
+
+			prior := godigest.FromString("prior")
+			current := godigest.FromString("current")
+			index := ispec.Index{
+				SchemaVersion: 2,
+				Manifests: []ispec.Descriptor{
+					{MediaType: ispec.MediaTypeImageManifest, Digest: prior, Size: 1},
+					{
+						MediaType: ispec.MediaTypeImageManifest, Digest: current, Size: 1,
+						Annotations: map[string]string{ispec.AnnotationRefName: "latest"},
+					},
+				},
+			}
+			So(store.PutIndexContent("repo", index), ShouldBeNil)
+
+			err := store.RetagManifestIfDigest(ctx, "repo", "latest", godigest.FromString("other"), prior)
+			So(errors.Is(err, zerr.ErrManifestConflict), ShouldBeTrue)
+
+			latest, ok := indexByTag(store, "repo", "latest")
+			So(ok, ShouldBeTrue)
+			So(latest.Digest, ShouldEqual, current)
 		})
 
 		Convey("clones a tagged-only digest when no untagged row exists", func() {
