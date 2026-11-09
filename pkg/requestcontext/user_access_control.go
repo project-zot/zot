@@ -57,6 +57,8 @@ type UserAuthzInfo struct {
 type UserAuthnInfo struct {
 	groups   []string
 	username string
+	// apiKey is true when the request authenticated with an API key.
+	apiKey bool
 }
 
 func NewUserAccessControl() *UserAccessControl {
@@ -84,6 +86,24 @@ func (uac *UserAccessControl) SetUsername(username string) {
 	}
 
 	uac.authnInfo.username = username
+}
+
+// SetAPIKeyAuthenticated marks the request as authenticated with an API key.
+func (uac *UserAccessControl) SetAPIKeyAuthenticated() {
+	if uac.authnInfo == nil {
+		uac.authnInfo = &UserAuthnInfo{}
+	}
+
+	uac.authnInfo.apiKey = true
+}
+
+// IsAPIKeyAuthenticated reports whether the request authenticated with an API key.
+func (uac *UserAccessControl) IsAPIKeyAuthenticated() bool {
+	if uac.authnInfo == nil {
+		return false
+	}
+
+	return uac.authnInfo.apiKey
 }
 
 func (uac *UserAccessControl) GetUsername() string {
