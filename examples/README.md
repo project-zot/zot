@@ -809,7 +809,7 @@ POST /zot/auth/apikey
 Body: {"label": "git", "scopes": ["repo1", "repo2"], "expirationDate": "2023-08-28T17:10:05+03:00"}'
 ```
 
-The time format of expirationDate is RFC1123Z.
+The time format of expirationDate is RFC 3339.
 
 **Example cURL without expiration date**
 
