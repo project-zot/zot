@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"math/rand"
 	"os"
@@ -1663,9 +1664,9 @@ func (p namespacePruner) prune(repo string, depth int) (bool, error) {
 	}
 
 	switch {
-	case rmErr == nil, errors.Is(rmErr, syscall.ENOENT):
+	case rmErr == nil, errors.Is(rmErr, fs.ErrNotExist):
 		return true, nil
-	case errors.Is(rmErr, syscall.ENOTEMPTY), errors.Is(rmErr, syscall.EEXIST):
+	case isDirNotEmpty(rmErr):
 		return false, nil
 	default:
 		return false, fmt.Errorf("remove empty namespace directory %q: %w", dir, rmErr)
