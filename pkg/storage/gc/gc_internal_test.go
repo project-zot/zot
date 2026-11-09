@@ -4765,6 +4765,17 @@ func TestGCEmptyDirectoriesRetry(t *testing.T) {
 				So(gen.IsDone(), ShouldBeFalse)
 				So(gen.nextRun.IsZero(), ShouldBeTrue)
 				So(gen.processedRepos, ShouldBeEmpty)
+				So(gen.pruneBackoff, ShouldEqual, minPruneRetryDelay)
+				So(gen.IsReady(), ShouldBeFalse)
+
+				// A second failure doubles the backoff.
+				_, err = gen.Next()
+				So(err, ShouldNotBeNil)
+				So(gen.pruneBackoff, ShouldEqual, 2*minPruneRetryDelay)
+
+				// Once the backoff has passed, the retry is ready and prunes again.
+				gen.pruneRetryAt = time.Now().Add(-time.Second)
+				So(gen.IsReady(), ShouldBeTrue)
 
 				if failure == "file root" {
 					content, err := os.ReadFile(rootDir)
@@ -4784,6 +4795,8 @@ func TestGCEmptyDirectoriesRetry(t *testing.T) {
 				So(gen.IsDone(), ShouldBeTrue)
 				_, err = os.Stat(path.Join(rootDir, "empty"))
 				So(os.IsNotExist(err), ShouldBeTrue)
+				So(gen.pruneBackoff, ShouldEqual, time.Duration(0))
+				So(gen.pruneRetryAt.IsZero(), ShouldBeTrue)
 
 				// The file-root repair leaves a completely empty storage root.
 				gen.Reset()

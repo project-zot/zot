@@ -1527,6 +1527,10 @@ type GCTaskGenerator struct {
 	maxDelay          time.Duration
 	timeWindow        config.GCTimeWindow
 	loggedWindowDefer bool
+	// pruneRetryAt holds back the next sweep after empty namespace cleanup
+	// failed, and pruneBackoff is the delay that set it; both reset on success.
+	pruneRetryAt time.Time
+	pruneBackoff time.Duration
 }
 
 func (gen *GCTaskGenerator) getRandomDelay() time.Duration {
@@ -1540,6 +1544,12 @@ func (gen *GCTaskGenerator) getRandomDelay() time.Duration {
 	// This supports sub-second delays (milliseconds, microseconds).
 	return time.Duration(gen.rand.Int63n(int64(maxDelay)))
 }
+
+// Bounds of the backoff after empty namespace cleanup fails.
+const (
+	minPruneRetryDelay = time.Minute
+	maxPruneRetryDelay = time.Hour
+)
 
 func (gen *GCTaskGenerator) Name() string {
 	return "GCTaskGenerator"
@@ -1559,11 +1569,19 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 				},
 			}
 			if err := pruner.run(); err != nil {
+				// nextRun stays zero so the retry prunes again; the backoff keeps a
+				// persistent failure from retrying at once and starving other tasks.
+				gen.pruneBackoff = min(max(2*gen.pruneBackoff, minPruneRetryDelay), maxPruneRetryDelay)
+				gen.pruneRetryAt = time.Now().Add(gen.pruneBackoff)
+
 				gen.gc.log.Error().Err(err).Str("module", "gc").Str("root-dir", rootDir).
-					Msg("failed to remove empty namespace directories")
+					Dur("retry-in", gen.pruneBackoff).Msg("failed to remove empty namespace directories")
 
 				return nil, err
 			}
+
+			gen.pruneBackoff = 0
+			gen.pruneRetryAt = time.Time{}
 		}
 
 		gen.rand = rand.New(rand.NewSource(time.Now().UTC().UnixNano())) //nolint: gosec
@@ -1716,6 +1734,10 @@ func (gen *GCTaskGenerator) IsReady() bool {
 	// the window, so GC work stays amortized instead of stalling mid-sweep until the
 	// window reopens the next day.
 	startingNewSweep := len(gen.processedRepos) == 0 && gen.nextRun.IsZero()
+
+	if startingNewSweep && now.Before(gen.pruneRetryAt) {
+		return false
+	}
 
 	if startingNewSweep && !gen.timeWindow.Contains(now) {
 		if !gen.loggedWindowDefer {
