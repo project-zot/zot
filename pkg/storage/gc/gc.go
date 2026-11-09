@@ -1543,11 +1543,15 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 	if len(gen.processedRepos) == 0 && gen.nextRun.IsZero() {
 		if gen.imgStore.Name() == storageConstants.LocalStorageDriverName && !gen.gc.opts.ImageRetention.DryRun {
 			rootDir := gen.imgStore.RootDir()
-			// The local store's cleanup lock is store-wide. Do not call locking
-			// image-store APIs while pruning namespaces under this lock.
-			if err := gen.imgStore.WithRepoCleanupLock("", func() error {
-				return removeEmptyNamespaces(rootDir, "")
-			}); err != nil {
+			// The walk itself runs without the store-wide lock so pushes are not
+			// blocked while large registries are scanned. Only each Rmdir takes it.
+			pruner := namespacePruner{
+				rootDir: rootDir,
+				withLock: func(fn func() error) error {
+					return gen.imgStore.WithRepoCleanupLock("", fn)
+				},
+			}
+			if err := pruner.run(); err != nil {
 				gen.gc.log.Error().Err(err).Str("module", "gc").Str("root-dir", rootDir).
 					Msg("failed to remove empty namespace directories")
 
@@ -1578,51 +1582,94 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 	return NewGCTask(gen.imgStore, gen.gc, repo), nil
 }
 
-// removeEmptyNamespaces walks namespace directories bottom-up, leaving repository
-// layouts and internal trees to their existing lifecycle rules. The caller holds
-// the store-wide cleanup lock so repository initialization cannot race this walk.
-func removeEmptyNamespaces(rootDir, repo string) error {
-	dir := filepath.Join(rootDir, filepath.FromSlash(repo))
+// maxNamespaceDepth bounds how many path components below the storage root the
+// empty namespace walk descends. Directories deeper than this are left alone.
+const maxNamespaceDepth = 16
+
+// namespacePruner removes empty namespace directories left behind after
+// repositories are deleted, leaving repository layouts and internal trees to
+// their existing lifecycle rules.
+type namespacePruner struct {
+	rootDir string
+	// withLock runs fn under the store-wide lock that repository initialization
+	// also holds, so a directory cannot be removed while a repository is being
+	// created beneath it. fn must not call locking image-store APIs.
+	withLock func(fn func() error) error
+}
+
+func (p namespacePruner) run() error {
+	_, err := p.prune("", 0)
+
+	return err
+}
+
+// prune walks repo bottom-up without holding the store lock and reports whether
+// the directory was removed. The lock is only taken for each removal of a
+// directory that looked empty, and Rmdir rechecks emptiness under it.
+func (p namespacePruner) prune(repo string, depth int) (bool, error) {
+	dir := filepath.Join(p.rootDir, filepath.FromSlash(repo))
+
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return repo != "", nil
 	}
 
 	if err != nil {
-		return fmt.Errorf("read namespace directory %q: %w", dir, err)
+		return false, fmt.Errorf("read namespace directory %q: %w", dir, err)
 	}
 
 	for _, entry := range entries {
 		if entry.Name() == ispec.ImageLayoutFile || entry.Name() == ispec.ImageIndexFile {
-			return nil
+			return false, nil
 		}
 	}
+
+	empty := true
 
 	for _, entry := range entries {
 		childRepo := path.Join(repo, entry.Name())
 		if !entry.IsDir() || !zreg.FullNameRegexp.MatchString(childRepo) ||
 			entry.Name() == ispec.ImageBlobsDir || entry.Name() == storageConstants.BlobUploadDir ||
-			entry.Name() == syncConstants.SyncBlobUploadDir {
+			entry.Name() == syncConstants.SyncBlobUploadDir || depth >= maxNamespaceDepth {
+			empty = false
+
 			continue
 		}
 
-		if err := removeEmptyNamespaces(rootDir, childRepo); err != nil {
-			return err
+		removed, err := p.prune(childRepo, depth+1)
+		if err != nil {
+			return false, err
+		}
+
+		if !removed {
+			empty = false
 		}
 	}
 
-	if repo == "" {
-		return nil // Never remove the storage root.
+	if repo == "" || !empty {
+		return false, nil // Never remove the storage root or a non-empty directory.
 	}
 
 	// Rmdir only removes an empty directory, even if an entry appeared after
 	// ReadDir. Files and symlinks must never be removed by namespace cleanup.
-	if err := syscall.Rmdir(dir); err != nil && !errors.Is(err, syscall.ENOENT) &&
-		!errors.Is(err, syscall.ENOTEMPTY) && !errors.Is(err, syscall.EEXIST) {
-		return fmt.Errorf("remove empty namespace directory %q: %w", dir, err)
+	var rmErr error
+
+	if err := p.withLock(func() error {
+		rmErr = syscall.Rmdir(dir)
+
+		return nil
+	}); err != nil {
+		return false, err
 	}
 
-	return nil
+	switch {
+	case rmErr == nil, errors.Is(rmErr, syscall.ENOENT):
+		return true, nil
+	case errors.Is(rmErr, syscall.ENOTEMPTY), errors.Is(rmErr, syscall.EEXIST):
+		return false, nil
+	default:
+		return false, fmt.Errorf("remove empty namespace directory %q: %w", dir, rmErr)
+	}
 }
 
 func (gen *GCTaskGenerator) IsDone() bool {

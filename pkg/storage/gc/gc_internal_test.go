@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -4526,7 +4527,10 @@ func TestGCEmptyDirectoriesExistingNamespaces(t *testing.T) {
 
 		_, err := os.Stat(path.Join(outside, "empty"))
 		So(err, ShouldBeNil)
-		So(removeEmptyNamespaces(rootDir, "customer"), ShouldBeNil)
+		pruner := namespacePruner{rootDir: rootDir, withLock: func(fn func() error) error { return fn() }}
+		removed, err := pruner.prune("customer", 1)
+		So(err, ShouldBeNil)
+		So(removed, ShouldBeTrue)
 	})
 }
 
@@ -4598,6 +4602,98 @@ func TestGCEmptyDirectoriesAfterRepositoryRemoval(t *testing.T) {
 		uploads, err := imgStore.ListBlobUploads("customer/upload")
 		So(err, ShouldBeNil)
 		So(uploads, ShouldContain, uploadID)
+	})
+}
+
+// lockCountingStore records how often namespace cleanup takes the store lock.
+type lockCountingStore struct {
+	storageTypes.ImageStore
+	locks int
+}
+
+func (s *lockCountingStore) WithRepoCleanupLock(repo string, wrappedFunc func() error) error {
+	s.locks++
+
+	return s.ImageStore.WithRepoCleanupLock(repo, wrappedFunc)
+}
+
+func TestGCEmptyDirectoriesLocking(t *testing.T) {
+	Convey("the store lock is only held for each directory removal", t, func() {
+		rootDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := &lockCountingStore{
+			ImageStore: local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil),
+		}
+		gen := &GCTaskGenerator{
+			imgStore: imgStore,
+			gc:       NewGarbageCollect(imgStore, nil, Options{}, nil, log, metrics),
+		}
+
+		Convey("non-empty namespaces are walked without taking the lock", func() {
+			for _, dir := range []string{"a/b/c", "d/e", "f"} {
+				So(os.MkdirAll(path.Join(rootDir, dir), 0o700), ShouldBeNil)
+				So(os.WriteFile(path.Join(rootDir, dir, "marker"), []byte("keep"), 0o600), ShouldBeNil)
+			}
+
+			gen.Reset()
+			So(runGCGenerator(context.Background(), gen, map[string]int{}), ShouldBeNil)
+			So(gen.IsDone(), ShouldBeTrue)
+			So(imgStore.locks, ShouldEqual, 0)
+		})
+
+		Convey("each empty directory takes the lock once for its own removal", func() {
+			So(os.MkdirAll(path.Join(rootDir, "a/b/c"), 0o700), ShouldBeNil)
+			So(os.MkdirAll(path.Join(rootDir, "d"), 0o700), ShouldBeNil)
+
+			gen.Reset()
+			So(runGCGenerator(context.Background(), gen, map[string]int{}), ShouldBeNil)
+			So(gen.IsDone(), ShouldBeTrue)
+			So(imgStore.locks, ShouldEqual, 4)
+			for _, dir := range []string{"a", "d"} {
+				_, err := os.Stat(path.Join(rootDir, dir))
+				So(os.IsNotExist(err), ShouldBeTrue)
+			}
+		})
+	})
+}
+
+func TestGCEmptyDirectoriesDepthLimit(t *testing.T) {
+	Convey("the namespace walk does not descend below the depth limit", t, func() {
+		rootDir := t.TempDir()
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+		gen := &GCTaskGenerator{
+			imgStore: imgStore,
+			gc:       NewGarbageCollect(imgStore, nil, Options{}, nil, log, metrics),
+		}
+
+		chain := func(prefix string, depth int) string {
+			parts := []string{prefix}
+			for i := 1; i < depth; i++ {
+				parts = append(parts, strconv.Itoa(i))
+			}
+
+			return path.Join(parts...)
+		}
+
+		atLimit := chain("limit", maxNamespaceDepth)
+		pastLimit := chain("deep", maxNamespaceDepth+1)
+		So(os.MkdirAll(path.Join(rootDir, atLimit), 0o700), ShouldBeNil)
+		So(os.MkdirAll(path.Join(rootDir, pastLimit), 0o700), ShouldBeNil)
+
+		gen.Reset()
+		So(runGCGenerator(context.Background(), gen, map[string]int{}), ShouldBeNil)
+		So(gen.IsDone(), ShouldBeTrue)
+
+		_, err := os.Stat(path.Join(rootDir, "limit"))
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		// The directory below the limit is never visited, so its ancestors stay.
+		info, err := os.Stat(path.Join(rootDir, pastLimit))
+		So(err, ShouldBeNil)
+		So(info.IsDir(), ShouldBeTrue)
 	})
 }
 
