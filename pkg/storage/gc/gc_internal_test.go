@@ -4893,3 +4893,25 @@ func TestGCTaskGeneratorStorageErrClasses(t *testing.T) {
 		})
 	}
 }
+
+func TestGCEmptyDirectoriesStopAtOtherStoreRoots(t *testing.T) {
+	Convey("pruning the default store leaves a substore root nested under it", t, func() {
+		rootDir := t.TempDir()
+		substoreRoot := path.Join(rootDir, "tenant")
+		So(os.MkdirAll(path.Join(substoreRoot, "empty-namespace"), 0o700), ShouldBeNil)
+		So(os.MkdirAll(path.Join(rootDir, "stale"), 0o700), ShouldBeNil)
+
+		pruner := namespacePruner{
+			rootDir:    rootDir,
+			boundaries: storeBoundaries([]string{substoreRoot + "/"}),
+			withLock:   func(fn func() error) error { return fn() },
+		}
+		So(pruner.run(), ShouldBeNil)
+
+		_, err := os.Stat(path.Join(rootDir, "stale"))
+		So(errors.Is(err, os.ErrNotExist), ShouldBeTrue)
+
+		_, err = os.Stat(path.Join(substoreRoot, "empty-namespace"))
+		So(err, ShouldBeNil)
+	})
+}

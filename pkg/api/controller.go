@@ -772,6 +772,7 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 			TimeWindow:        storageConfig.GCTimeWindow,
 			ImageRetention:    storageConfig.Retention,
 			StagingRoot:       storeController.SyncStagingRootForImageStore(storeController.DefaultStore),
+			OtherStoreRoots:   storeController.OtherLocalStoreRoots(storeController.DefaultStore),
 		}, audit, logger, metrics)
 
 		gc.CleanImageStorePeriodically(storageConfig.GCInterval, taskScheduler)
@@ -790,6 +791,7 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 						ImageRetention:    subStorageConfig.Retention,
 						StagingRoot: storeController.SyncStagingRootForImageStore(
 							storeController.SubStore[route]),
+						OtherStoreRoots: storeController.OtherLocalStoreRoots(storeController.SubStore[route]),
 					}, audit, logger, metrics)
 
 				gc.CleanImageStorePeriodically(subStorageConfig.GCInterval, taskScheduler)

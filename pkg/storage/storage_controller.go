@@ -126,3 +126,27 @@ func (sc StoreController) SyncStagingRoots() []string {
 
 	return roots
 }
+
+// OtherLocalStoreRoots returns the root directories of the local image stores
+// other than imgStore, so cleanup of one store's root never removes another's.
+func (sc StoreController) OtherLocalStoreRoots(imgStore storageTypes.ImageStore) []string {
+	roots := make([]string, 0, len(sc.SubStore))
+
+	add := func(other storageTypes.ImageStore) {
+		if other == nil || other == imgStore || other.Name() != storageConstants.LocalStorageDriverName {
+			return
+		}
+
+		if other.RootDir() != imgStore.RootDir() {
+			roots = append(roots, other.RootDir())
+		}
+	}
+
+	add(sc.DefaultStore)
+
+	for _, other := range sc.SubStore {
+		add(other)
+	}
+
+	return roots
+}

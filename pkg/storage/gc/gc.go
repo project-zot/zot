@@ -63,6 +63,11 @@ type Options struct {
 	// StagingRoot is the local filesystem root whose <repo>/.sync/<uuid> trees block
 	// idle-repository removal during GC for this image store. Populated by RunGCTasks.
 	StagingRoot string
+
+	// OtherStoreRoots are the local filesystem roots of the other configured image
+	// stores. Empty namespace cleanup never removes or descends into them, so one
+	// store's GC cannot remove a substore nested under its root. Populated by RunGCTasks.
+	OtherStoreRoots []string
 }
 
 type GarbageCollect struct {
@@ -1547,7 +1552,8 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 			// The walk itself runs without the store-wide lock so pushes are not
 			// blocked while large registries are scanned. Only each Rmdir takes it.
 			pruner := namespacePruner{
-				rootDir: rootDir,
+				rootDir:    rootDir,
+				boundaries: storeBoundaries(gen.gc.opts.OtherStoreRoots),
 				withLock: func(fn func() error) error {
 					return gen.imgStore.WithRepoCleanupLock("", fn)
 				},
@@ -1596,6 +1602,21 @@ type namespacePruner struct {
 	// also holds, so a directory cannot be removed while a repository is being
 	// created beneath it. fn must not call locking image-store APIs.
 	withLock func(fn func() error) error
+	// boundaries holds the cleaned roots of other image stores; prune treats
+	// each as non-empty and does not walk it.
+	boundaries map[string]struct{}
+}
+
+// storeBoundaries returns the cleaned set of other image store roots.
+func storeBoundaries(roots []string) map[string]struct{} {
+	boundaries := make(map[string]struct{}, len(roots))
+	for _, root := range roots {
+		if root != "" {
+			boundaries[filepath.Clean(root)] = struct{}{}
+		}
+	}
+
+	return boundaries
 }
 
 func (p namespacePruner) run() error {
@@ -1629,6 +1650,12 @@ func (p namespacePruner) prune(repo string, depth int) (bool, error) {
 
 	for _, entry := range entries {
 		childRepo := path.Join(repo, entry.Name())
+		if _, other := p.boundaries[filepath.Join(dir, entry.Name())]; other {
+			empty = false // Another image store's root: its own GC owns it.
+
+			continue
+		}
+
 		if !entry.IsDir() || !zreg.FullNameRegexp.MatchString(childRepo) ||
 			entry.Name() == ispec.ImageBlobsDir || entry.Name() == storageConstants.BlobUploadDir ||
 			entry.Name() == syncConstants.SyncBlobUploadDir || depth >= maxNamespaceDepth {
