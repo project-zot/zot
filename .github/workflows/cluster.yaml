@@ -285,8 +285,11 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ./cache
-          # bolt keeps the historical key; redis appends -redis
-          key: ${{ runner.os }}-gen1-benchmark-stateless-cluster${{ matrix.backend == 'redis' && '-redis' || '' }}
+          # One key per run and backend, as in nightly.yaml (re-runs reuse the run's key).
+          # Naming the backend in the prefix keeps the bolt and redis histories apart.
+          key: ${{ runner.os }}-gen1-benchmark-stateless-cluster-${{ matrix.backend }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-gen1-benchmark-stateless-cluster-${{ matrix.backend }}-
       # Run `github-action-benchmark` action
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2

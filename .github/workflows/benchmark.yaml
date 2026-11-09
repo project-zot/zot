@@ -32,7 +32,12 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ./cache
-          key: ${{ runner.os }}-gen1-benchmark
+          # One key per run, as in nightly.yaml, because an exact-key hit never saves again.
+          # A re-run reuses its run's key: if the first attempt saved, the re-run does not.
+          # The "minimal-" segment keeps this prefix from matching cluster.yaml's keys.
+          key: ${{ runner.os }}-gen1-benchmark-minimal-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-gen1-benchmark-minimal-
       # Run `github-action-benchmark` action
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
