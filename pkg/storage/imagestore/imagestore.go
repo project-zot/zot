@@ -1456,6 +1456,10 @@ func (is *ImageStore) GetBlobUpload(repo, uuid string) (int64, error) {
 	return writer.Size(), nil
 }
 
+// maxBlobUploadDirAttempts bounds the retries of prepareBlobUploadDir when GC
+// removes an empty namespace directory while .uploads is being created.
+const maxBlobUploadDirAttempts = 3
+
 func (is *ImageStore) prepareBlobUploadDir(ctx context.Context, repo string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -1465,7 +1469,17 @@ func (is *ImageStore) prepareBlobUploadDir(ctx context.Context, repo string) err
 		return err
 	}
 
-	if err := is.storeDriver.EnsureDir(path.Join(is.rootDir, repo, storageConstants.BlobUploadDir)); err != nil {
+	dir := path.Join(is.rootDir, repo, storageConstants.BlobUploadDir)
+	err := is.storeDriver.EnsureDir(dir)
+
+	// This runs without the store lock, so GC can remove a namespace directory
+	// that is still empty while EnsureDir is creating .uploads beneath it. Once
+	// .uploads exists the directory is not empty and GC leaves it, so retry.
+	for attempt := 1; attempt < maxBlobUploadDirAttempts && errclass.IsStorageObjectMissing(err); attempt++ {
+		err = is.storeDriver.EnsureDir(dir)
+	}
+
+	if err != nil {
 		is.log.Error().Err(err).Msg("failed to create blob upload subdir")
 
 		return err
