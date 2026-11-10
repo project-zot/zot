@@ -136,6 +136,21 @@ func TestGarbageCollectOnDemand(t *testing.T) {
 			So(blobExists(imgStore, orphan), ShouldBeFalse)
 		})
 
+		Convey("a sweep finishes once its last repository is collected, without waiting for the scheduler delay",
+			func() {
+				delayOpts := opts
+				delayOpts.MaxSchedulerDelay = time.Hour
+
+				onDemand := gc.NewGarbageCollect(imgStore, metaDB, delayOpts, nil, log, metrics).
+					CleanImageStorePeriodically(time.Hour, sch)
+
+				sch.RunScheduler()
+				defer sch.Shutdown()
+
+				So(waitFor(func() bool { return !onDemand.Status().FinishedAt.IsZero() }), ShouldBeTrue)
+				So(onDemand.Status().Running, ShouldBeFalse)
+			})
+
 		Convey("SweepNow runs outside the configured time window", func() {
 			windowOpts := opts
 			windowOpts.TimeWindow = timeWindowExcludingNow()
