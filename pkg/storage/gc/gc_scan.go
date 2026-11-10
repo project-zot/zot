@@ -575,16 +575,6 @@ func (gc GarbageCollect) commitRepo(ctx context.Context, repo string, plan *repo
 		return false, err
 	}
 
-	for _, action := range plan.metaActions {
-		if zcommon.IsContextDone(ctx) {
-			return false, ctx.Err()
-		}
-
-		if err := gc.applyMetaAction(action); err != nil {
-			return false, err
-		}
-	}
-
 	// Free stale uploads before rewriting index.json. PutIndexContent stages under
 	// .uploads/ and needs free space; a leftover failed upload can be what filled the volume.
 	uploadsDeleted, err := gc.deleteBlobUploads(repo, gc.opts.Delay)
@@ -598,6 +588,23 @@ func (gc GarbageCollect) commitRepo(ctx context.Context, repo string, plan *repo
 
 	if err := gc.imgStore.PutIndexContent(repo, plan.index); err != nil {
 		return false, err
+	}
+
+	// The recorded metaDB writes are applied once the index they describe is committed, as
+	// cleanRepoLocked does. A failed write restores the index so storage and metaDB stay aligned.
+	for _, action := range plan.metaActions {
+		if err := gc.applyMetaAction(action); err != nil {
+			var before ispec.Index
+			if unmarshalErr := json.Unmarshal(plan.indexBefore, &before); unmarshalErr != nil {
+				return false, errors.Join(err, unmarshalErr)
+			}
+
+			if rollbackErr := gc.imgStore.PutIndexContent(repo, before); rollbackErr != nil {
+				return false, errors.Join(err, fmt.Errorf("failed to restore index after metaDB commit failure: %w", rollbackErr))
+			}
+
+			return false, err
+		}
 	}
 
 	// The manifest removals are durable from here on, whatever happens to blob cleanup.

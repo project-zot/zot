@@ -220,15 +220,23 @@ func TestGCCommitMapsMissingIndexToRepoNotFound(t *testing.T) {
 	require.ErrorIs(t, collector.CleanRepo(context.Background(), "repo"), zerr.ErrRepoNotFound)
 }
 
-func TestGCCommitFailsWhenMetaDBReplayFails(t *testing.T) {
+// A metaDB write that fails after index.json was committed restores the index the plan was computed
+// from, as cleanRepoLocked does, so storage and metaDB stay aligned for a later pass.
+func TestGCCommitRestoresIndexWhenMetaDBReplayFails(t *testing.T) {
 	store := &lockTrackingStore{}
 	digest := godigest.FromBytes(manifestJSON())
 	replayErr := errors.New("replay failed") //nolint:err113
+	puts := 0
 	store.GetIndexContentFn = func(string) ([]byte, error) { return indexJSON(t, manifestDescriptor(digest, "v1")), nil }
 	store.GetAllBlobsFn = func(string) ([]godigest.Digest, error) { return []godigest.Digest{digest}, nil }
 	store.GetBlobContentFn = func(string, godigest.Digest) ([]byte, error) { return manifestJSON(), nil }
-	store.PutIndexContentFn = func(string, ispec.Index) error {
-		t.Fatal("index.json written after a metaDB replay failure")
+	store.PutIndexContentFn = func(_ string, index ispec.Index) error {
+		puts++
+
+		if puts == 2 {
+			require.Len(t, index.Manifests, 1)
+			require.Equal(t, digest, index.Manifests[0].Digest)
+		}
 
 		return nil
 	}
@@ -242,6 +250,7 @@ func TestGCCommitFailsWhenMetaDBReplayFails(t *testing.T) {
 
 	collector := newMockCollector(store, metaDB, keepTagsOpts())
 	require.ErrorIs(t, collector.CleanRepo(context.Background(), "repo"), replayErr)
+	require.Equal(t, 2, puts)
 	require.Equal(t, 1, store.locks)
 }
 
