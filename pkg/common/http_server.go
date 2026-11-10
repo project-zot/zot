@@ -167,7 +167,10 @@ func AuthzFailWithReason(w http.ResponseWriter, r *http.Request, identity, realm
 func authzFailWithChallenge(w http.ResponseWriter, r *http.Request, identity, challenge string, delay int,
 	reason string,
 ) {
-	time.Sleep(time.Duration(delay) * time.Second)
+	// an anonymous request sent no credentials to throttle; bad credentials are delayed in authn
+	if identity != "" {
+		time.Sleep(time.Duration(delay) * time.Second)
+	}
 
 	// don't send auth headers if request is coming from UI
 	if challenge != "" && r.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {

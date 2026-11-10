@@ -98,6 +98,38 @@ func TestAuthzFailWithReasonChallengeHeaders(t *testing.T) {
 	assert.Empty(t, sessionResponse.Header().Get("WWW-Authenticate"))
 }
 
+func TestBearerAuthzFailDelaySkipsAnonymousRequests(t *testing.T) {
+	t.Parallel()
+
+	bearerConfig := &config.AuthConfig{
+		Bearer: &config.BearerConfig{
+			Realm:   "https://auth.example.test/token",
+			Service: "zot",
+			Cert:    "/tmp/server.cert",
+		},
+	}
+	challenge := `Bearer realm="https://auth.example.test/token",service="zot",scope="repository:repo:push"`
+
+	request := httptest.NewRequest(http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+	request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+
+	anonymousResponse := httptest.NewRecorder()
+	start := time.Now()
+	authzFailWithReason(anonymousResponse, request, "", bearerConfig, "zot", 2, "")
+
+	assert.Less(t, time.Since(start), time.Second)
+	assert.Equal(t, http.StatusUnauthorized, anonymousResponse.Code)
+	assert.Equal(t, challenge, anonymousResponse.Header().Get("WWW-Authenticate"))
+
+	identifiedResponse := httptest.NewRecorder()
+	start = time.Now()
+	authzFailWithReason(identifiedResponse, request, "alice", bearerConfig, "zot", 1, "write denied")
+
+	assert.GreaterOrEqual(t, time.Since(start), time.Second)
+	assert.Equal(t, http.StatusForbidden, identifiedResponse.Code)
+	assert.Equal(t, challenge, identifiedResponse.Header().Get("WWW-Authenticate"))
+}
+
 func TestPolicyConditions(t *testing.T) {
 	t.Parallel()
 

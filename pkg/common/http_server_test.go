@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -177,5 +178,23 @@ func TestAuthzOnlyAdminsMiddleware(t *testing.T) {
 			// mTLS has no HTTP challenge, and Basic is not configured.
 			So(response.Header().Get("WWW-Authenticate"), ShouldBeEmpty)
 		})
+	})
+}
+
+func TestAuthzFailDelaySkipsAnonymousRequests(t *testing.T) {
+	Convey("AuthzFail applies failDelay only to requests that carried an identity", t, func() {
+		request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v2/repo/blobs/uploads/", nil)
+
+		start := time.Now()
+		response := httptest.NewRecorder()
+		common.AuthzFail(response, request, "", "zot", 2)
+		So(response.Code, ShouldEqual, http.StatusUnauthorized)
+		So(time.Since(start), ShouldBeLessThan, time.Second)
+
+		start = time.Now()
+		response = httptest.NewRecorder()
+		common.AuthzFail(response, request, "alice", "zot", 1)
+		So(response.Code, ShouldEqual, http.StatusForbidden)
+		So(time.Since(start), ShouldBeGreaterThanOrEqualTo, time.Second)
 	})
 }
