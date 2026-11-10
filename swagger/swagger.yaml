@@ -1145,8 +1145,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Can create an api key for a logged in user, based on the provided
-        label and scopes.
+      description: |-
+        Can create an api key for a logged in user, based on the provided label and scopes.
+        If apikeyMaxLifetime is set, a longer or missing expiration date is set to now + apikeyMaxLifetime.
       parameters:
       - description: api token id (UUID)
         in: body

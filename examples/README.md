@@ -794,6 +794,20 @@ To activate API keys use:
   }
 ```
 
+To cap the lifetime of new API keys, set `apikeyMaxLifetime` (a Go duration, like `720h`):
+
+```
+  "http": {
+    "auth": {
+      "apikey": true,
+      "apikeyMaxLifetime": "720h"
+    }
+  }
+```
+
+A key created with no expiration date, or a later one, gets the expiration date now + `apikeyMaxLifetime`.
+Keys created before the setting are unchanged. If not set, keys can be created without expiry.
+
 ##### How to create an API Key
 
 Create an API key for the current user using the REST API

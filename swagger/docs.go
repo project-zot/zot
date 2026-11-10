@@ -1286,7 +1286,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Can create an api key for a logged in user, based on the provided label and scopes.",
+                "description": "Can create an api key for a logged in user, based on the provided label and scopes.\nIf apikeyMaxLifetime is set, a longer or missing expiration date is set to now + apikeyMaxLifetime.",
                 "consumes": [
                     "application/json"
                 ],

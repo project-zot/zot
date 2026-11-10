@@ -137,6 +137,10 @@ type AuthConfig struct {
 	SessionDriver     map[string]any `mapstructure:",omitempty"`
 	SecureSession     *bool          `json:"secureSession,omitempty" mapstructure:"secureSession,omitempty"`
 	MTLS              *MTLSConfig    `json:"mtls,omitempty"          mapstructure:"mtls,omitempty"`
+
+	// APIKeyMaxLifetime caps the lifetime of new API keys. A longer or missing
+	// expiration date is set to creation time + APIKeyMaxLifetime. Zero: no cap.
+	APIKeyMaxLifetime time.Duration `json:"apikeyMaxLifetime,omitempty" mapstructure:"apikeyMaxLifetime,omitempty"`
 }
 
 // IsLdapAuthEnabled checks if LDAP authentication is enabled in this auth config.
@@ -1174,6 +1178,7 @@ func (c *Config) UpdateReloadableConfig(newConfig *Config) {
 		c.HTTP.Auth.HTPasswd = newConfig.HTTP.Auth.HTPasswd
 		c.HTTP.Auth.LDAP = newConfig.HTTP.Auth.LDAP
 		c.HTTP.Auth.APIKey = newConfig.HTTP.Auth.APIKey
+		c.HTTP.Auth.APIKeyMaxLifetime = newConfig.HTTP.Auth.APIKeyMaxLifetime
 		c.HTTP.Auth.OpenID = newConfig.HTTP.Auth.OpenID
 		c.HTTP.Auth.SecureSession = newConfig.HTTP.Auth.SecureSession
 		c.HTTP.Auth.MTLS = newConfig.HTTP.Auth.MTLS

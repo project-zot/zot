@@ -798,6 +798,10 @@ func validateConfiguration(config *config.Config, logger zlog.Logger) error {
 		return err
 	}
 
+	if err := validateAPIKeyMaxLifetime(config, logger); err != nil {
+		return err
+	}
+
 	if err := validateLDAP(config, logger); err != nil {
 		return err
 	}
@@ -1691,6 +1695,28 @@ func validateHTTP(config *config.Config, logger zlog.Logger) error {
 
 			return fmt.Errorf("%w: invalid port %s", zerr.ErrBadConfig, port)
 		}
+	}
+
+	return nil
+}
+
+func validateAPIKeyMaxLifetime(config *config.Config, logger zlog.Logger) error {
+	authConfig := config.CopyAuthConfig()
+	if authConfig == nil || authConfig.APIKeyMaxLifetime == 0 {
+		return nil
+	}
+
+	if authConfig.APIKeyMaxLifetime < 0 {
+		logger.Error().Err(zerr.ErrBadConfig).Dur("apikeyMaxLifetime", authConfig.APIKeyMaxLifetime).
+			Msg("invalid api key max lifetime, must be positive")
+
+		return fmt.Errorf("%w: invalid api key max lifetime %s, must be positive",
+			zerr.ErrBadConfig, authConfig.APIKeyMaxLifetime)
+	}
+
+	if !authConfig.IsAPIKeyEnabled() {
+		logger.Warn().Err(zerr.ErrBadConfig).
+			Msg("api key max lifetime specified without enabling api keys, will be ignored")
 	}
 
 	return nil
