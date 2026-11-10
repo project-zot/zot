@@ -63,3 +63,21 @@ func TestIsAdminByPolicy(t *testing.T) {
 	uac.SetAdminPolicyEvaluator(func() (bool, string) { return true, "" })
 	require.False(t, isAdminByPolicy(uac))
 }
+
+func TestAPIKeyAuthenticated(t *testing.T) {
+	t.Parallel()
+
+	uac := reqCtx.NewUserAccessControl()
+	require.False(t, uac.IsAPIKeyAuthenticated())
+
+	uac.SetUsername("alice")
+	require.False(t, uac.IsAPIKeyAuthenticated())
+
+	uac.SetAPIKeyAuthenticated()
+	require.True(t, uac.IsAPIKeyAuthenticated())
+	require.Equal(t, "alice", uac.GetUsername())
+
+	uac = reqCtx.NewUserAccessControl()
+	uac.SetAPIKeyAuthenticated()
+	require.True(t, uac.IsAPIKeyAuthenticated())
+}

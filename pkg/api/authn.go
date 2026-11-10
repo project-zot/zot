@@ -351,6 +351,7 @@ func authenticateAPIKeyCredential(ctlr *Controller, userAc *reqCtx.UserAccessCon
 	}
 
 	userAc.AddGroups(groups)
+	userAc.SetAPIKeyAuthenticated()
 	userAc.SaveOnRequest(request)
 
 	return true, nil

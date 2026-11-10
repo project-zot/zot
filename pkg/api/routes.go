@@ -3505,11 +3505,29 @@ func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) 
 // @Success 201 {string} string "created"
 // @Failure 400 {string} string "bad request"
 // @Failure 401 {string} string "unauthorized"
+// @Failure 403 {string} string "forbidden"
 // @Failure 413 {string} string "request entity too large"
 // @Failure 500 {string} string "internal server error"
 // @Router  /zot/auth/apikey  [post].
 func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request) {
 	var payload APIKeyPayload
+
+	// An API key must not create API keys. Otherwise a key outlives its own expiry
+	// by creating a replacement, and can create keys that never expire.
+	userAc, err := reqCtx.UserAcFromContext(req.Context())
+	if err != nil {
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	if userAc != nil && userAc.IsAPIKeyAuthenticated() {
+		rh.c.Log.Info().Str("identity", userAc.GetUsername()).
+			Msg("refusing to create an api key with api key authentication")
+		resp.WriteHeader(http.StatusForbidden)
+
+		return
+	}
 
 	body, err := io.ReadAll(http.MaxBytesReader(resp, req.Body, constants.MaxAPIKeyBodySize))
 	if err != nil {

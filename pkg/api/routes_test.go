@@ -2186,7 +2186,7 @@ func TestRoutes(t *testing.T) {
 
 				resp := response.Result()
 				defer resp.Body.Close()
-				So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
 
 				request, _ = http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
 				response = httptest.NewRecorder()

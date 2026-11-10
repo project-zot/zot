@@ -21,6 +21,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
+	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
@@ -751,6 +752,58 @@ func TestWrappedAPIKeyBearerTokenUsesReloadedAPIKeyConfig(t *testing.T) {
 
 	if apiKeyLookups.Load() != 1 {
 		t.Fatalf("expected api key lookup only while minting wrapper, got %d lookups", apiKeyLookups.Load())
+	}
+}
+
+func TestWrappedAPIKeyBearerTokenMarksAPIKeyAuthentication(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+		},
+	}
+
+	ctlr := &Controller{
+		Config: conf,
+		Log:    log.NewTestLogger(),
+		MetaDB: mocks.MetaDBMock{
+			GetUserAPIKeyInfoFn: func(_ string) (string, error) {
+				return "alice", nil
+			},
+		},
+	}
+
+	token := newWrappedCredentialBearerToken("alice", constants.APIKeysPrefix+"key")
+	bearerAuth := NewBearerAuth(conf.CopyAuthConfig(), log.NewTestLogger())
+
+	called := false
+	next := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		called = true
+
+		userAc, err := reqCtx.UserAcFromContext(request.Context())
+		if err != nil {
+			t.Fatalf("failed to get user access control: %v", err)
+		}
+
+		if !userAc.IsAPIKeyAuthenticated() {
+			t.Fatal("expected wrapped api key bearer token to mark api key authentication")
+		}
+
+		response.WriteHeader(http.StatusOK)
+	})
+
+	request := httptest.NewRequest(http.MethodPost, constants.APIKeyPath, nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+
+	bearerAuth.Middleware(ctlr)(next).ServeHTTP(response, request)
+
+	if !called {
+		t.Fatalf("expected request to be authenticated, got status %d", response.Code)
 	}
 }
 

@@ -1324,6 +1324,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "413": {
                         "description": "request entity too large",
                         "schema": {

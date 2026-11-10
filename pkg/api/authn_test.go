@@ -301,6 +301,26 @@ func TestAPIKeys(t *testing.T) {
 			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
 			So(err, ShouldBeNil)
 			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 2)
+
+			// an api key can't create api keys
+			resp, err = resty.R().
+				SetBody(reqBody).
+				SetBasicAuth(username, apiKeyResponse.APIKey).
+				Post(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			resp, err = resty.R().
+				SetBasicAuth(username, password).
+				Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &apiKeyListResponse)
+			So(err, ShouldBeNil)
+			So(len(apiKeyListResponse.APIKeys), ShouldEqual, 2)
 		})
 
 		Convey("API key retrieved with openID and with no expire", func() {
