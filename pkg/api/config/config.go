@@ -138,8 +138,9 @@ type AuthConfig struct {
 	SecureSession     *bool          `json:"secureSession,omitempty" mapstructure:"secureSession,omitempty"`
 	MTLS              *MTLSConfig    `json:"mtls,omitempty"          mapstructure:"mtls,omitempty"`
 
-	// APIKeyMaxLifetime caps the lifetime of new API keys. A longer or missing
-	// expiration date is set to creation time + APIKeyMaxLifetime. Zero: no cap.
+	// APIKeyMaxLifetime caps the lifetime of API keys. A new key with a longer or
+	// missing expiration date gets creation time + APIKeyMaxLifetime. A key older
+	// than APIKeyMaxLifetime is refused, also if created before the cap. Zero: no cap.
 	APIKeyMaxLifetime time.Duration `json:"apikeyMaxLifetime,omitempty" mapstructure:"apikeyMaxLifetime,omitempty"`
 }
 

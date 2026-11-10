@@ -286,6 +286,26 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 	return false, nil
 }
 
+// apiKeyExceedsMaxLifetime reports whether the key is older than apikeyMaxLifetime.
+// This also covers keys created before the cap was set, or with a longer one.
+// The stored key is not changed, so raising or removing the cap restores it.
+func apiKeyExceedsMaxLifetime(ctlr *Controller, request *http.Request, hashedKey string) (bool, error) {
+	authConfig := ctlr.Config.CopyAuthConfig()
+	if authConfig == nil || authConfig.APIKeyMaxLifetime <= 0 {
+		return false, nil
+	}
+
+	userData, err := ctlr.MetaDB.GetUserData(request.Context())
+	if err != nil {
+		return false, err
+	}
+
+	// A missing key or creation time gives a zero CreatedAt, which is past any cap.
+	createdAt := userData.APIKeys[hashedKey].CreatedAt
+
+	return time.Now().After(createdAt.Add(authConfig.APIKeyMaxLifetime)), nil
+}
+
 func authenticateAPIKeyCredential(ctlr *Controller, userAc *reqCtx.UserAccessControl, request *http.Request,
 	identity, apiKey string,
 ) (bool, error) {
@@ -333,6 +353,19 @@ func authenticateAPIKeyCredential(ctlr *Controller, userAc *reqCtx.UserAccessCon
 	}
 
 	if isExpired {
+		return false, nil
+	}
+
+	exceeded, err := apiKeyExceedsMaxLifetime(ctlr, request, hashedKey)
+	if err != nil {
+		ctlr.Log.Err(err).Str("identity", identity).Msg("failed to verify api key max lifetime")
+
+		return false, err
+	}
+
+	if exceeded {
+		ctlr.Log.Info().Str("identity", identity).Msg("api key is older than apikeyMaxLifetime")
+
 		return false, nil
 	}
 

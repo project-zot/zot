@@ -794,7 +794,7 @@ To activate API keys use:
   }
 ```
 
-To cap the lifetime of new API keys, set `apikeyMaxLifetime` (a Go duration, like `720h`):
+To cap the lifetime of API keys, set `apikeyMaxLifetime` (a Go duration, like `720h`):
 
 ```
   "http": {
@@ -806,7 +806,9 @@ To cap the lifetime of new API keys, set `apikeyMaxLifetime` (a Go duration, lik
 ```
 
 A key created with no expiration date, or a later one, gets the expiration date now + `apikeyMaxLifetime`.
-Keys created before the setting are unchanged. If not set, keys can be created without expiry.
+A key older than `apikeyMaxLifetime` is refused, also if it was created before the setting.
+The stored key is not changed, so raising or removing the setting makes it work again.
+If not set, keys can be created without expiry.
 
 ##### How to create an API Key
 
