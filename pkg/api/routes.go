@@ -3499,6 +3499,7 @@ func (rh *RouteHandler) GetAPIKeys(resp http.ResponseWriter, req *http.Request) 
 // CreateAPIKey godoc
 // @Summary Create an API key for the current user
 // @Description Can create an api key for a logged in user, based on the provided label and scopes.
+// @Description If apikeyMaxLifetime is set, a longer or missing expiration date is set to now + apikeyMaxLifetime.
 // @Accept  json
 // @Produce json
 // @Param   id  body  APIKeyPayload  true  "api token id (UUID)"
@@ -3575,6 +3576,20 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 			resp.WriteHeader(http.StatusBadRequest)
 
 			return
+		}
+	}
+
+	// Cap the lifetime. Clamp instead of reject, so clients that ask for no
+	// expiry, like the UI's default, still get a key.
+	if authConfig := rh.c.Config.CopyAuthConfig(); authConfig != nil && authConfig.APIKeyMaxLifetime > 0 {
+		maxExpirationDate := createdAt.Add(authConfig.APIKeyMaxLifetime)
+
+		if expirationDate.IsZero() || expirationDate.After(maxExpirationDate) {
+			rh.c.Log.Info().Str("requested", payload.ExpirationDate).
+				Str("expirationDate", maxExpirationDate.Format(constants.APIKeyTimeFormat)).
+				Msg("api key expiration date capped by apikeyMaxLifetime")
+
+			expirationDate = maxExpirationDate
 		}
 	}
 

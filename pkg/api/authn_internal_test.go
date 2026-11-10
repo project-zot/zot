@@ -3,10 +3,12 @@ package api
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
@@ -15,6 +17,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -408,6 +411,58 @@ func TestAuthenticateAPIKeyCredentialRequiresMetaDB(t *testing.T) {
 
 	assert.False(t, authenticated)
 	assert.Error(t, err)
+}
+
+func TestAuthenticateAPIKeyCredentialMaxLifetime(t *testing.T) {
+	t.Parallel()
+
+	authenticate := func(t *testing.T, metaDB *mocks.MetaDBMock) (bool, error) {
+		t.Helper()
+
+		conf := config.New()
+		conf.HTTP.Auth = &config.AuthConfig{APIKey: true, APIKeyMaxLifetime: time.Hour}
+
+		metaDB.GetUserAPIKeyInfoFn = func(string) (string, error) { return "alice", nil }
+		metaDB.UpdateUserAPIKeyLastUsedFn = func(context.Context, string) error {
+			t.Error("a refused key must not be marked as used")
+
+			return nil
+		}
+
+		return authenticateAPIKeyCredential(
+			&Controller{Config: conf, MetaDB: metaDB, Log: log.NewTestLogger()},
+			reqCtx.NewUserAccessControl(),
+			httptest.NewRequest(http.MethodGet, "/v2/", nil),
+			"alice",
+			constants.APIKeysPrefix+"key",
+		)
+	}
+
+	t.Run("user data read fails", func(t *testing.T) {
+		t.Parallel()
+
+		errUserData := errors.New("user data")
+
+		authenticated, err := authenticate(t, &mocks.MetaDBMock{
+			GetUserDataFn: func(context.Context) (mTypes.UserData, error) {
+				return mTypes.UserData{}, errUserData
+			},
+		})
+		assert.False(t, authenticated)
+		assert.ErrorIs(t, err, errUserData)
+	})
+
+	t.Run("key missing from user data is refused", func(t *testing.T) {
+		t.Parallel()
+
+		authenticated, err := authenticate(t, &mocks.MetaDBMock{
+			GetUserDataFn: func(context.Context) (mTypes.UserData, error) {
+				return mTypes.UserData{}, nil
+			},
+		})
+		assert.False(t, authenticated)
+		assert.NoError(t, err)
+	})
 }
 
 func TestHashUUIDPreservesStableAPIKeyLookupDigest(t *testing.T) {

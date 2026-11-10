@@ -2483,6 +2483,146 @@ func createWorkloadOIDCToken(privKey *rsa.PrivateKey, issuer, audience string,
 	return token.SignedString(privKey)
 }
 
+func TestAPIKeyMaxLifetime(t *testing.T) {
+	Convey("apikeyMaxLifetime caps the expiration date of new API keys", t, func() {
+		const maxLifetime = time.Hour
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		username, _ := test.GenerateRandomString()
+		password, _ := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd:          config.AuthHTPasswd{Path: htpasswdPath},
+			APIKey:            true,
+			APIKeyMaxLifetime: maxLifetime,
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		createKey := func(expirationDate string) apiKeyResponse {
+			reqBody, err := json.Marshal(api.APIKeyPayload{Label: "test", ExpirationDate: expirationDate})
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetBody(reqBody).SetBasicAuth(username, password).
+				Post(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			var apiKey apiKeyResponse
+			So(json.Unmarshal(resp.Body(), &apiKey), ShouldBeNil)
+
+			return apiKey
+		}
+
+		Convey("No expiration date: set to the max", func() {
+			apiKey := createKey("")
+			So(apiKey.ExpirationDate.Equal(apiKey.CreatedAt.Add(maxLifetime)), ShouldBeTrue)
+		})
+
+		Convey("Longer than the max: set to the max", func() {
+			apiKey := createKey(time.Now().Add(2 * maxLifetime).Format(constants.APIKeyTimeFormat))
+			So(apiKey.ExpirationDate.Equal(apiKey.CreatedAt.Add(maxLifetime)), ShouldBeTrue)
+		})
+
+		Convey("Shorter than the max: kept", func() {
+			expirationDate := time.Now().Add(maxLifetime / 2).Round(time.Second)
+			apiKey := createKey(expirationDate.Format(constants.APIKeyTimeFormat))
+			So(apiKey.ExpirationDate.Equal(expirationDate), ShouldBeTrue)
+		})
+
+		Convey("Stored as capped", func() {
+			apiKey := createKey("")
+
+			resp, err := resty.R().SetBasicAuth(username, password).Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var apiKeyList apiKeyListResponse
+			So(json.Unmarshal(resp.Body(), &apiKeyList), ShouldBeNil)
+			So(len(apiKeyList.APIKeys), ShouldEqual, 1)
+			So(apiKeyList.APIKeys[0].ExpirationDate.Equal(apiKey.ExpirationDate), ShouldBeTrue)
+		})
+	})
+}
+
+func TestAPIKeyMaxLifetimeOldKeys(t *testing.T) {
+	Convey("apikeyMaxLifetime refuses keys older than the cap, also those made before it", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		username, _ := test.GenerateRandomString()
+		password, _ := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{Path: htpasswdPath},
+			APIKey:   true,
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		setMaxLifetime := func(maxLifetime time.Duration) {
+			newConf := config.New()
+			newConf.Storage.RootDirectory = conf.Storage.RootDirectory
+			newConf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd:          config.AuthHTPasswd{Path: htpasswdPath},
+				APIKey:            true,
+				APIKeyMaxLifetime: maxLifetime,
+			}
+			ctlr.Config.UpdateReloadableConfig(newConf)
+		}
+
+		useKey := func(apiKey string) int {
+			resp, err := resty.R().SetBasicAuth(username, apiKey).Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+
+			return resp.StatusCode()
+		}
+
+		// No cap: a key with no expiry.
+		reqBody, err := json.Marshal(api.APIKeyPayload{Label: "test"})
+		So(err, ShouldBeNil)
+
+		resp, err := resty.R().SetBody(reqBody).SetBasicAuth(username, password).
+			Post(baseURL + constants.APIKeyPath)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		var apiKey apiKeyResponse
+		So(json.Unmarshal(resp.Body(), &apiKey), ShouldBeNil)
+		So(apiKey.ExpirationDate.IsZero(), ShouldBeTrue)
+		So(useKey(apiKey.APIKey), ShouldEqual, http.StatusOK)
+
+		// The key is older than the cap.
+		time.Sleep(10 * time.Millisecond)
+		setMaxLifetime(time.Millisecond)
+		So(useKey(apiKey.APIKey), ShouldEqual, http.StatusUnauthorized)
+
+		// Within a longer cap.
+		setMaxLifetime(time.Hour)
+		So(useKey(apiKey.APIKey), ShouldEqual, http.StatusOK)
+
+		// Cap removed: the stored key was not changed.
+		setMaxLifetime(time.Millisecond)
+		So(useKey(apiKey.APIKey), ShouldEqual, http.StatusUnauthorized)
+		setMaxLifetime(0)
+		So(useKey(apiKey.APIKey), ShouldEqual, http.StatusOK)
+	})
+}
+
 func TestAPIKeysOpenDBError(t *testing.T) {
 	Convey("Test API keys - unable to create database", t, func() {
 		conf := config.New()

@@ -4727,3 +4727,38 @@ func TestStreamingSyncConfig(t *testing.T) {
 		})
 	})
 }
+
+func TestAPIKeyMaxLifetimeConfig(t *testing.T) {
+	Convey("Test apikeyMaxLifetime config", t, func() {
+		makeConfig := func(auth string) string {
+			return `{"distSpecVersion": "1.1.1", "storage": {"rootDirectory": "/tmp/zot"},
+			"http": {"address": "127.0.0.1", "port": "8080", "auth": ` + auth + `},
+			"log": {"level": "debug"}}`
+		}
+
+		Convey("Duration string", func() {
+			conf := config.New()
+			file := MakeTempFileWithContent(t, "apikey-max-lifetime.json",
+				makeConfig(`{"apikey": true, "apikeyMaxLifetime": "720h"}`))
+			err := cli.LoadConfiguration(conf, file)
+			So(err, ShouldBeNil)
+			So(conf.HTTP.Auth.APIKeyMaxLifetime, ShouldEqual, 720*time.Hour)
+		})
+
+		Convey("Negative", func() {
+			conf := config.New()
+			file := MakeTempFileWithContent(t, "apikey-max-lifetime.json",
+				makeConfig(`{"apikey": true, "apikeyMaxLifetime": "-1h"}`))
+			err := cli.LoadConfiguration(conf, file)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+		})
+
+		Convey("Without apikey: ignored, not an error", func() {
+			conf := config.New()
+			file := MakeTempFileWithContent(t, "apikey-max-lifetime.json",
+				makeConfig(`{"apikeyMaxLifetime": "1h"}`))
+			err := cli.LoadConfiguration(conf, file)
+			So(err, ShouldBeNil)
+		})
+	})
+}
