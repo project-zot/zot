@@ -332,8 +332,12 @@ func (scheduler *Scheduler) generateTasks() {
 
 	var gen *generator
 
+	// get the state once: it can change between two checks, e.g. when a delay passes,
+	// and a generator popped as not ready must go to the waiting or done list.
+	state := scheduler.generators[0].getState()
+
 	// check if the generator with highest priority is ready to run
-	if scheduler.generators[0].getState() == Ready {
+	if state == Ready {
 		// we are not popping it as we will generate multiple tasks until it is done
 		// we are going to pop after all tasks are generated
 		gen = scheduler.generators[0]
@@ -343,9 +347,9 @@ func (scheduler *Scheduler) generateTasks() {
 		heap.Fix(&scheduler.generators, 0)
 	} else {
 		gen, _ = heap.Pop(&scheduler.generators).(*generator)
-		if gen.getState() == Waiting {
+		if state == Waiting {
 			scheduler.waitingGenerators = append(scheduler.waitingGenerators, gen)
-		} else if gen.getState() == Done {
+		} else {
 			scheduler.doneGenerators = append(scheduler.doneGenerators, gen)
 		}
 

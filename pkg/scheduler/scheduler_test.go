@@ -557,14 +557,14 @@ func TestRunGeneratorNow(t *testing.T) {
 		sch.RunScheduler()
 		defer sch.Shutdown()
 
-		So(waitFor(func() bool { return runs.Load() == 1 }, 5*time.Second), ShouldBeTrue)
+		So(waitFor(func() bool { return runs.Load() == 1 }), ShouldBeTrue)
 
 		// the interval hasn't passed, so without a request the generator keeps waiting
 		time.Sleep(500 * time.Millisecond)
 		So(runs.Load(), ShouldEqual, 1)
 
 		So(sch.RunGeneratorNow(gen), ShouldBeTrue)
-		So(waitFor(func() bool { return runs.Load() == 2 }, 5*time.Second), ShouldBeTrue)
+		So(waitFor(func() bool { return runs.Load() == 2 }), ShouldBeTrue)
 	})
 
 	Convey("A one-shot generator which is done runs again when requested", t, func() {
@@ -578,7 +578,7 @@ func TestRunGeneratorNow(t *testing.T) {
 		defer sch.Shutdown()
 
 		for run := int64(1); run <= 3; run++ {
-			So(waitFor(func() bool { return runs.Load() == run }, 5*time.Second), ShouldBeTrue)
+			So(waitFor(func() bool { return runs.Load() == run }), ShouldBeTrue)
 
 			// let the scheduler set the done generator aside
 			time.Sleep(500 * time.Millisecond)
@@ -609,8 +609,35 @@ func TestRunGeneratorNow(t *testing.T) {
 	})
 }
 
-func waitFor(cond func() bool, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
+// lateGenerator is not ready on the first check only, like a generator whose delay passes while
+// the scheduler checks it.
+type lateGenerator struct {
+	onceGenerator
+
+	readyChecks atomic.Int64
+}
+
+func (g *lateGenerator) IsReady() bool {
+	return g.readyChecks.Add(1) > 1
+}
+
+func TestGeneratorReadyDuringDispatch(t *testing.T) {
+	Convey("A generator which becomes ready while the scheduler checks it still runs", t, func() {
+		sch := scheduler.NewScheduler(config.New(), monitoring.NewNopMetricServer(), log.NewTestLogger())
+
+		runs := &atomic.Int64{}
+		gen := &lateGenerator{runs: runs}
+		sch.SubmitGenerator(gen, time.Hour, scheduler.MediumPriority)
+
+		sch.RunScheduler()
+		defer sch.Shutdown()
+
+		So(waitFor(func() bool { return runs.Load() == 1 }), ShouldBeTrue)
+	})
+}
+
+func waitFor(cond func() bool) bool {
+	deadline := time.Now().Add(5 * time.Second)
 
 	for time.Now().Before(deadline) {
 		if cond() {
