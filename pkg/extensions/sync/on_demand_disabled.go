@@ -12,12 +12,12 @@ import (
 
 type BaseOnDemand struct{}
 
-func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
+func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference, _ string) error {
 	return nil
 }
 
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
-	subjectDigestStr string, referenceTypes []string,
+	subjectDigestStr string, referenceTypes []string, _ string,
 ) error {
 	return nil
 }
@@ -35,7 +35,7 @@ func (onDemand *BaseOnDemand) QueueImage(_ context.Context, _, _ string) {}
 // Streaming stubs for builds without the sync extension: nothing is ever streamed.
 
 func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
-	onSynced func(manifest.Manifest),
+	_ string, onSynced func(manifest.Manifest),
 ) (manifest.Manifest, error) {
 	return nil, zerr.ErrSyncOnDemandDisabled
 }

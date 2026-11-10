@@ -23,15 +23,16 @@ func TestOnDemandStub(t *testing.T) {
 	Convey("stubbed on demand always allows upstream manifest checks", t, func() {
 		onDemand := &sync.BaseOnDemand{}
 
-		So(onDemand.SyncImage(context.Background(), "repo", "latest"), ShouldBeNil)
-		So(onDemand.SyncReferrers(context.Background(), "repo", "sha256:digest", nil), ShouldBeNil)
+		So(onDemand.SyncImage(context.Background(), "repo", "latest", ""), ShouldBeNil)
+		So(onDemand.SyncReferrers(context.Background(), "repo", "sha256:digest", nil, ""), ShouldBeNil)
 		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
 		So(onDemand.ShouldQueueOnDemandSync("repo"), ShouldBeFalse)
 		So(func() {
 			onDemand.QueueImage(context.Background(), "repo", "latest")
 		}, ShouldNotPanic)
 
-		manifest, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		manifest, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest",
+			"", nil)
 		So(manifest, ShouldBeNil)
 		So(err, ShouldEqual, zerr.ErrSyncOnDemandDisabled)
 

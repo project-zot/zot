@@ -50,8 +50,9 @@ var (
 var errUpstreamUnreachable = errors.New("upstream unreachable")
 
 type mockSyncOnDemand struct {
-	syncImageFn                   func(ctx context.Context, repo, reference string) error
-	syncReferrersFn               func(ctx context.Context, repo, subjectDigestStr string, referenceTypes []string) error
+	syncImageFn     func(ctx context.Context, repo, reference, ns string) error
+	syncReferrersFn func(ctx context.Context, repo, subjectDigestStr string,
+		referenceTypes []string, ns string) error
 	shouldCheckUpstreamManifestFn func(repo, reference string) bool
 	fetchManifestForStreamFn      func(ctx context.Context, repo, reference string) (manifest.Manifest, error)
 	isStreamingEnabledForRepoFn   func(repo string) bool
@@ -61,18 +62,19 @@ type mockSyncOnDemand struct {
 	streamManager  sync.StreamManager
 }
 
-func (m *mockSyncOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
+func (m *mockSyncOnDemand) SyncImage(ctx context.Context, repo, reference, ns string) error {
 	if m.syncImageFn != nil {
-		return m.syncImageFn(ctx, repo, reference)
+		return m.syncImageFn(ctx, repo, reference, ns)
 	}
 
 	return nil
 }
 
-func (m *mockSyncOnDemand) SyncReferrers(ctx context.Context, repo, subjectDigestStr string, referenceTypes []string,
+func (m *mockSyncOnDemand) SyncReferrers(ctx context.Context, repo, subjectDigestStr string,
+	referenceTypes []string, ns string,
 ) error {
 	if m.syncReferrersFn != nil {
-		return m.syncReferrersFn(ctx, repo, subjectDigestStr, referenceTypes)
+		return m.syncReferrersFn(ctx, repo, subjectDigestStr, referenceTypes, ns)
 	}
 
 	return nil
@@ -96,7 +98,7 @@ func (m *mockSyncOnDemand) ShouldQueueOnDemandSync(repo string) bool {
 
 func (m *mockSyncOnDemand) QueueImage(context.Context, string, string) {}
 func (m *mockSyncOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
-	onSynced func(manifest.Manifest),
+	_ string, onSynced func(manifest.Manifest),
 ) (manifest.Manifest, error) {
 	m.onStreamSynced = onSynced
 
@@ -365,7 +367,7 @@ func TestGetManifestCheckInterval(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return false },
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -394,7 +396,7 @@ func TestGetManifestCheckInterval(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return false },
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -421,7 +423,7 @@ func TestGetManifestCheckInterval(t *testing.T) {
 
 			syncOnDemand := &mockSyncOnDemand{
 				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return true },
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -467,7 +469,7 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 					return localManifest, localDigest, ispec.MediaTypeImageManifest, nil
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncInternal
 				},
 			})
@@ -490,7 +492,7 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 					return nil, "", "", zerr.ErrManifestNotFound
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncImageFilteredOut
 				},
 			})
@@ -510,7 +512,7 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 					return nil, "", "", zerr.ErrStoragePermanent
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncInternal
 				},
 			})
@@ -530,7 +532,7 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 					return nil, "", "", zerr.ErrManifestNotFound
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncInternal
 				},
 			})
@@ -573,7 +575,7 @@ func TestCheckManifestOnDemandSyncErrors(t *testing.T) {
 					return nil, "", "", zerr.ErrManifestNotFound
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncInternal
 				},
 			})
@@ -1163,7 +1165,7 @@ func TestGetManifestStreaming(t *testing.T) {
 				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
 					return man, nil
 				},
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -1238,7 +1240,7 @@ func TestGetManifestStreaming(t *testing.T) {
 				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
 					return nil, zerr.ErrStreamManagerNotInitialized
 				},
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -1276,7 +1278,7 @@ func TestGetManifestStreaming(t *testing.T) {
 				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
 					return nil, zerr.ErrSyncNotStreamed
 				},
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -1314,7 +1316,7 @@ func TestGetManifestStreaming(t *testing.T) {
 					fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
 						return nil, fmt.Errorf("%w: %w", zerr.ErrSyncNotStreamed, testCase.syncErr)
 					},
-					syncImageFn: func(_ context.Context, _, _ string) error {
+					syncImageFn: func(_ context.Context, _, _, _ string) error {
 						syncCalls++
 
 						return nil
@@ -1359,7 +1361,7 @@ func TestGetReferrers(t *testing.T) {
 			var syncedRepo, syncedDigest string
 
 			syncOnDemand := &mockSyncOnDemand{
-				syncReferrersFn: func(_ context.Context, repo, subjectDigest string, _ []string) error {
+				syncReferrersFn: func(_ context.Context, repo, subjectDigest string, _ []string, _ string) error {
 					syncedRepo = repo
 					syncedDigest = subjectDigest
 
@@ -1385,7 +1387,7 @@ func TestGetReferrers(t *testing.T) {
 
 		Convey("still serves the local store's referrers when the on-demand sync fails", func() {
 			syncOnDemand := &mockSyncOnDemand{
-				syncReferrersFn: func(_ context.Context, _, _ string, _ []string) error {
+				syncReferrersFn: func(_ context.Context, _, _ string, _ []string, _ string) error {
 					return errUpstreamUnreachable
 				},
 			}
