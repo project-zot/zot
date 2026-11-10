@@ -52,6 +52,11 @@ type Service interface { //nolint:interfacebloat
 	// IsImageLocal reports whether repo:reference is already committed locally at digest, so
 	// streaming can skip it. Storage errors other than not-found are returned.
 	IsImageLocal(repo, reference string, digest godigest.Digest) (bool, error)
+	// MatchesRegistry reports whether this service syncs from the upstream registry named by
+	// the containerd ?ns= namespace/query parameter (e.g. "docker.io", "registry.k8s.io").
+	// An empty ns matches every service (no filtering). Used by on-demand sync to select the
+	// right upstream registry for a mirrored namespace.
+	MatchesRegistry(ns string) bool
 }
 
 // StreamSyncer runs the sync behind a staged stream: it copies the staged digest (not tag's

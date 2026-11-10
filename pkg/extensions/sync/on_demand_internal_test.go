@@ -33,6 +33,8 @@ type stubOnDemandService struct {
 	syncImageCalls         int
 	onDemandInBackground   bool
 	isOnDemandInBackground func(repo string) bool
+	// matchNS, when non-empty, makes MatchesRegistry match only this namespace.
+	matchNS string
 }
 
 func (s *stubOnDemandService) GetNextRepo(_ string) (string, error) { return "", nil }
@@ -77,6 +79,14 @@ func (s *stubOnDemandService) FetchManifest(_ context.Context, _, _ string) (man
 
 func (s *stubOnDemandService) IsStreamingForRepo(_ string) bool { return false }
 
+func (s *stubOnDemandService) MatchesRegistry(ns string) bool {
+	if s.matchNS == "" {
+		return true
+	}
+
+	return s.matchNS == ns
+}
+
 func (s *stubOnDemandService) IsImageLocal(_, _ string, _ godigest.Digest) (bool, error) {
 	return false, nil
 }
@@ -91,7 +101,7 @@ func TestOnDemandDockerCompatPreference(t *testing.T) {
 		onDemand.Add(first)
 		onDemand.Add(second)
 
-		err := onDemand.SyncImage(context.Background(), "repo", "tag")
+		err := onDemand.SyncImage(context.Background(), "repo", "tag", "")
 		// docker-compat is a hard config failure from the client's point of view.
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeTrue)
 		So(first.syncImageCalls, ShouldEqual, 1)
@@ -109,7 +119,7 @@ func TestOnDemandKeepsHardErrorOverLaterFilter(t *testing.T) {
 		onDemand.Add(first)
 		onDemand.Add(second)
 
-		err := onDemand.SyncImage(context.Background(), "docker-hub/app", "tag")
+		err := onDemand.SyncImage(context.Background(), "docker-hub/app", "tag", "")
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncImageFilteredOut), ShouldBeFalse)
 		So(first.syncImageCalls, ShouldEqual, 1)
@@ -126,7 +136,7 @@ func TestOnDemandKeepsUnauthorizedOverLaterFilter(t *testing.T) {
 		onDemand.Add(first)
 		onDemand.Add(second)
 
-		err := onDemand.SyncImage(context.Background(), "docker-hub/app", "tag")
+		err := onDemand.SyncImage(context.Background(), "docker-hub/app", "tag", "")
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncImageFilteredOut), ShouldBeFalse)
 		So(first.syncImageCalls, ShouldEqual, 1)
@@ -144,7 +154,7 @@ func TestOnDemandPrefersSoftMissOverDialFailure(t *testing.T) {
 		onDemand.Add(first)
 		onDemand.Add(second)
 
-		err := onDemand.SyncImage(context.Background(), "missing/app", "tag")
+		err := onDemand.SyncImage(context.Background(), "missing/app", "tag", "")
 		So(errors.Is(err, zerr.ErrRepoNotFound), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeFalse)
 		So(first.syncImageCalls, ShouldEqual, 1)
@@ -161,7 +171,7 @@ func TestOnDemandClientInvalidReferenceStaysSoft(t *testing.T) {
 		onDemand := NewOnDemand(log.NewTestLogger())
 		onDemand.Add(svc)
 
-		err := onDemand.SyncImage(context.Background(), "repo", "BAD TAG")
+		err := onDemand.SyncImage(context.Background(), "repo", "BAD TAG", "")
 		So(errors.Is(err, errs.ErrInvalidReference), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeFalse)
 		So(svc.syncImageCalls, ShouldEqual, 1)
@@ -178,7 +188,7 @@ func TestOnDemandPrefersAuthOverEarlierDialFailure(t *testing.T) {
 		onDemand.Add(first)
 		onDemand.Add(second)
 
-		err := onDemand.SyncImage(context.Background(), "docker-hub/app", "tag")
+		err := onDemand.SyncImage(context.Background(), "docker-hub/app", "tag", "")
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeTrue)
 		So(first.syncImageCalls, ShouldEqual, 1)
 		So(second.syncImageCalls, ShouldEqual, 1)
@@ -332,7 +342,7 @@ func TestOnDemandPrefersSoftMissOverParseRemoteRepo(t *testing.T) {
 		onDemand.Add(first)
 		onDemand.Add(second)
 
-		err := onDemand.SyncImage(context.Background(), "missing/app", "tag")
+		err := onDemand.SyncImage(context.Background(), "missing/app", "tag", "")
 		So(errors.Is(err, zerr.ErrManifestNotFound), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeFalse)
 		So(first.syncImageCalls, ShouldEqual, 1)
@@ -354,7 +364,7 @@ func TestOnDemandPrefersSoftMissOverTLSFailure(t *testing.T) {
 		onDemand.Add(first)
 		onDemand.Add(second)
 
-		err := onDemand.SyncImage(context.Background(), "missing/app", "tag")
+		err := onDemand.SyncImage(context.Background(), "missing/app", "tag", "")
 		So(errors.Is(err, zerr.ErrManifestNotFound), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeFalse)
 		So(first.syncImageCalls, ShouldEqual, 1)
@@ -376,7 +386,7 @@ func TestOnDemandPrefersSoftMissOverHTTPSToHTTP(t *testing.T) {
 		onDemand.Add(first)
 		onDemand.Add(second)
 
-		err := onDemand.SyncImage(context.Background(), "missing/app", "tag")
+		err := onDemand.SyncImage(context.Background(), "missing/app", "tag", "")
 		So(errors.Is(err, zerr.ErrManifestNotFound), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeFalse)
 		So(first.syncImageCalls, ShouldEqual, 1)
@@ -410,7 +420,7 @@ func TestSyncImageClassifiesSharedBackgroundFlight(t *testing.T) {
 		errCh := make(chan error, 1)
 
 		go func() {
-			errCh <- onDemand.SyncImage(context.Background(), "repo", "tag")
+			errCh <- onDemand.SyncImage(context.Background(), "repo", "tag", "")
 		}()
 
 		// Let the SyncImage caller join the in-flight background leader before it finishes.
@@ -432,7 +442,7 @@ func TestOnDemandNoBackgroundWhenCannotRetry(t *testing.T) {
 		onDemand := NewOnDemand(log.NewTestLogger())
 		onDemand.Add(svc)
 
-		err := onDemand.SyncImage(context.Background(), "repo", "tag")
+		err := onDemand.SyncImage(context.Background(), "repo", "tag", "")
 		So(err, ShouldNotBeNil)
 
 		count := 0
@@ -454,6 +464,68 @@ func TestQueueImageNoopWithoutBackgroundServices(t *testing.T) {
 		So(onDemand.ShouldQueueOnDemandSync("repo"), ShouldBeFalse)
 		So(func() { onDemand.QueueImage(context.Background(), "repo", "tag") }, ShouldNotPanic)
 		So(svc.syncImageCalls, ShouldEqual, 0)
+	})
+}
+
+func TestServicesMatchingNS(t *testing.T) {
+	Convey("servicesMatchingNS", t, func() {
+		Convey("empty ns returns all services", func() {
+			docker := &stubOnDemandService{matchNS: "docker.io"}
+			k8s := &stubOnDemandService{matchNS: "registry.k8s.io"}
+
+			onDemand := NewOnDemand(log.NewTestLogger())
+			onDemand.Add(docker)
+			onDemand.Add(k8s)
+
+			So(len(onDemand.servicesMatchingNS("")), ShouldEqual, 2)
+		})
+
+		Convey("matching ns returns only matching services", func() {
+			docker := &stubOnDemandService{matchNS: "docker.io"}
+			k8s := &stubOnDemandService{matchNS: "registry.k8s.io"}
+
+			onDemand := NewOnDemand(log.NewTestLogger())
+			onDemand.Add(docker)
+			onDemand.Add(k8s)
+
+			matched := onDemand.servicesMatchingNS("docker.io")
+			So(len(matched), ShouldEqual, 1)
+			So(matched[0], ShouldEqual, docker)
+		})
+
+		Convey("non-matching ns returns no services", func() {
+			docker := &stubOnDemandService{matchNS: "docker.io"}
+
+			onDemand := NewOnDemand(log.NewTestLogger())
+			onDemand.Add(docker)
+
+			So(len(onDemand.servicesMatchingNS("registry.k8s.io")), ShouldEqual, 0)
+		})
+
+		Convey("syncImage with ns matching no service fails", func() {
+			docker := &stubOnDemandService{matchNS: "docker.io"}
+
+			onDemand := NewOnDemand(log.NewTestLogger())
+			onDemand.Add(docker)
+
+			err := onDemand.syncImage(context.Background(), "repo", "tag", "registry.k8s.io", -1, "", false)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "no sync registry configured for namespace")
+		})
+
+		Convey("syncImage with matching ns calls the matching service", func() {
+			docker := &stubOnDemandService{matchNS: "docker.io"}
+			k8s := &stubOnDemandService{matchNS: "registry.k8s.io"}
+
+			onDemand := NewOnDemand(log.NewTestLogger())
+			onDemand.Add(docker)
+			onDemand.Add(k8s)
+
+			err := onDemand.syncImage(context.Background(), "repo", "tag", "docker.io", -1, "", false)
+			So(err, ShouldBeNil)
+			So(docker.syncImageCalls, ShouldEqual, 1)
+			So(k8s.syncImageCalls, ShouldEqual, 0)
+		})
 	})
 }
 

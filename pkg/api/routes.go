@@ -446,6 +446,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Produce json
 // @Param   name          path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
+// @Param   ns            query   string     false       "upstream registry namespace (e.g. docker.io, ghcr.io)"
 // @Success 200 {string} string "ok"
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
@@ -476,7 +477,8 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 	}
 
 	// HEAD is not a download: pass no onStreamSynced, so it's never counted.
-	content, digest, mediaType, _, err := getImageManifest(request.Context(), rh, imgStore, name, reference, nil)
+	ns := request.URL.Query().Get("ns")
+	content, digest, mediaType, _, err := getImageManifest(request.Context(), rh, imgStore, name, reference, ns, nil)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		details["reference"] = reference
@@ -526,6 +528,7 @@ type ExtensionList struct {
 // @Produce application/vnd.oci.image.manifest.v1+json
 // @Param   name         path    string     true        "repository name"
 // @Param   reference    path    string     true        "image reference or digest"
+// @Param   ns           query   string     false        "upstream registry namespace (e.g. docker.io, registry.k8s.io)"
 // @Success 200 {object} api.ImageManifest
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
@@ -585,7 +588,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	}
 
 	content, digest, mediaType, streamed, err := getImageManifest(request.Context(), rh, imgStore, name, reference,
-		onStreamSynced)
+		request.URL.Query().Get("ns"), onStreamSynced)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if writeStorageClassError(response, err) {
@@ -661,13 +664,14 @@ type ImageIndex struct {
 
 func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
-	artifactTypes []string,
+	artifactTypes []string, nsParam string,
 ) (ispec.Index, error) {
 	if isSyncOnDemandEnabled(routeHandler.c) {
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
 			Msg("trying to get updated referrers by syncing on demand")
 
-		if errSync := routeHandler.c.SyncOnDemand.SyncReferrers(ctx, name, digest.String(), artifactTypes); errSync != nil {
+		if errSync := routeHandler.c.SyncOnDemand.SyncReferrers(ctx, name, digest.String(), artifactTypes,
+			nsParam); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).
 				Msg("failed to sync image referrers")
 		}
@@ -721,7 +725,8 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	imgStore := rh.getImageStore(name)
 
-	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes)
+	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes,
+		request.URL.Query().Get("ns"))
 	if err != nil {
 		if writeStorageClassError(response, err) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
@@ -3250,7 +3255,7 @@ func (rh *RouteHandler) getImageStore(name string) storageTypes.ImageStore {
 // streamed means the manifest is upstream's and not committed yet, so local metadata for reference
 // may still describe an older digest.
 func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storageTypes.ImageStore, name,
-	reference string, onStreamSynced func(manifest.Manifest),
+	reference, nsParam string, onStreamSynced func(manifest.Manifest),
 ) ([]byte, godigest.Digest, string, bool, error) {
 	syncEnabled := isSyncOnDemandEnabled(routeHandler.c)
 
@@ -3320,8 +3325,8 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 				Bool("inFlightStream", inFlightStream).
 				Msg("streaming enabled for repo, fetching manifest directly from upstream")
 
-			fetchedManifest, errFetch := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx, name, reference,
-				onStreamSynced)
+			fetchedManifest, errFetch := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx,
+				name, reference, nsParam, onStreamSynced)
 			if errFetch == nil {
 				content, err := fetchedManifest.RawBody()
 				if err != nil {
@@ -3360,7 +3365,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 				Msg("trying to get updated image by syncing on demand")
 
-			syncErr = routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference)
+			syncErr = routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference, nsParam)
 		}
 
 		if syncErr != nil {

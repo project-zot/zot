@@ -577,7 +577,7 @@ func TestService(t *testing.T) {
 		So(preImageCount, ShouldEqual, 1) // Should be 1 after pre-population
 
 		// Step 4: Trigger sync - should execute continue path
-		err = onDemand.SyncImage(ctx, "test-duplicate-repo", "test-duplicate-tag")
+		err = onDemand.SyncImage(ctx, "test-duplicate-repo", "test-duplicate-tag", "")
 		So(err, ShouldNotBeNil) // Should still error due to invalid registry
 
 		// Step 5: Verify CONTINUE PATH EXECUTED - no new requests created
@@ -619,7 +619,7 @@ func TestService(t *testing.T) {
 		So(preReferrerCount, ShouldEqual, 2) // Should have 2 after referrer pre-population
 
 		// Step 10: Trigger referrer sync - should execute continue path
-		err = onDemand.SyncReferrers(ctx, "test-duplicate-referrer-repo", "sha256:duplicate", []string{"signature"})
+		err = onDemand.SyncReferrers(ctx, "test-duplicate-referrer-repo", "sha256:duplicate", []string{"signature"}, "")
 		So(err, ShouldNotBeNil) // Should still error due to invalid registry
 
 		// Step 11: Verify CONTINUE PATH EXECUTED - no new referrer requests created
@@ -684,11 +684,11 @@ func TestService(t *testing.T) {
 
 		// Test ErrSyncImageFilteredOut continue path in SyncImage
 		// The first service returns ErrSyncImageFilteredOut (causes continue), second service processes but errors
-		err = onDemand.SyncImage(ctx, "test-filtered-repo", "test-tag")
+		err = onDemand.SyncImage(ctx, "test-filtered-repo", "test-tag", "")
 		So(err, ShouldNotBeNil) // Should get error from second service (network error)
 
 		// Test ErrSyncImageFilteredOut continue path in SyncReferrers
-		err = onDemand.SyncReferrers(ctx, "test-filtered-referrer-repo", "sha256:test", []string{"signature"})
+		err = onDemand.SyncReferrers(ctx, "test-filtered-referrer-repo", "sha256:test", []string{"signature"}, "")
 		So(err, ShouldNotBeNil) // Should get error from second service (network error)
 	})
 
@@ -720,14 +720,14 @@ func TestService(t *testing.T) {
 		// Test SyncReferrers continue path
 		Convey("SyncReferrers continue path", func() {
 			_, onDemand := createFilteredService("different-referrer-prefix")
-			err := onDemand.SyncReferrers(ctx, "test-unfiltered-referrer-repo", "sha256:test", []string{"signature"})
+			err := onDemand.SyncReferrers(ctx, "test-unfiltered-referrer-repo", "sha256:test", []string{"signature"}, "")
 			So(err, ShouldNotBeNil) // Should get error from sync process (filtered out -> continue -> network error)
 		})
 
 		// Test SyncImage continue path
 		Convey("SyncImage continue path", func() {
 			_, onDemand := createFilteredService("different-image-prefix")
-			err := onDemand.SyncImage(ctx, "test-unfiltered-image-repo", "test-tag")
+			err := onDemand.SyncImage(ctx, "test-unfiltered-image-repo", "test-tag", "")
 			So(err, ShouldNotBeNil) // Should get error from sync process (filtered out -> continue -> network error)
 		})
 	})
@@ -772,7 +772,7 @@ func TestService(t *testing.T) {
 			// 1. Network error (not a continue-path error)
 			// 2. CanRetryOnError() returns true (maxRetries > 0)
 			// 3. No existing background retry
-			err := onDemand.SyncReferrers(ctx, "test-background-retry", "sha256:background", []string{"signature"})
+			err := onDemand.SyncReferrers(ctx, "test-background-retry", "sha256:background", []string{"signature"}, "")
 			So(err, ShouldNotBeNil) // Should get original network error
 
 			// Wait for background goroutine to start and store request
@@ -813,7 +813,7 @@ func TestService(t *testing.T) {
 			// 1. Network error (not a continue-path error)
 			// 2. CanRetryOnError() returns true (maxRetries > 0)
 			// 3. No existing background retry
-			err := onDemand.SyncImage(ctx, "test-background-image-retry", "background-image-tag")
+			err := onDemand.SyncImage(ctx, "test-background-image-retry", "background-image-tag", "")
 			So(err, ShouldNotBeNil) // Should get original network error
 
 			// Wait for background goroutine to start and store request
@@ -924,7 +924,7 @@ func TestService(t *testing.T) {
 
 			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo", "dedup-tag"), &syncCalls, nil,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", -1, "", false)
+					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", "", -1, "", false)
 				})
 		})
 
@@ -935,7 +935,7 @@ func TestService(t *testing.T) {
 			runConcurrentDedup(t, &onDemand.flight,
 				onDemandKey(onDemandKindReferrers, "dedup-referrer-repo", "sha256:dedup"), &syncCalls, nil,
 				func(ctx context.Context) error {
-					return onDemand.syncReferrers(ctx, "dedup-referrer-repo", "sha256:dedup", nil, false)
+					return onDemand.syncReferrers(ctx, "dedup-referrer-repo", "sha256:dedup", nil, "", false)
 				})
 		})
 
@@ -947,7 +947,7 @@ func TestService(t *testing.T) {
 			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo-err", "dedup-tag"),
 				&syncCalls, wantErr,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", -1, "", false)
+					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", "", -1, "", false)
 				})
 		})
 
@@ -959,7 +959,7 @@ func TestService(t *testing.T) {
 			runConcurrentDedup(t, &onDemand.flight,
 				onDemandKey(onDemandKindReferrers, "dedup-referrer-repo-err", "sha256:dedup"), &syncCalls, wantErr,
 				func(ctx context.Context) error {
-					return onDemand.syncReferrers(ctx, "dedup-referrer-repo-err", "sha256:dedup", nil, false)
+					return onDemand.syncReferrers(ctx, "dedup-referrer-repo-err", "sha256:dedup", nil, "", false)
 				})
 		})
 	})
@@ -3217,6 +3217,8 @@ func (s *mockCheckService) IsImageLocal(_, _ string, _ godigest.Digest) (bool, e
 	return false, nil
 }
 
+func (s *mockCheckService) MatchesRegistry(_ string) bool { return true }
+
 func TestManifestCheckTracker(t *testing.T) {
 	Convey("A reference that was never checked is due for an upstream check", t, func() {
 		tracker := newManifestCheckTracker(time.Hour)
@@ -3826,6 +3828,8 @@ func (s *fakeStreamService) GetSyncTimeout() time.Duration { return time.Minute 
 
 func (s *fakeStreamService) ShouldCheckUpstream(_, _ string) bool { return true }
 
+func (s *fakeStreamService) MatchesRegistry(_ string) bool { return true }
+
 func (s *fakeStreamService) FetchManifest(ctx context.Context, repo, reference string,
 ) (manifest.Manifest, error) {
 	if s.fetchManifestFn != nil {
@@ -3957,7 +3961,7 @@ func TestStagingSlotOwnership(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, man)
 		// Joined the staged image instead of entering a flight.
@@ -3986,7 +3990,7 @@ func TestStagingSlotOwnership(t *testing.T) {
 		done := make(chan error, 1)
 
 		go func() {
-			_, err := onDemand.FetchManifestForStream(ctx, "repo", "latest", nil)
+			_, err := onDemand.FetchManifestForStream(ctx, "repo", "latest", "", nil)
 			done <- err
 		}()
 
@@ -4058,7 +4062,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			},
 		})
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, man)
 		So(called, ShouldBeFalse)
@@ -4084,7 +4088,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, man)
 		So(fetched, ShouldBeFalse)
@@ -4106,7 +4110,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldEqual, zerr.ErrSyncNotStreamed)
 		So(result, ShouldBeNil)
 		So(fetched, ShouldBeFalse)
@@ -4126,7 +4130,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldEqual, zerr.ErrSyncNotStreamed)
 		So(result, ShouldBeNil)
 
@@ -4151,7 +4155,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			}
 			onDemand.Add(service)
 
-			result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+			result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 			So(err, ShouldEqual, zerr.ErrSyncNotStreamed)
 			So(result, ShouldBeNil)
 
@@ -4176,7 +4180,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(errors.Is(err, zerr.ErrSyncNotStreamed), ShouldBeTrue)
 		So(result, ShouldBeNil)
 
@@ -4199,7 +4203,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			localDigest: godigest.FromString("an older manifest"),
 		})
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, man)
 	})
@@ -4224,7 +4228,7 @@ func TestFetchManifestForStream(t *testing.T) {
 
 		plainDone := make(chan error, 1)
 
-		go func() { plainDone <- onDemand.SyncImage(context.Background(), "repo", "latest") }()
+		go func() { plainDone <- onDemand.SyncImage(context.Background(), "repo", "latest", "") }()
 
 		for i := 0; i < 100 && atomic.LoadInt32(&service.syncImageCalls) < 1; i++ {
 			time.Sleep(10 * time.Millisecond)
@@ -4235,7 +4239,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		streamDone := make(chan error, 1)
 
 		go func() {
-			_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+			_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 			streamDone <- err
 		}()
 
@@ -4268,7 +4272,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			syncImageErr: zerr.ErrStoragePermanent,
 		})
 
-		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(errors.Is(err, zerr.ErrSyncNotStreamed), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeFalse)
@@ -4284,7 +4288,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			syncImageErr: zerr.ErrSyncImageNotSigned,
 		})
 
-		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(errors.Is(err, zerr.ErrSyncNotStreamed), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncImageNotSigned), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
@@ -4314,7 +4318,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			go func() {
 				defer wg.Done()
 
-				_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+				_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 				conv.So(err, ShouldBeNil)
 			}()
 		}
@@ -4371,7 +4375,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 
-				result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", nil)
+				result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 				conv.So(err, ShouldBeNil)
 				results[i] = result
 			}(i)
@@ -4418,12 +4422,12 @@ func TestFetchManifestForStreamJoinerOnSynced(t *testing.T) {
 		stagerSynced := make(chan manifest.Manifest, 1)
 		joinerSynced := make(chan manifest.Manifest, 1)
 
-		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest",
+		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "",
 			func(m manifest.Manifest) { stagerSynced <- m })
 		So(err, ShouldBeNil)
 
 		// The background sync is blocked, so this call joins the staged entry.
-		_, err = onDemand.FetchManifestForStream(context.Background(), "repo", "latest",
+		_, err = onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "",
 			func(m manifest.Manifest) { joinerSynced <- m })
 		So(err, ShouldBeNil)
 
@@ -4460,7 +4464,8 @@ func TestStageForStreamSourceUniqueAcrossReloads(t *testing.T) {
 				},
 			})
 
-			staged, idx, joined, err := onDemand.stageForStream(context.Background(), repo, "latest", nil)
+			staged, idx, joined, err := onDemand.stageForStream(context.Background(), repo, "latest",
+				"", nil)
 			So(err, ShouldBeNil)
 			So(joined, ShouldBeFalse)
 			So(idx, ShouldEqual, 0)
@@ -4534,7 +4539,8 @@ func TestStreamOrSyncImageJoinsPreReloadStream(t *testing.T) {
 			result := make(chan error, 1)
 
 			go func() {
-				result <- onDemand.streamOrSyncImage(context.Background(), "repo", "latest", onSynced, outcome)
+				result <- onDemand.streamOrSyncImage(context.Background(), "repo", "latest", "",
+					onSynced, outcome)
 			}()
 
 			So(<-outcome, ShouldEqual, man)

@@ -36,7 +36,7 @@ type onDemandInBackgroundMock struct {
 	streamManager sync.StreamManager
 }
 
-func (mock *onDemandInBackgroundMock) SyncImage(ctx context.Context, repo, reference string) error {
+func (mock *onDemandInBackgroundMock) SyncImage(ctx context.Context, repo, reference, _ string) error {
 	mock.syncImageCalls++
 
 	if mock.syncImageFn != nil {
@@ -46,7 +46,7 @@ func (mock *onDemandInBackgroundMock) SyncImage(ctx context.Context, repo, refer
 	return nil
 }
 
-func (mock *onDemandInBackgroundMock) SyncReferrers(context.Context, string, string, []string) error {
+func (mock *onDemandInBackgroundMock) SyncReferrers(context.Context, string, string, []string, string) error {
 	return nil
 }
 
@@ -68,7 +68,7 @@ func (mock *onDemandInBackgroundMock) QueueImage(ctx context.Context, repo, refe
 	}
 }
 
-func (mock *onDemandInBackgroundMock) FetchManifestForStream(ctx context.Context, _, _ string,
+func (mock *onDemandInBackgroundMock) FetchManifestForStream(ctx context.Context, _, _, _ string,
 	_ func(manifest.Manifest),
 ) (manifest.Manifest, error) {
 	mock.fetchForStreamCalls++
@@ -162,7 +162,7 @@ func TestGetImageManifestOnDemandInBackground(t *testing.T) {
 				},
 			}
 
-			content, _, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, nil)
+			content, _, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, "", nil)
 			if !errors.Is(err, testCase.storageErr) {
 				t.Fatalf("getImageManifest() error = %v, want %v", err, testCase.storageErr)
 			}
@@ -213,7 +213,7 @@ func TestGetImageManifestOnDemandInBackgroundDigestMiss(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, nil)
+	_, _, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, "", nil)
 	if !errors.Is(err, zerr.ErrManifestNotFound) {
 		t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
 	}
@@ -257,7 +257,7 @@ func TestGetImageManifestBlockingWhenBackgroundDisabledForRepo(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, err := getImageManifest(context.Background(), handler, store, "library/test", "latest", nil)
+	_, _, _, _, err := getImageManifest(context.Background(), handler, store, "library/test", "latest", "", nil)
 	if !errors.Is(err, zerr.ErrManifestNotFound) {
 		t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
 	}
@@ -305,7 +305,7 @@ func TestGetImageManifestOnDemandInBackgroundWinsOverStreaming(t *testing.T) {
 				},
 			}
 
-			_, _, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, nil)
+			_, _, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, "", nil)
 			if !errors.Is(err, zerr.ErrManifestNotFound) {
 				t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
 			}
@@ -368,7 +368,7 @@ func TestGetImageManifestStreamed(t *testing.T) {
 		}
 
 		_, digest, _, streamed, err := getImageManifest(context.Background(), newHandler(onDemand), staleStore,
-			"library/test", "latest", nil)
+			"library/test", "latest", "", nil)
 		if err != nil {
 			t.Fatalf("getImageManifest() error = %v", err)
 		}
@@ -397,7 +397,7 @@ func TestGetImageManifestStreamed(t *testing.T) {
 		}
 
 		_, _, _, streamed, err := getImageManifest(ctx, newHandler(onDemand), staleStore, "library/test", "latest",
-			nil)
+			"", nil)
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("getImageManifest() error = %v, want %v", err, context.Canceled)
 		}
@@ -543,7 +543,7 @@ func TestGetImageManifestJoinsInFlightStream(t *testing.T) {
 				}}
 
 				_, digest, _, streamed, err := getImageManifest(context.Background(), handler, missingStore,
-					repo, reference, nil)
+					repo, reference, "", nil)
 				if err != nil {
 					t.Fatalf("getImageManifest() error = %v", err)
 				}
@@ -577,7 +577,7 @@ func TestGetImageManifestJoinsInFlightStream(t *testing.T) {
 				Log:          log.NewTestLogger(),
 			}}
 
-			_, _, _, _, err := getImageManifest(context.Background(), handler, missingStore, repo, reference, nil)
+			_, _, _, _, err := getImageManifest(context.Background(), handler, missingStore, repo, reference, "", nil)
 			if !errors.Is(err, zerr.ErrManifestNotFound) {
 				t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
 			}

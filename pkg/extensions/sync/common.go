@@ -13,9 +13,14 @@ import (
 // OnDemand pulls images and referrers from upstream registries on client request.
 type OnDemand interface {
 	// SyncImage syncs a single image (repo:tag or repo:digest) into local storage.
-	SyncImage(ctx context.Context, repo, reference string) error
+	// ns, when non-empty, restricts the sync to the upstream registry named by the
+	// containerd ?ns= namespace/query parameter (e.g. "docker.io").
+	SyncImage(ctx context.Context, repo, reference, ns string) error
 	// SyncReferrers syncs referrers for the given subject digest into local storage.
-	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
+	// ns, when non-empty, restricts the sync to the upstream registry named by the
+	// containerd ?ns= namespace/query parameter.
+	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string,
+		ns string) error
 	// ShouldCheckUpstreamManifest reports whether repo:reference still needs an upstream check.
 	ShouldCheckUpstreamManifest(repo, reference string) bool
 	// ShouldQueueOnDemandSync reports whether a missing local manifest for repo should
@@ -29,7 +34,9 @@ type OnDemand interface {
 	// count a download). If the image is not streamed (e.g. an index, or the stream cap), it waits
 	// for a plain sync and returns ErrSyncNotStreamed, wrapping that sync's error if it failed;
 	// the caller then serves from storage.
-	FetchManifestForStream(ctx context.Context, repo, reference string,
+	// ns, when non-empty, restricts the sync to the upstream registry named by the
+	// containerd ?ns= namespace/query parameter.
+	FetchManifestForStream(ctx context.Context, repo, reference string, ns string,
 		onSynced func(manifest.Manifest)) (manifest.Manifest, error)
 	// StreamManager returns the shared stream manager, or nil when no registry streams.
 	StreamManager() StreamManager

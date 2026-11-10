@@ -353,6 +353,30 @@ func (service *BaseService) remoteHostName() string {
 	return service.remote.GetHostName()
 }
 
+// MatchesRegistry reports whether this service syncs from the upstream registry named by ns
+// (the containerd ?ns= namespace/query parameter, e.g. "docker.io", "registry.k8s.io").
+// It matches ns against the hostname of every configured upstream URL, case-insensitively.
+// An empty ns matches every service (no filtering).
+func (service *BaseService) MatchesRegistry(nsParam string) bool {
+	if nsParam == "" {
+		return true
+	}
+
+	for _, u := range service.config.URLs {
+		parsed, err := url.Parse(u)
+		if err != nil {
+			continue
+		}
+
+		host := parsed.Hostname()
+		if strings.EqualFold(host, nsParam) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (service *BaseService) CanRetryOnError() bool {
 	if service.config.MaxRetries != nil && *service.config.MaxRetries > 0 {
 		return true
