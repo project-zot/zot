@@ -4703,30 +4703,31 @@ func TestGCEmptyDirectoriesModes(t *testing.T) {
 		So(os.MkdirAll(path.Join(rootDir, "empty/nested"), 0o700), ShouldBeNil)
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewNopMetricServer()
-		var imgStore storageTypes.ImageStore
-		var opts Options
+
+		assertTreeKept := func(imgStore storageTypes.ImageStore, opts Options) {
+			gen := &GCTaskGenerator{
+				imgStore: imgStore,
+				gc:       NewGarbageCollect(imgStore, nil, opts, nil, log, metrics),
+			}
+			gen.Reset()
+			So(runGCGenerator(context.Background(), gen, map[string]int{}), ShouldBeNil)
+			So(gen.IsDone(), ShouldBeTrue)
+			_, err := os.Stat(path.Join(rootDir, "empty/nested"))
+			So(err, ShouldBeNil)
+		}
 
 		Convey("dry-run preserves the tree", func() {
-			imgStore = local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+			var opts Options
 			opts.ImageRetention.DryRun = true
+			assertTreeKept(local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil), opts)
 		})
 
 		Convey("a remote store never cleans its local-looking root", func() {
-			imgStore = mocks.MockedImageStore{
+			assertTreeKept(mocks.MockedImageStore{
 				NameFn:    func() string { return storageConstants.S3StorageDriverName },
 				RootDirFn: func() string { return rootDir },
-			}
+			}, Options{})
 		})
-
-		gen := &GCTaskGenerator{
-			imgStore: imgStore,
-			gc:       NewGarbageCollect(imgStore, nil, opts, nil, log, metrics),
-		}
-		gen.Reset()
-		So(runGCGenerator(context.Background(), gen, map[string]int{}), ShouldBeNil)
-		So(gen.IsDone(), ShouldBeTrue)
-		_, err := os.Stat(path.Join(rootDir, "empty/nested"))
-		So(err, ShouldBeNil)
 	})
 }
 
