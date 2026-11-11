@@ -403,6 +403,72 @@ func TestRedisRepoMeta(t *testing.T) {
 	})
 }
 
+func TestRedisRepoByteQuotaCommitCheck(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+	log := log.NewTestLogger()
+	opts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
+	Convey("repository byte quota is checked in the Redis commit", t, func() {
+		So(err, ShouldBeNil)
+		client := goredis.NewClient(opts)
+		defer client.Close()
+
+		metaDB, err := redis.New(client, redis.DBDriverParameters{KeyPrefix: "quota"}, log)
+		So(err, ShouldBeNil)
+
+		base := CreateRandomImage()
+		candidateA := CreateRandomImage()
+		candidateB := CreateRandomImage()
+		ctx := context.Background()
+
+		So(metaDB.SetRepoReference(ctx, "repo", "base", base.AsImageMeta()), ShouldBeNil)
+		baseMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		limit := baseMeta.Size + int64(candidateA.Size())
+		quota := mTypes.WithRepoByteQuota(limit)
+
+		So(metaDB.SetRepoReference(ctx, "repo", "candidate-a", candidateA.AsImageMeta(), quota), ShouldBeNil)
+		err = metaDB.SetRepoReference(ctx, "repo", "candidate-b", candidateB.AsImageMeta(), quota)
+		So(errors.Is(err, zerr.ErrRepoByteQuotaExceeded), ShouldBeTrue)
+
+		finalMeta, err := metaDB.GetRepoMeta(ctx, "repo")
+		So(err, ShouldBeNil)
+		So(finalMeta.Size, ShouldBeLessThanOrEqualTo, limit)
+	})
+}
+
+func TestRedisRepoByteQuotaAllowsSmallerOverwrite(t *testing.T) {
+	miniRedis := miniredis.RunT(t)
+	log := log.NewTestLogger()
+	opts, err := goredis.ParseURL("redis://" + miniRedis.Addr())
+	Convey("a smaller overwrite can recover a repository above a lowered quota", t, func() {
+		So(err, ShouldBeNil)
+		client := goredis.NewClient(opts)
+		defer client.Close()
+
+		metaDB, err := redis.New(client, redis.DBDriverParameters{KeyPrefix: "quota-overwrite"}, log)
+		So(err, ShouldBeNil)
+
+		base := CreateImageWith().RandomLayers(1, 10).RandomConfig().
+			Annotations(map[string]string{"large": strings.Repeat("x", 1024)}).Build()
+		candidate := CreateRandomImage()
+		ctx := context.Background()
+		repo := "overwrite-repo"
+
+		So(metaDB.SetRepoReference(ctx, repo, "latest", base.AsImageMeta()), ShouldBeNil)
+		baseMeta, err := metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		So(baseMeta.Size, ShouldBeGreaterThan, int64(candidate.Size()))
+
+		limit := int64(candidate.Size() - 1)
+		So(metaDB.SetRepoReference(ctx, repo, "latest", candidate.AsImageMeta(),
+			mTypes.WithRepoByteQuota(limit)), ShouldBeNil)
+
+		finalMeta, err := metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		So(finalMeta.Size, ShouldEqual, int64(candidate.Size()))
+	})
+}
+
 func TestRedisUnreachable(t *testing.T) {
 	Convey("Redis unreachable", t, func() {
 		miniRedis := miniredis.RunT(t)

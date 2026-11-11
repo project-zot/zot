@@ -876,6 +876,12 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	defer releaseRepoMutationLock()
 
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
+	quotaLimit := rh.c.Config.MaxRepoBytesForStore(rh.c.StoreController.GetStorePath(name))
+
+	var quotaOpts []mTypes.SetRepoReferenceOption
+	if quotaLimit > 0 && rh.c.MetaDB != nil {
+		quotaOpts = []mTypes.SetRepoReferenceOption{mTypes.WithRepoByteQuota(quotaLimit)}
+	}
 
 	if rh.checkRepoByteQuota(response, request, name, reference, mediaType, body, digestQueryTags) {
 		return
@@ -891,17 +897,31 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	if rh.c.MetaDB != nil {
 		if len(digestQueryTags) > 0 {
 			err := meta.OnUpdateManifestDigestTags(request.Context(), name, digestQueryTags, mediaType,
-				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log, quotaOpts...)
 			if err != nil {
-				response.WriteHeader(http.StatusInternalServerError)
+				switch {
+				case errors.Is(err, zerr.ErrRepoByteQuotaExceeded):
+					rh.writePutImageManifestError(response, name, reference, err)
+				case errors.Is(err, zerr.ErrRepoQuotaConflict):
+					writeQuotaUnavailable(response)
+				default:
+					response.WriteHeader(http.StatusInternalServerError)
+				}
 
 				return
 			}
 		} else {
 			err := meta.OnUpdateManifest(request.Context(), name, reference, mediaType,
-				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+				digest, body, rh.c.StoreController, rh.c.MetaDB, rh.c.Log, quotaOpts...)
 			if err != nil {
-				response.WriteHeader(http.StatusInternalServerError)
+				switch {
+				case errors.Is(err, zerr.ErrRepoByteQuotaExceeded):
+					rh.writePutImageManifestError(response, name, reference, err)
+				case errors.Is(err, zerr.ErrRepoQuotaConflict):
+					writeQuotaUnavailable(response)
+				default:
+					response.WriteHeader(http.StatusInternalServerError)
+				}
 
 				return
 			}
@@ -961,6 +981,21 @@ func (rh *RouteHandler) writePutImageManifestError(
 		details["reference"] = reference
 		e := apiErr.NewError(apiErr.MANIFEST_INVALID).AddDetail(details)
 		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+	} else if errors.Is(err, zerr.ErrRepoByteQuotaExceeded) {
+		current, currentErr := strconv.ParseInt(details["current"], 10, 64)
+		projected, projectedErr := strconv.ParseInt(details["projected"], 10, 64)
+		limit, limitErr := strconv.ParseInt(details["limit"], 10, 64)
+		if currentErr != nil || projectedErr != nil || limitErr != nil {
+			rh.c.Log.Error().Err(err).Str("repository", name).
+				Msg("repository byte quota error has invalid details")
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		writeQuotaExceeded(response, current, projected, limit)
+	} else if errors.Is(err, zerr.ErrRepoQuotaConflict) {
+		writeQuotaUnavailable(response)
 	} else {
 		// e.g. io.ErrShortWrite, syscall.EMFILE — do not delete the reference
 		rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).

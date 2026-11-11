@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -343,6 +344,32 @@ func ProjectRepoSize(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs,
 	}
 
 	return currentSize, projectedSize, nil
+}
+
+// CheckRepoByteQuota applies a candidate to the supplied metadata and returns
+// an error when the resulting logical size would exceed the limit. The caller
+// must hold the backend's commit serialization, if one is required, for the
+// check and the subsequent write to be atomic.
+func CheckRepoByteQuota(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, references []string,
+	imageMeta mTypes.ImageMeta, limit int64,
+) error {
+	if limit <= 0 {
+		return nil
+	}
+
+	current, projected, err := ProjectRepoSize(repoMeta, repoBlobs, references, imageMeta)
+	if err != nil {
+		return err
+	}
+
+	if projected <= limit || projected <= current {
+		return nil
+	}
+
+	return zerr.NewError(zerr.ErrRepoByteQuotaExceeded).
+		AddDetail("current", strconv.FormatInt(current, 10)).
+		AddDetail("projected", strconv.FormatInt(projected, 10)).
+		AddDetail("limit", strconv.FormatInt(limit, 10))
 }
 
 func validateCandidateRepoSize(repoBlobs *proto_go.RepoBlobs, imageMeta mTypes.ImageMeta) error {

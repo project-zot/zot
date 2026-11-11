@@ -215,9 +215,10 @@ their descriptor sizes for logical quota accounting.
 
 This is a logical repository quota, not a physical disk quota. Shared physical
 blobs across repositories are not charged as a single-repository allocation.
-For deployments with multiple Zot instances sharing a metadata backend, use the
-existing single-writer cluster routing for repository writes; independent
-writers are not atomically coordinated by this quota implementation.
+For deployments with multiple Zot instances sharing a metadata backend, quota
+accounting is committed atomically by the metadata backend. Repository index
+writes still need the existing single-writer cluster routing when independent
+instances share storage, so that storage and metadata remain consistent.
 
 It is also possible to store and serve images from multiple filesystems with
 their own repository paths, dedupe and garbage collection settings with:
