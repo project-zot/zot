@@ -53,10 +53,10 @@ type mockSyncOnDemand struct {
 	syncImageFn     func(ctx context.Context, repo, reference, ns string) error
 	syncReferrersFn func(ctx context.Context, repo, subjectDigestStr string,
 		referenceTypes []string, ns string) error
-	shouldCheckUpstreamManifestFn func(repo, reference string) bool
+	shouldCheckUpstreamManifestFn func(repo, reference, ns string) bool
 	fetchManifestForStreamFn      func(ctx context.Context, repo, reference string) (manifest.Manifest, error)
 	isStreamingEnabledForRepoFn   func(repo string) bool
-	shouldQueueOnDemandSyncFn     func(repo string) bool
+	shouldQueueOnDemandSyncFn     func(repo, ns string) bool
 	// onStreamSynced records the callback the last FetchManifestForStream call was given.
 	onStreamSynced func(manifest.Manifest)
 	streamManager  sync.StreamManager
@@ -80,23 +80,23 @@ func (m *mockSyncOnDemand) SyncReferrers(ctx context.Context, repo, subjectDiges
 	return nil
 }
 
-func (m *mockSyncOnDemand) ShouldCheckUpstreamManifest(repo, reference string) bool {
+func (m *mockSyncOnDemand) ShouldCheckUpstreamManifest(repo, reference, ns string) bool {
 	if m.shouldCheckUpstreamManifestFn != nil {
-		return m.shouldCheckUpstreamManifestFn(repo, reference)
+		return m.shouldCheckUpstreamManifestFn(repo, reference, ns)
 	}
 
 	return true
 }
 
-func (m *mockSyncOnDemand) ShouldQueueOnDemandSync(repo string) bool {
+func (m *mockSyncOnDemand) ShouldQueueOnDemandSync(repo, ns string) bool {
 	if m.shouldQueueOnDemandSyncFn != nil {
-		return m.shouldQueueOnDemandSyncFn(repo)
+		return m.shouldQueueOnDemandSyncFn(repo, ns)
 	}
 
 	return false
 }
 
-func (m *mockSyncOnDemand) QueueImage(context.Context, string, string) {}
+func (m *mockSyncOnDemand) QueueImage(context.Context, string, string, string) {}
 func (m *mockSyncOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
 	_ string, onSynced func(manifest.Manifest),
 ) (manifest.Manifest, error) {
@@ -366,7 +366,7 @@ func TestGetManifestCheckInterval(t *testing.T) {
 			syncCalls := 0
 
 			syncOnDemand := &mockSyncOnDemand{
-				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return false },
+				shouldCheckUpstreamManifestFn: func(_, _, _ string) bool { return false },
 				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
@@ -395,7 +395,7 @@ func TestGetManifestCheckInterval(t *testing.T) {
 			syncCalls := 0
 
 			syncOnDemand := &mockSyncOnDemand{
-				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return false },
+				shouldCheckUpstreamManifestFn: func(_, _, _ string) bool { return false },
 				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
@@ -422,7 +422,7 @@ func TestGetManifestCheckInterval(t *testing.T) {
 			syncCalls := 0
 
 			syncOnDemand := &mockSyncOnDemand{
-				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return true },
+				shouldCheckUpstreamManifestFn: func(_, _, _ string) bool { return true },
 				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 

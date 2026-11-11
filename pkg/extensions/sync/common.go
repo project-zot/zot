@@ -22,13 +22,19 @@ type OnDemand interface {
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string,
 		ns string) error
 	// ShouldCheckUpstreamManifest reports whether repo:reference still needs an upstream check.
-	ShouldCheckUpstreamManifest(repo, reference string) bool
+	// ns, when non-empty, restricts the check to services whose upstream registry matches the
+	// containerd ?ns= namespace/query parameter.
+	ShouldCheckUpstreamManifest(repo, reference, ns string) bool
 	// ShouldQueueOnDemandSync reports whether a missing local manifest for repo should
 	// return immediately while a background sync copies the image into storage.
-	ShouldQueueOnDemandSync(repo string) bool
+	// ns, when non-empty, restricts the check to services whose upstream registry matches the
+	// containerd ?ns= namespace/query parameter.
+	ShouldQueueOnDemandSync(repo, ns string) bool
 	// QueueImage schedules at most one background SyncImage for repo:reference from
 	// onDemandInBackground registries that match the repo. The request context is detached.
-	QueueImage(ctx context.Context, repo, reference string)
+	// ns, when non-empty, restricts the queued sync to services whose upstream registry matches
+	// the containerd ?ns= namespace/query parameter.
+	QueueImage(ctx context.Context, repo, reference, ns string)
 	// FetchManifestForStream returns repo:reference's manifest straight from upstream and syncs
 	// the image in the background. onSynced, if non-nil, runs once that sync commits (e.g. to
 	// count a download). If the image is not streamed (e.g. an index, or the stream cap), it waits

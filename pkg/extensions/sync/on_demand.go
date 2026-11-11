@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -23,11 +25,12 @@ const (
 	onDemandKindReferrers = "referrers"
 )
 
-// request keys in-flight background retries (one per kind+repo+reference).
+// request keys in-flight background retries (one per kind+repo+reference+namespace).
 type request struct {
 	kind         string
 	repo         string
 	reference    string
+	ns           string
 	isBackground bool
 }
 
@@ -202,11 +205,11 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 		return nil, zerr.ErrStreamManagerNotInitialized
 	}
 
-	if staged, ok := onDemand.joinStaged(repo, reference, onSynced); ok {
+	if staged, ok := onDemand.joinStaged(repo, reference, nsParam, onSynced); ok {
 		return staged, nil
 	}
 
-	key := onDemandKey(onDemandKindImage, repo, reference)
+	key := onDemandKey(onDemandKindImage, repo, reference, nsParam)
 
 	// Taken before entering the flight, so a request that becomes a waiter just before the leader
 	// stages still sees the slot close and joins the stream.
@@ -215,7 +218,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 
 	// Recheck: a leader may have staged and dropped its slot since the first check, and nothing
 	// would close ours. The staged entry lives until its flight ends, so it is still visible.
-	if staged, ok := onDemand.joinStaged(repo, reference, onSynced); ok {
+	if staged, ok := onDemand.joinStaged(repo, reference, nsParam, onSynced); ok {
 		return staged, nil
 	}
 
@@ -277,7 +280,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 			}
 
 			// Another request led and staged: serve its manifest now.
-			if staged, ok := onDemand.joinStaged(repo, reference, onSynced); ok {
+			if staged, ok := onDemand.joinStaged(repo, reference, nsParam, onSynced); ok {
 				return staged, nil
 			}
 		}
@@ -285,11 +288,30 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 }
 
 // joinStaged returns repo:reference's staged manifest, if any, registering onSynced on its sync.
-func (onDemand *BaseOnDemand) joinStaged(repo, reference string, onSynced func(manifest.Manifest),
+// ns, when non-empty, only serves a staged manifest if it was staged by a service whose upstream
+// registry matches the containerd ?ns= namespace/query parameter.
+func (onDemand *BaseOnDemand) joinStaged(repo, reference, nsParam string,
+	onSynced func(manifest.Manifest),
 ) (manifest.Manifest, bool) {
 	staged, ok := onDemand.streamManager.JoinStreamingImage(repo, reference, onSynced)
 	if !ok {
 		return nil, false
+	}
+
+	// When ns is set, only serve a staged manifest if it came from a matching registry.
+	// The source encodes the service index that staged it (streamSource).
+	if nsParam != "" {
+		parts := strings.Split(staged.source, ".")
+		if len(parts) != 2 {
+			return nil, false
+		}
+		idx, err := strconv.Atoi(parts[1])
+		if err != nil || idx < 0 || idx >= len(onDemand.services) {
+			return nil, false
+		}
+		if !onDemand.services[idx].MatchesRegistry(nsParam) {
+			return nil, false
+		}
 	}
 
 	onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
@@ -312,7 +334,7 @@ func notStreamedErr(syncErr error) error {
 func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, reference string,
 	nsParam string, onSynced func(manifest.Manifest), outcome chan<- manifest.Manifest,
 ) error {
-	key := onDemandKey(onDemandKindImage, repo, reference)
+	key := onDemandKey(onDemandKindImage, repo, reference, nsParam)
 
 	// Only this flight closes the slot. It is released after outcome is sent, so this request
 	// takes its outcome instead of joining its own stage.
@@ -378,7 +400,8 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 
 	// Pinned to the registry and digest just served, so the streams get exactly that manifest's
 	// blobs even if the tag moves upstream or another registry also matches repo.
-	err := onDemand.syncImage(ctx, repo, reference, "", selectedIdx, staged.referenceManifest.GetDescriptor().Digest, true)
+	err := onDemand.syncImage(ctx, repo, reference, nsParam, selectedIdx,
+		staged.referenceManifest.GetDescriptor().Digest, true)
 	onDemand.logImageSyncErr(repo, reference, err)
 
 	// Unstage before the flight ends, so the next flight starts clean. On success this runs every
@@ -480,11 +503,12 @@ func (onDemand *BaseOnDemand) stageForStream(ctx context.Context, repo, referenc
 }
 
 // ShouldCheckUpstreamManifest reports whether the manifest for repo:reference has to be
-// validated against upstream. Only a service that completed a successful check records a
-// timestamp, so a single service reporting that the interval has not elapsed means this
-// reference was verified recently and can be served from local storage.
-func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference string) bool {
-	for _, service := range onDemand.services {
+// validated against upstream. ns, when non-empty, restricts the check to services whose
+// upstream registry matches the containerd ?ns= namespace/query parameter, so a request
+// scoped to one registry is not served another registry's recently-checked cache.
+func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference, nsParam string) bool {
+	services := onDemand.servicesMatchingNS(nsParam)
+	for _, service := range services {
 		if !service.ShouldCheckUpstream(repo, reference) {
 			return false
 		}
@@ -494,16 +518,21 @@ func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference string
 }
 
 // ShouldQueueOnDemandSync reports whether any configured registry uses
-// on-demand-in-background sync for this local repo.
-func (onDemand *BaseOnDemand) ShouldQueueOnDemandSync(repo string) bool {
-	return len(onDemand.onDemandInBackgroundServicesForRepo(repo)) > 0
+// on-demand-in-background sync for this local repo. ns, when non-empty, restricts the
+// check to services whose upstream registry matches the containerd ?ns= namespace/query
+// parameter, so a request scoped to one registry is not queued against another's
+// background service.
+func (onDemand *BaseOnDemand) ShouldQueueOnDemandSync(repo, nsParam string) bool {
+	return len(onDemand.onDemandInBackgroundServicesForRepo(repo, nsParam)) > 0
 }
 
 // QueueImage schedules at most one background image sync for repo:reference, using only
-// onDemandInBackground registries that match the repo. Concurrent callers for the same key
-// share a singleflight; spawn itself is also deduplicated via requestStore.
-func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference string) {
-	if !onDemand.ShouldQueueOnDemandSync(repo) {
+// onDemandInBackground registries that match the repo and, when ns is non-empty, whose
+// upstream registry matches the containerd ?ns= namespace/query parameter. Concurrent
+// callers for the same key share a singleflight; spawn itself is also deduplicated via
+// requestStore.
+func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference, nsParam string) {
+	if !onDemand.ShouldQueueOnDemandSync(repo, nsParam) {
 		return
 	}
 
@@ -511,6 +540,7 @@ func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference st
 		kind:         onDemandKindImage,
 		repo:         repo,
 		reference:    reference,
+		ns:           nsParam,
 		isBackground: true,
 	}
 
@@ -519,7 +549,7 @@ func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference st
 	}
 
 	detachedContext := context.WithoutCancel(ctx)
-	key := onDemandKey(onDemandKindImage, repo, reference)
+	key := onDemandKey(onDemandKindImage, repo, reference, nsParam)
 
 	go func() {
 		defer func() {
@@ -529,7 +559,7 @@ func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference st
 		err := onDemand.doOnDemandFlight(key, repo, reference,
 			"image already demanded, on-demand sync result was shared",
 			func() error {
-				return onDemand.syncImageInBackground(detachedContext, repo, reference)
+				return onDemand.syncImageInBackground(detachedContext, repo, reference, nsParam)
 			})
 		if err != nil {
 			onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
@@ -538,8 +568,8 @@ func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference st
 	}()
 }
 
-func onDemandKey(kind, repo, reference string) string {
-	return kind + "\x00" + repo + "\x00" + reference
+func onDemandKey(kind, repo, reference, nsParam string) string {
+	return kind + "\x00" + repo + "\x00" + reference + "\x00" + nsParam
 }
 
 // onDemandSyncFn runs one registry sync attempt (image or referrers) under a timeout ctx.
@@ -549,7 +579,7 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference, ns
 	// Classify after the flight so waiters that join a background retry (same key,
 	// raw syncImage result) still receive opaque client sentinels. Root-cause
 	// logging stays in the leader closure only.
-	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference), repo, reference,
+	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference, nsParam), repo, reference,
 		"image already demanded, on-demand sync result was shared",
 		func() error {
 			err := onDemand.syncImage(ctx, repo, reference, nsParam, -1, "", true)
@@ -572,7 +602,7 @@ func (onDemand *BaseOnDemand) logImageSyncErr(repo, reference string, err error)
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string, nsParam string,
 ) error {
-	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindReferrers, repo, subjectDigestStr),
+	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindReferrers, repo, subjectDigestStr, nsParam),
 		repo, subjectDigestStr,
 		"referrers for image already demanded, on-demand sync result was shared",
 		func() error {
@@ -617,7 +647,7 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 		func(syncCtx context.Context, service Service) error {
 			err := service.SyncReferrers(syncCtx, repo, subjectDigestStr, referenceTypes)
 			if scheduleBackground && err != nil && !isSkippableSyncImageErr(err) {
-				onDemand.maybeRetryInBackground(ctx, onDemandKindReferrers, repo, subjectDigestStr,
+				onDemand.maybeRetryInBackground(ctx, onDemandKindReferrers, repo, subjectDigestStr, nsParam,
 					"referrers for image already demanded, on-demand sync result was shared",
 					service, err,
 					func(retryCtx context.Context) error {
@@ -655,7 +685,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference, ns
 		func(syncCtx context.Context, service Service) error {
 			err := syncImageOnService(syncCtx, service, repo, reference, pinnedDigest)
 			if scheduleBackground && err != nil && !isSkippableSyncImageErr(err) {
-				onDemand.maybeRetryInBackground(ctx, onDemandKindImage, repo, reference,
+				onDemand.maybeRetryInBackground(ctx, onDemandKindImage, repo, reference, nsParam,
 					"image already demanded, on-demand sync result was shared",
 					service, err,
 					func(retryCtx context.Context) error {
@@ -683,9 +713,10 @@ func syncImageOnService(ctx context.Context, service Service, repo, reference st
 	return service.SyncImage(ctx, repo, reference)
 }
 
-// syncImageInBackground tries only onDemandInBackground registries that match the repo.
-func (onDemand *BaseOnDemand) syncImageInBackground(ctx context.Context, repo, reference string) error {
-	services := onDemand.onDemandInBackgroundServicesForRepo(repo)
+// syncImageInBackground tries only onDemandInBackground registries that match the repo,
+// filtered by ns when non-empty.
+func (onDemand *BaseOnDemand) syncImageInBackground(ctx context.Context, repo, reference, nsParam string) error {
+	services := onDemand.onDemandInBackgroundServicesForRepo(repo, nsParam)
 	if len(services) == 0 {
 		return nil
 	}
@@ -697,10 +728,14 @@ func (onDemand *BaseOnDemand) syncImageInBackground(ctx context.Context, repo, r
 		})
 }
 
-func (onDemand *BaseOnDemand) onDemandInBackgroundServicesForRepo(repo string) []Service {
+func (onDemand *BaseOnDemand) onDemandInBackgroundServicesForRepo(repo, nsParam string) []Service {
 	services := make([]Service, 0, len(onDemand.services))
 
 	for _, service := range onDemand.services {
+		if nsParam != "" && !service.MatchesRegistry(nsParam) {
+			continue
+		}
+
 		if service.IsOnDemandInBackgroundForRepo(repo) {
 			services = append(services, service)
 		}
@@ -816,9 +851,10 @@ func (onDemand *BaseOnDemand) runOnDemandServices(ctx context.Context, repo, ref
 	return preferredErr
 }
 
-// maybeRetryInBackground schedules at most one background retry for kind+repo+reference.
+// maybeRetryInBackground schedules at most one background retry for kind+repo+reference+namespace.
 // The retry re-enters the same singleflight so a later matching request waits on it.
-func (onDemand *BaseOnDemand) maybeRetryInBackground(ctx context.Context, kind, repo, reference, sharedMsg string,
+func (onDemand *BaseOnDemand) maybeRetryInBackground(
+	ctx context.Context, kind, repo, reference, nsParam, sharedMsg string,
 	service Service, retryErr error, backgroundFullSync func(context.Context) error,
 ) {
 	if !service.CanRetryOnError() {
@@ -829,6 +865,7 @@ func (onDemand *BaseOnDemand) maybeRetryInBackground(ctx context.Context, kind, 
 		kind:         kind,
 		repo:         repo,
 		reference:    reference,
+		ns:           nsParam,
 		isBackground: true,
 	}
 
@@ -836,7 +873,7 @@ func (onDemand *BaseOnDemand) maybeRetryInBackground(ctx context.Context, kind, 
 		return
 	}
 
-	key := onDemandKey(kind, repo, reference)
+	key := onDemandKey(kind, repo, reference, nsParam)
 
 	go func() {
 		defer func() {
