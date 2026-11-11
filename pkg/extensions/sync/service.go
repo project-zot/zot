@@ -353,14 +353,47 @@ func (service *BaseService) remoteHostName() string {
 	return service.remote.GetHostName()
 }
 
+// stripPort returns host without its port, if any.
+func stripPort(host string) string {
+	host, _, _ = strings.CutLast(host, ":")
+
+	return host
+}
+
+// isDockerHubHost reports whether host (port already stripped) is a Docker Hub alias.
+func isDockerHubHost(host string) bool {
+	switch strings.ToLower(host) {
+	case "docker.io", "registry-1.docker.io", "index.docker.io":
+		return true
+	default:
+		return false
+	}
+}
+
+// normalizeRegistryName strips the port and normalizes Docker Hub aliases so that
+// docker.io, registry-1.docker.io and index.docker.io all compare equal.
+func normalizeRegistryName(host string) string {
+	host = stripPort(host)
+
+	if isDockerHubHost(host) {
+		return "docker.io"
+	}
+
+	return strings.ToLower(host)
+}
+
 // MatchesRegistry reports whether this service syncs from the upstream registry named by ns
 // (the containerd ?ns= namespace/query parameter, e.g. "docker.io", "registry.k8s.io").
-// It matches ns against the hostname of every configured upstream URL, case-insensitively.
-// An empty ns matches every service (no filtering).
+// It matches ns against the authority (host:port) of every configured upstream URL,
+// case-insensitively. Docker Hub aliases (docker.io, registry-1.docker.io, index.docker.io)
+// are normalized so they match each other regardless of port. An empty ns matches every
+// service (no filtering).
 func (service *BaseService) MatchesRegistry(nsParam string) bool {
 	if nsParam == "" {
 		return true
 	}
+
+	nsNormalized := normalizeRegistryName(nsParam)
 
 	for _, u := range service.config.URLs {
 		parsed, err := url.Parse(u)
@@ -368,7 +401,20 @@ func (service *BaseService) MatchesRegistry(nsParam string) bool {
 			continue
 		}
 
-		host := parsed.Hostname()
+		host := parsed.Host // includes port
+
+		// If either side is a Docker Hub alias, compare normalized names
+		// (Docker Hub matching is port-insensitive).
+		if isDockerHubHost(stripPort(nsParam)) || isDockerHubHost(stripPort(host)) {
+			if normalizeRegistryName(host) == nsNormalized {
+				return true
+			}
+
+			continue
+		}
+
+		// Otherwise compare the full authority (host:port), so registries using
+		// an explicit port match ns values that include it.
 		if strings.EqualFold(host, nsParam) {
 			return true
 		}

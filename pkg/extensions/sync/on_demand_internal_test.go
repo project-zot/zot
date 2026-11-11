@@ -401,7 +401,7 @@ func TestSyncImageClassifiesSharedBackgroundFlight(t *testing.T) {
 
 		started := make(chan struct{})
 		release := make(chan struct{})
-		key := onDemandKey(onDemandKindImage, "repo", "tag")
+		key := onDemandKey(onDemandKindImage, "repo", "tag", "")
 
 		// Mimic maybeRetryInBackground: same key, raw sync result, no classify in the closure.
 		go func() {
@@ -461,8 +461,8 @@ func TestQueueImageNoopWithoutBackgroundServices(t *testing.T) {
 		onDemand := NewOnDemand(log.NewTestLogger())
 		onDemand.Add(svc)
 
-		So(onDemand.ShouldQueueOnDemandSync("repo"), ShouldBeFalse)
-		So(func() { onDemand.QueueImage(context.Background(), "repo", "tag") }, ShouldNotPanic)
+		So(onDemand.ShouldQueueOnDemandSync("repo", ""), ShouldBeFalse)
+		So(func() { onDemand.QueueImage(context.Background(), "repo", "tag", "") }, ShouldNotPanic)
 		So(svc.syncImageCalls, ShouldEqual, 0)
 	})
 }
@@ -534,7 +534,7 @@ func TestSyncImageInBackgroundEmptyServices(t *testing.T) {
 		onDemand := NewOnDemand(log.NewTestLogger())
 		onDemand.Add(&stubOnDemandService{onDemandInBackground: false})
 
-		So(onDemand.syncImageInBackground(context.Background(), "repo", "tag"), ShouldBeNil)
+		So(onDemand.syncImageInBackground(context.Background(), "repo", "tag", ""), ShouldBeNil)
 	})
 }
 
@@ -554,7 +554,7 @@ func TestSyncImageInBackgroundDockerCompatPreference(t *testing.T) {
 		onDemand.Add(first)
 		onDemand.Add(second)
 
-		err := onDemand.syncImageInBackground(context.Background(), "repo", "tag")
+		err := onDemand.syncImageInBackground(context.Background(), "repo", "tag", "")
 		So(errors.Is(err, zerr.ErrSyncDockerCompatRequired), ShouldBeTrue)
 		So(first.syncImageCalls, ShouldEqual, 1)
 		So(second.syncImageCalls, ShouldEqual, 1)

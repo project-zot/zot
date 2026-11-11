@@ -3268,10 +3268,10 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		}
 
 		// A digest still being streamed falls through to join that stream (see inFlightStream).
-		if routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name) &&
+		if routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name, nsParam) &&
 			!isStreamingReference(routeHandler.c, name, reference) {
 			if isManifestNotFound(err) {
-				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference)
+				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference, nsParam)
 			}
 
 			return content, digest, mediaType, false, err
@@ -3287,7 +3287,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		// When manifestCheckInterval is configured and a recent upstream check already
 		// validated this reference, serve the local manifest instead of contacting upstream.
 		// A local miss (for instance after garbage collection) falls through to a normal sync.
-		if !routeHandler.c.SyncOnDemand.ShouldCheckUpstreamManifest(name, reference) {
+		if !routeHandler.c.SyncOnDemand.ShouldCheckUpstreamManifest(name, reference, nsParam) {
 			content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 			if err == nil {
 				routeHandler.c.Log.Debug().Str("repository", name).Str("reference", reference).
@@ -3303,7 +3303,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		// older sync (pinned to the digest it served) could commit last and roll the tag back.
 		inFlightStream := isStreamingReference(routeHandler.c, name, reference)
 
-		if !inFlightStream && routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name) {
+		if !inFlightStream && routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name, nsParam) {
 			content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 			if err == nil {
 				return content, digest, mediaType, false, nil
@@ -3312,7 +3312,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			if isManifestNotFound(err) {
 				routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 					Msg("manifest not found locally, queuing on-demand-in-background sync")
-				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference)
+				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference, nsParam)
 			}
 
 			return content, digest, mediaType, false, err

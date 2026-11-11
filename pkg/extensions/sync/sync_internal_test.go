@@ -922,7 +922,7 @@ func TestService(t *testing.T) {
 			var syncCalls atomic.Int32
 			onDemand := NewOnDemand(log.NewTestLogger())
 
-			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo", "dedup-tag"), &syncCalls, nil,
+			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo", "dedup-tag", ""), &syncCalls, nil,
 				func(ctx context.Context) error {
 					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", "", -1, "", false)
 				})
@@ -933,7 +933,7 @@ func TestService(t *testing.T) {
 			onDemand := NewOnDemand(log.NewTestLogger())
 
 			runConcurrentDedup(t, &onDemand.flight,
-				onDemandKey(onDemandKindReferrers, "dedup-referrer-repo", "sha256:dedup"), &syncCalls, nil,
+				onDemandKey(onDemandKindReferrers, "dedup-referrer-repo", "sha256:dedup", ""), &syncCalls, nil,
 				func(ctx context.Context) error {
 					return onDemand.syncReferrers(ctx, "dedup-referrer-repo", "sha256:dedup", nil, "", false)
 				})
@@ -944,7 +944,7 @@ func TestService(t *testing.T) {
 			wantErr := errors.New("sentinel sync image error")
 			onDemand := NewOnDemand(log.NewTestLogger())
 
-			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo-err", "dedup-tag"),
+			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo-err", "dedup-tag", ""),
 				&syncCalls, wantErr,
 				func(ctx context.Context) error {
 					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", "", -1, "", false)
@@ -957,7 +957,7 @@ func TestService(t *testing.T) {
 			onDemand := NewOnDemand(log.NewTestLogger())
 
 			runConcurrentDedup(t, &onDemand.flight,
-				onDemandKey(onDemandKindReferrers, "dedup-referrer-repo-err", "sha256:dedup"), &syncCalls, wantErr,
+				onDemandKey(onDemandKindReferrers, "dedup-referrer-repo-err", "sha256:dedup", ""), &syncCalls, wantErr,
 				func(ctx context.Context) error {
 					return onDemand.syncReferrers(ctx, "dedup-referrer-repo-err", "sha256:dedup", nil, "", false)
 				})
@@ -3052,18 +3052,18 @@ func TestOnDemandQueueImage(t *testing.T) {
 	onDemand.Add(blockingService)
 	onDemand.Add(backgroundService)
 
-	if !onDemand.ShouldQueueOnDemandSync("library/test") {
+	if !onDemand.ShouldQueueOnDemandSync("library/test", "") {
 		t.Fatal("expected on-demand-in-background sync to be enabled for matching repo")
 	}
 
-	if onDemand.ShouldQueueOnDemandSync("library/other") {
+	if onDemand.ShouldQueueOnDemandSync("library/other", "") {
 		t.Fatal("expected on-demand-in-background sync to respect repository filter")
 	}
 
 	requestContext, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	onDemand.QueueImage(requestContext, "library/test", "latest")
+	onDemand.QueueImage(requestContext, "library/test", "latest", "")
 
 	var syncContext context.Context
 
@@ -3078,7 +3078,7 @@ func TestOnDemandQueueImage(t *testing.T) {
 	}
 
 	// Second queue while the first is in flight must not spawn another SyncImage.
-	onDemand.QueueImage(requestContext, "library/test", "latest")
+	onDemand.QueueImage(requestContext, "library/test", "latest", "")
 
 	select {
 	case <-started:
@@ -3117,7 +3117,7 @@ func TestOnDemandQueueImageLogsSyncError(t *testing.T) {
 	onDemand := NewOnDemand(log.NewTestLogger())
 	onDemand.Add(service)
 
-	onDemand.QueueImage(context.Background(), "library/test", "latest")
+	onDemand.QueueImage(context.Background(), "library/test", "latest", "")
 
 	select {
 	case <-finished:
@@ -3154,7 +3154,7 @@ func TestOnDemandQueueImagePerRepoServices(t *testing.T) {
 	onDemand.Add(otherService)
 	onDemand.Add(libraryService)
 
-	onDemand.QueueImage(context.Background(), "library/test", "latest")
+	onDemand.QueueImage(context.Background(), "library/test", "latest", "")
 
 	select {
 	case <-finished:
@@ -3527,10 +3527,10 @@ func TestOnDemandStreamAndBackgroundOnDifferentRegistries(t *testing.T) {
 
 		// Both are true for the shared repo; getImageManifest checks the queue first, which is why
 		// background mode wins.
-		So(onDemand.ShouldQueueOnDemandSync("library/test"), ShouldBeTrue)
+		So(onDemand.ShouldQueueOnDemandSync("library/test", ""), ShouldBeTrue)
 		So(onDemand.IsStreamingEnabledForRepo("library/test"), ShouldBeTrue)
 
-		So(onDemand.ShouldQueueOnDemandSync("other/test"), ShouldBeFalse)
+		So(onDemand.ShouldQueueOnDemandSync("other/test", ""), ShouldBeFalse)
 		So(onDemand.IsStreamingEnabledForRepo("other/test"), ShouldBeFalse)
 	})
 }
@@ -3551,7 +3551,7 @@ func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 	Convey("With no services configured the check is due", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())
 
-		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
+		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest", ""), ShouldBeTrue)
 	})
 
 	Convey("A single service reporting a recent check is enough to serve locally", t, func() {
@@ -3561,14 +3561,14 @@ func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 			shouldCheckUpstreamFn: func(_, _ string) bool { return false },
 		})
 
-		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeFalse)
+		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest", ""), ShouldBeFalse)
 	})
 
 	Convey("All services reporting a due check means upstream is contacted", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())
 		onDemand.Add(&mockCheckService{})
 
-		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest"), ShouldBeTrue)
+		So(onDemand.ShouldCheckUpstreamManifest("repo", "latest", ""), ShouldBeTrue)
 	})
 
 	Convey("A negative interval only applies to the repos its registry's content rules match", t, func() {
@@ -3588,8 +3588,8 @@ func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 		onDemand.Add(newService("immutable/**", -1))
 		onDemand.Add(newService("mutable/**", 0))
 
-		So(onDemand.ShouldCheckUpstreamManifest("immutable/app", "latest"), ShouldBeFalse)
-		So(onDemand.ShouldCheckUpstreamManifest("mutable/app", "latest"), ShouldBeTrue)
+		So(onDemand.ShouldCheckUpstreamManifest("immutable/app", "latest", ""), ShouldBeFalse)
+		So(onDemand.ShouldCheckUpstreamManifest("mutable/app", "latest", ""), ShouldBeTrue)
 	})
 }
 
@@ -3913,7 +3913,7 @@ func (f *stageOnFirstJoinMiss) JoinStreamingImage(repo, reference string,
 func TestStagingSlotOwnership(t *testing.T) {
 	Convey("A waiter of an ended plain flight does not drop a slot a new streaming leader adopted", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())
-		key := onDemandKey(onDemandKindImage, "repo", "latest")
+		key := onDemandKey(onDemandKindImage, "repo", "latest", "")
 
 		// A streaming request joined a plain flight, which has since ended.
 		waiterSlot := onDemand.acquireStaging(key)
@@ -4030,7 +4030,7 @@ func TestStagingSlotOwnership(t *testing.T) {
 
 	Convey("A slot no leader adopted is dropped by the last request holding it", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())
-		key := onDemandKey(onDemandKindImage, "repo", "latest")
+		key := onDemandKey(onDemandKindImage, "repo", "latest", "")
 
 		first := onDemand.acquireStaging(key)
 		second := onDemand.acquireStaging(key)
@@ -4530,7 +4530,7 @@ func TestStreamOrSyncImageJoinsPreReloadStream(t *testing.T) {
 
 			onSynced := func(manifest.Manifest) { onSyncedCalls.Add(1) }
 
-			key := onDemandKey(onDemandKindImage, "repo", "latest")
+			key := onDemandKey(onDemandKindImage, "repo", "latest", "")
 			slot := onDemand.acquireStaging(key)
 
 			defer onDemand.releaseStaging(key, slot)

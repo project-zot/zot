@@ -794,7 +794,7 @@ func TestGetBlobRangeStreamingFallback(t *testing.T) {
 func TestBlobRoutesOnDemandInBackgroundWinsOverStreaming(t *testing.T) {
 	Convey("Blob routes when onDemandInBackground and streaming both match the repo", t, func() {
 		syncOnDemand := &mockSyncOnDemand{
-			shouldQueueOnDemandSyncFn:   func(_ string) bool { return true },
+			shouldQueueOnDemandSyncFn:   func(_ string, _ string) bool { return true },
 			isStreamingEnabledForRepoFn: func(_ string) bool { return true },
 			streamManager:               &fakeStreamManager{}, // nothing staged: every lookup errors
 		}

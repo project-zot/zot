@@ -22,15 +22,15 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	return nil
 }
 
-func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference string) bool {
+func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(_, _, _ string) bool {
 	return true
 }
 
-func (onDemand *BaseOnDemand) ShouldQueueOnDemandSync(_ string) bool {
+func (onDemand *BaseOnDemand) ShouldQueueOnDemandSync(_, _ string) bool {
 	return false
 }
 
-func (onDemand *BaseOnDemand) QueueImage(_ context.Context, _, _ string) {}
+func (onDemand *BaseOnDemand) QueueImage(_ context.Context, _, _, _ string) {}
 
 // Streaming stubs for builds without the sync extension: nothing is ever streamed.
 

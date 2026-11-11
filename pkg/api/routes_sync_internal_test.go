@@ -23,7 +23,7 @@ import (
 var errStorageUnavailable = errors.New("storage unavailable")
 
 type onDemandInBackgroundMock struct {
-	queueImageFn     func(ctx context.Context, repo, reference string)
+	queueImageFn     func(ctx context.Context, repo, reference, ns string)
 	enabledForRepoFn func(repo string) bool
 	syncImageFn      func(ctx context.Context, repo, reference string) error
 	syncImageCalls   int
@@ -50,11 +50,11 @@ func (mock *onDemandInBackgroundMock) SyncReferrers(context.Context, string, str
 	return nil
 }
 
-func (mock *onDemandInBackgroundMock) ShouldCheckUpstreamManifest(string, string) bool {
+func (mock *onDemandInBackgroundMock) ShouldCheckUpstreamManifest(_, _, _ string) bool {
 	return true
 }
 
-func (mock *onDemandInBackgroundMock) ShouldQueueOnDemandSync(repo string) bool {
+func (mock *onDemandInBackgroundMock) ShouldQueueOnDemandSync(repo, _ string) bool {
 	if mock.enabledForRepoFn != nil {
 		return mock.enabledForRepoFn(repo)
 	}
@@ -62,9 +62,9 @@ func (mock *onDemandInBackgroundMock) ShouldQueueOnDemandSync(repo string) bool 
 	return true
 }
 
-func (mock *onDemandInBackgroundMock) QueueImage(ctx context.Context, repo, reference string) {
+func (mock *onDemandInBackgroundMock) QueueImage(ctx context.Context, repo, reference, ns string) {
 	if mock.queueImageFn != nil {
-		mock.queueImageFn(ctx, repo, reference)
+		mock.queueImageFn(ctx, repo, reference, ns)
 	}
 }
 
@@ -144,7 +144,7 @@ func TestGetImageManifestOnDemandInBackground(t *testing.T) {
 
 			queued := false
 			onDemand := &onDemandInBackgroundMock{
-				queueImageFn: func(_ context.Context, queuedRepo, queuedReference string) {
+				queueImageFn: func(_ context.Context, queuedRepo, queuedReference, _ string) {
 					queued = true
 					if queuedRepo != repo || queuedReference != reference {
 						t.Fatalf("queued %s:%s, want %s:%s", queuedRepo, queuedReference, repo, reference)
@@ -195,7 +195,7 @@ func TestGetImageManifestOnDemandInBackgroundDigestMiss(t *testing.T) {
 
 	queued := false
 	onDemand := &onDemandInBackgroundMock{
-		queueImageFn: func(_ context.Context, queuedRepo, queuedReference string) {
+		queueImageFn: func(_ context.Context, queuedRepo, queuedReference, _ string) {
 			queued = true
 			if queuedRepo != repo || queuedReference != reference {
 				t.Fatalf("queued %s:%s, want %s:%s", queuedRepo, queuedReference, repo, reference)
@@ -242,7 +242,7 @@ func TestGetImageManifestBlockingWhenBackgroundDisabledForRepo(t *testing.T) {
 
 			return nil
 		},
-		queueImageFn: func(context.Context, string, string) {
+		queueImageFn: func(context.Context, string, string, string) {
 			t.Fatal("QueueImage should not be called when onDemandInBackground is disabled for repo")
 		},
 	}
@@ -290,7 +290,7 @@ func TestGetImageManifestOnDemandInBackgroundWinsOverStreaming(t *testing.T) {
 			queued := false
 			onDemand := &onDemandInBackgroundMock{
 				streaming: true,
-				queueImageFn: func(context.Context, string, string) {
+				queueImageFn: func(context.Context, string, string, string) {
 					queued = true
 				},
 			}
@@ -530,7 +530,7 @@ func TestGetImageManifestJoinsInFlightStream(t *testing.T) {
 					// The reloaded config no longer streams the repo.
 					streaming:        false,
 					enabledForRepoFn: func(string) bool { return backgroundOnly },
-					queueImageFn:     func(context.Context, string, string) { queued = true },
+					queueImageFn:     func(context.Context, string, string, string) { queued = true },
 					fetchForStreamFn: func(context.Context) (manifest.Manifest, error) { return upstream, nil },
 					streamManager: &stagedRefsStreamManager{
 						staged: map[string]bool{repo + ":" + reference: true},
@@ -568,7 +568,7 @@ func TestGetImageManifestJoinsInFlightStream(t *testing.T) {
 
 			queued := false
 			onDemand := &onDemandInBackgroundMock{
-				queueImageFn:  func(context.Context, string, string) { queued = true },
+				queueImageFn:  func(context.Context, string, string, string) { queued = true },
 				streamManager: &stagedRefsStreamManager{staged: map[string]bool{repo + ":other": true}},
 			}
 			handler := &RouteHandler{c: &Controller{
