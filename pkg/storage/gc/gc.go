@@ -1659,7 +1659,9 @@ func (p namespacePruner) prune(repo string, depth int) (bool, error) {
 	}
 
 	for _, entry := range entries {
-		if entry.Name() == ispec.ImageLayoutFile || entry.Name() == ispec.ImageIndexFile {
+		// Only a file marks a layout; a directory with a marker name is a
+		// namespace path component, for example oci-layout/image.
+		if !entry.IsDir() && (entry.Name() == ispec.ImageLayoutFile || entry.Name() == ispec.ImageIndexFile) {
 			return false, nil
 		}
 	}

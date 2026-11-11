@@ -4928,3 +4928,31 @@ func TestGCEmptyDirectoriesStopAtOtherStoreRoots(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 }
+
+func TestGCEmptyDirectoriesMarkerNamedNamespace(t *testing.T) {
+	Convey("a directory named like a layout marker does not stop the walk", t, func() {
+		rootDir := t.TempDir()
+		for _, repo := range []string{"oci-layout/image", "index.json/image"} {
+			So(os.MkdirAll(path.Join(rootDir, repo, ispec.ImageBlobsDir), 0o700), ShouldBeNil)
+			So(os.WriteFile(path.Join(rootDir, repo, ispec.ImageLayoutFile), []byte("keep"), 0o600), ShouldBeNil)
+			So(os.WriteFile(path.Join(rootDir, repo, ispec.ImageIndexFile), []byte("keep"), 0o600), ShouldBeNil)
+		}
+
+		So(os.MkdirAll(path.Join(rootDir, "stale/empty"), 0o700), ShouldBeNil)
+		So(os.MkdirAll(path.Join(rootDir, "oci-layout/stale"), 0o700), ShouldBeNil)
+
+		pruner := namespacePruner{rootDir: rootDir, withLock: func(fn func() error) error { return fn() }}
+		So(pruner.run(), ShouldBeNil)
+
+		for _, dir := range []string{"stale", "oci-layout/stale"} {
+			_, err := os.Stat(path.Join(rootDir, dir))
+			So(errors.Is(err, os.ErrNotExist), ShouldBeTrue)
+		}
+
+		for _, repo := range []string{"oci-layout/image", "index.json/image"} {
+			content, err := os.ReadFile(path.Join(rootDir, repo, ispec.ImageLayoutFile))
+			So(err, ShouldBeNil)
+			So(string(content), ShouldEqual, "keep")
+		}
+	})
+}
