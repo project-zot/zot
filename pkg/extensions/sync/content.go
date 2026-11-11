@@ -190,6 +190,29 @@ func (cm ContentManager) GetContentByLocalRepo(repo string) *syncconf.Content {
 	return &cm.contents[contentID]
 }
 
+// isRepoExcluded reports whether localRepo matches one of the registry's exclude patterns.
+func isRepoExcluded(localRepo string, patterns []string, log log.Logger) bool {
+	localRepo = strings.Trim(localRepo, "/")
+
+	for _, pattern := range patterns {
+		pattern = strings.Trim(pattern, "/")
+
+		matched, err := glob.Match(pattern, localRepo)
+		if err != nil {
+			log.Error().Str("errorType", common.TypeOf(err)).
+				Err(err).Str("pattern", pattern).Msg("failed to parse glob pattern, skipping it")
+
+			continue
+		}
+
+		if matched {
+			return true
+		}
+	}
+
+	return false
+}
+
 func getRepoSource(localRepo string, content syncconf.Content) string {
 	localRepo = strings.Trim(localRepo, "/")
 	destination := strings.Trim(content.Destination, "/")

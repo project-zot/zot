@@ -3376,6 +3376,106 @@ func TestBaseServiceIsStreamingForRepo(t *testing.T) {
 	})
 }
 
+func TestBaseServiceExclude(t *testing.T) {
+	stream := true
+	inBackground := true
+
+	Convey("Excluded repos are not synced from a registry without content rules", t, func() {
+		service := &BaseService{
+			config: syncconf.RegistryConfig{
+				OnDemand:              true,
+				OnDemandInBackground:  &inBackground,
+				Stream:                &stream,
+				ManifestCheckInterval: -1,
+				Exclude:               []string{"private/**", "/internal/app/"},
+			},
+			contentManager: NewContentManager(nil, log.NewTestLogger()),
+			log:            log.NewTestLogger(),
+		}
+
+		for _, repo := range []string{"private", "private/app", "private/team/app", "internal/app"} {
+			So(service.getRemoteRepo(repo), ShouldEqual, "")
+			So(service.IsStreamingForRepo(repo), ShouldBeFalse)
+			So(service.IsOnDemandInBackgroundForRepo(repo), ShouldBeFalse)
+			// a registry that doesn't serve repo can't skip the check for the ones that do
+			So(service.ShouldCheckUpstream(repo, "latest"), ShouldBeTrue)
+		}
+
+		for _, repo := range []string{"library/alpine", "internal/app/sub", "privateapp"} {
+			So(service.getRemoteRepo(repo), ShouldEqual, repo)
+			So(service.IsStreamingForRepo(repo), ShouldBeTrue)
+			So(service.IsOnDemandInBackgroundForRepo(repo), ShouldBeTrue)
+			So(service.ShouldCheckUpstream(repo, "latest"), ShouldBeFalse)
+		}
+	})
+
+	Convey("Exclude rules win over content rules and match the local repo name", t, func() {
+		content := []syncconf.Content{{Prefix: "upstream/**", Destination: "/mirror", StripPrefix: true}}
+		service := &BaseService{
+			config: syncconf.RegistryConfig{
+				OnDemand: true,
+				Stream:   &stream,
+				Content:  content,
+				Exclude:  []string{"mirror/private/**"},
+			},
+			contentManager: NewContentManager(content, log.NewTestLogger()),
+			log:            log.NewTestLogger(),
+		}
+
+		So(service.getRemoteRepo("mirror/private/app"), ShouldEqual, "")
+		So(service.IsStreamingForRepo("mirror/private/app"), ShouldBeFalse)
+
+		So(service.getRemoteRepo("mirror/public/app"), ShouldEqual, "upstream/public/app")
+		So(service.IsStreamingForRepo("mirror/public/app"), ShouldBeTrue)
+
+		Convey("GetNextRepo skips upstream repos whose local name is excluded", func() {
+			service.repositories = []string{"upstream/private/app", "upstream/public/app", "upstream/private/db"}
+
+			repo, err := service.GetNextRepo("")
+			So(err, ShouldBeNil)
+			So(repo, ShouldEqual, "upstream/public/app")
+
+			repo, err = service.GetNextRepo(repo)
+			So(err, ShouldBeNil)
+			So(repo, ShouldEqual, "")
+		})
+	})
+
+	Convey("On demand syncs of excluded repos fail before any upstream request", t, func() {
+		var requests atomic.Int32
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			requests.Add(1)
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+
+		service, err := New(syncconf.RegistryConfig{
+			URLs:     []string{server.URL},
+			OnDemand: true,
+			Exclude:  []string{"private/**"},
+		}, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		ctx := context.Background()
+		digest := godigest.FromString("manifest")
+
+		_, err = service.FetchManifest(ctx, "private/app", "latest")
+		So(err, ShouldWrap, zerr.ErrSyncImageFilteredOut)
+
+		err = service.SyncImage(ctx, "private/app", "latest")
+		So(err, ShouldWrap, zerr.ErrSyncImageFilteredOut)
+
+		err = service.SyncImageForStream(ctx, "private/app", "latest", digest)
+		So(err, ShouldWrap, zerr.ErrSyncImageFilteredOut)
+
+		err = service.SyncReferrers(ctx, "private/app", digest.String(), nil)
+		So(err, ShouldWrap, zerr.ErrSyncImageFilteredOut)
+
+		So(requests.Load(), ShouldEqual, 0)
+	})
+}
+
 func TestBaseServiceIsImageLocal(t *testing.T) {
 	digest := godigest.FromString("manifest")
 
