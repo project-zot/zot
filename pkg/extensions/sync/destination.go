@@ -202,6 +202,9 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 	imageStore := registry.storeController.GetImageStore(repo)
 	isReferrersRef := common.IsReferrersTag(reference)
 
+	// mark the manifest writes as synced content, so that lint can be configured to skip them
+	syncCtx := storageCommon.WithSyncedContent(context.Background())
+
 	manifestContent := desc.Data
 	if manifestContent == nil {
 		manifestContent, _, _, err = tempImageStore.GetImageManifest(repo, reference)
@@ -247,7 +250,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			return err
 		}
 
-		digest, _, err := imageStore.PutImageManifest(context.Background(), repo, reference,
+		digest, _, err := imageStore.PutImageManifest(syncCtx, repo, reference,
 			desc.MediaType, manifestContent, nil)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).Str("mediaType", desc.MediaType).
@@ -324,7 +327,7 @@ func (registry *DestinationRegistry) copyManifest(repo string, desc ispec.Descri
 			return nil
 		}
 
-		_, _, err := imageStore.PutImageManifest(context.Background(), repo, reference, desc.MediaType, manifestContent, nil)
+		_, _, err := imageStore.PutImageManifest(syncCtx, repo, reference, desc.MediaType, manifestContent, nil)
 		if err != nil {
 			registry.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
 				Str("mediaType", desc.MediaType).Err(err).Msg("failed to upload manifest")

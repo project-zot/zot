@@ -3238,3 +3238,14 @@ func TestDedupeTaskGeneratorDiscardsPartialEnumeration(t *testing.T) {
 		}(), ShouldEqual, 1)
 	})
 }
+
+func TestSyncedContentContext(t *testing.T) {
+	Convey("Synced content is marked on the context", t, func() {
+		So(common.IsSyncedContent(context.Background()), ShouldBeFalse)
+		So(common.IsSyncedContent(common.WithSyncedContent(context.Background())), ShouldBeTrue)
+
+		var nilCtx context.Context
+
+		So(common.IsSyncedContent(nilCtx), ShouldBeFalse)
+	})
+}

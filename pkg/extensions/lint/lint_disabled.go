@@ -3,6 +3,8 @@
 package lint
 
 import (
+	"context"
+
 	godigest "github.com/opencontainers/go-digest"
 
 	"zotregistry.dev/zot/v2/pkg/extensions/config"
@@ -16,7 +18,7 @@ func NewLinter(config *config.LintConfig, log log.Logger) *Linter {
 	return &Linter{}
 }
 
-func (linter *Linter) Lint(repo string, manifestDigest godigest.Digest,
+func (linter *Linter) Lint(_ context.Context, repo string, manifestDigest godigest.Digest,
 	imageStore storageTypes.ImageStore,
 ) (bool, error) {
 	return true, nil

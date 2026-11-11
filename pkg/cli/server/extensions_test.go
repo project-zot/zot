@@ -880,7 +880,37 @@ func TestServeLintExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(string(data), ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enable\":false,\"MandatoryAnnotations\":null}") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enable\":false,\"MandatoryAnnotations\":null,\"SkipSyncedImages\":false}") //nolint:lll // gofumpt conflicts with lll
+	})
+
+	Convey("lint skipping synced images", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "0"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"lint": {
+							"mandatoryAnnotations": ["annot1"],
+							"skipSyncedImages": true
+						}
+					}
+				}`
+
+		logPath, _, err := runCLIWithConfig(t, content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+
+		So(string(data), ShouldContainSubstring,
+			"\"Lint\":{\"Enable\":true,\"MandatoryAnnotations\":[\"annot1\"],\"SkipSyncedImages\":true}")
 	})
 }
 
