@@ -2054,7 +2054,26 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 		}
 	}
 
+	if err := validateSyncExclude(regCfg, logger); err != nil {
+		return err
+	}
+
 	return validateSyncContent(config, regCfg, logger)
+}
+
+// validateSyncExclude checks the exclude patterns compile, so that a typo can't silently let an
+// excluded repository be synced.
+func validateSyncExclude(regCfg syncconf.RegistryConfig, logger zlog.Logger) error {
+	for _, pattern := range regCfg.Exclude {
+		if ok := glob.ValidatePattern(pattern); !ok {
+			msg := "sync exclude pattern could not be compiled"
+			logger.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).Msg(msg)
+
+			return fmt.Errorf("%w: %s: %s", zerr.ErrBadConfig, msg, pattern)
+		}
+	}
+
+	return nil
 }
 
 // invalidOptionalPositiveFloat reports whether an optional float setting is set to a value that is

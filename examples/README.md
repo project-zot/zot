@@ -1523,6 +1523,7 @@ Configure each registry sync:
 				"disableHTTP2": true,               # force HTTP/1.1 to the upstream, so each concurrent request opens its own TCP connection instead of sharing the single connection (and congestion window) HTTP/2 multiplexes requests onto (default: false, i.e. HTTP/2 is negotiated when the upstream supports it)
 				"maxIdleConnsPerHost": 30,           # per-host idle connection pool size (default: 2; when disableHTTP2 is true and this is unset, defaults to reqConcurrent instead, so pooled HTTP/1.1 connections aren't closed under concurrency)
 				"onlySigned": true,                 # when true, tag sync requires a remote signature (notary/cosign/referrers). On-demand digest pulls skip that check so multi-arch tag→digest client flows work (signatures normally cover the index, not each platform child). A client that already knows an upstream digest can therefore sync that manifest without a per-manifest signature. Periodic child digests after a signed tag also skip re-checking.
+				"exclude": ["private/**"],          # local repos never synced from this registry, periodically or on demand; served from local storage only. Same glob syntax as content prefixes, matched against the local repo name. See "Sync's exclude option" below
 				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
 						"prefix":"/repo1/repo",         # pull image repo1/repo
@@ -1579,6 +1580,33 @@ Configure each registry sync:
 		}
 ```
 Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
+
+### Sync's exclude option
+
+`content` lists the repositories to sync. `exclude` does the opposite: it lists repositories that are
+never synced from a registry, so they can be pushed to and pulled from zot like any repository that is
+not synced, for instance when the same zot is both a pull-through cache and the registry for your own
+images:
+
+```
+			"registries": [{
+				"urls": ["https://registry-1.docker.io"],
+				"onDemand": true,
+				"exclude": ["mycompany/**", "internal/app"]
+			}]
+```
+
+Requests for `mycompany/...` and `internal/app` are then served from local storage only, and a
+reference that is not stored locally returns `404` without contacting upstream. Every other
+repository is still synced on demand. Notes:
+
+ - entries are [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns, like content
+   prefixes; `mycompany/**` matches `mycompany` and every repository under it
+ - they are matched against the local repository name, after `destination` and `stripPrefix` are
+   applied, and win over `content`: a repository that matches both is not synced
+ - they apply to periodic and on-demand sync, including `stream` and `onDemandInBackground`
+ - they apply to the registry they are set on; with several registries, set them on each registry
+   a repository must not be synced from
 
 ### Sync's manifestCheckInterval option
 

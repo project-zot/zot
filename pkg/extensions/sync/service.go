@@ -345,17 +345,38 @@ func (service *BaseService) CanRetryOnError() bool {
 	return false
 }
 
-// IsStreamingForRepo reports whether Stream is on and repo matches the content rules (if any).
+// IsStreamingForRepo reports whether Stream is on and this registry syncs repo.
 func (service *BaseService) IsStreamingForRepo(repo string) bool {
-	if !service.config.IsStreamEnabled() {
+	return service.config.IsStreamEnabled() && service.syncsLocalRepo(repo)
+}
+
+// isRepoExcluded reports whether the local repo matches one of this registry's exclude patterns.
+func (service *BaseService) isRepoExcluded(repo string) bool {
+	return isRepoExcluded(repo, service.config.Exclude, service.log)
+}
+
+// syncsLocalRepo reports whether this registry syncs the local repo: it is not excluded, and it
+// matches the content rules, if any.
+func (service *BaseService) syncsLocalRepo(repo string) bool {
+	if service.isRepoExcluded(repo) {
 		return false
 	}
 
-	if len(service.config.Content) == 0 {
-		return true
+	return len(service.config.Content) == 0 || service.contentManager.GetContentByLocalRepo(repo) != nil
+}
+
+// getRemoteRepo returns the upstream name of the local repo, or "" when this registry doesn't sync
+// it, because it is excluded or doesn't match the content rules.
+func (service *BaseService) getRemoteRepo(repo string) string {
+	if service.isRepoExcluded(repo) {
+		return ""
 	}
 
-	return service.contentManager.GetContentByLocalRepo(repo) != nil
+	if len(service.config.Content) == 0 {
+		return repo
+	}
+
+	return service.contentManager.GetRepoSource(repo)
 }
 
 // IsImageLocal reports whether repo:reference is already committed locally at digest. A missing
@@ -370,13 +391,13 @@ func (service *BaseService) IsImageLocal(repo, reference string, digest godigest
 //     validated against upstream.
 //   - manifestCheckInterval is positive: false while a successful check of repo:reference
 //     is more recent than the interval.
-//   - manifestCheckInterval is negative: false when this registry has no content rules, or
-//     one of them matches repo, so a stored reference is served without contacting upstream.
-//     True when its content rules don't match repo, so a registry that doesn't serve repo
-//     can't skip the check for the registries that do. The tracker is not used.
+//   - manifestCheckInterval is negative: false when this registry syncs repo, so a stored
+//     reference is served without contacting upstream. True when repo is excluded or its
+//     content rules don't match repo, so a registry that doesn't serve repo can't skip the
+//     check for the registries that do. The tracker is not used.
 func (service *BaseService) ShouldCheckUpstream(repo, reference string) bool {
 	if service.config.ManifestCheckInterval < 0 {
-		return len(service.config.Content) > 0 && service.contentManager.GetContentByLocalRepo(repo) == nil
+		return !service.syncsLocalRepo(repo)
 	}
 
 	if service.checkTracker == nil {
@@ -387,18 +408,14 @@ func (service *BaseService) ShouldCheckUpstream(repo, reference string) bool {
 }
 
 // IsOnDemandInBackgroundForRepo reports whether this registry should use
-// on-demand-in-background sync for the given local repo (content filters apply when
-// Content is configured).
+// on-demand-in-background sync for the given local repo (exclude and content filters apply
+// when configured).
 func (service *BaseService) IsOnDemandInBackgroundForRepo(repo string) bool {
 	if !service.config.IsOnDemandInBackgroundEnabled() || !service.config.OnDemand {
 		return false
 	}
 
-	if len(service.config.Content) == 0 {
-		return true
-	}
-
-	return service.contentManager.GetContentByLocalRepo(repo) != nil
+	return service.syncsLocalRepo(repo)
 }
 
 // markUpstreamChecked records a successful upstream check, so that subsequent on-demand
@@ -495,6 +512,12 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 		}
 
 		matches = service.contentManager.MatchesContent(lastRepo)
+		if matches && service.isRepoExcluded(service.contentManager.GetRepoDestination(lastRepo)) {
+			service.log.Debug().Str(constants.RepositoryLogKey, lastRepo).
+				Msg("skipping sync of repo excluded by the sync config")
+
+			matches = false
+		}
 	}
 
 	return lastRepo, nil
@@ -504,18 +527,14 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 // children are fetched when a client pulls them). It applies SyncImage's content and OnlySigned
 // checks, so streaming never serves what a plain sync would refuse.
 func (service *BaseService) FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error) {
-	remoteRepo := repo
-
 	remoteURL := service.remoteHostName()
 
-	if len(service.config.Content) > 0 {
-		remoteRepo = service.contentManager.GetRepoSource(repo)
-		if remoteRepo == "" {
-			service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
-				Msg("will not sync image, filtered out by content")
+	remoteRepo := service.getRemoteRepo(repo)
+	if remoteRepo == "" {
+		service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
+			Msg("will not sync image, filtered out by content or exclude rules")
 
-			return nil, zerr.ErrSyncImageFilteredOut
-		}
+		return nil, zerr.ErrSyncImageFilteredOut
 	}
 
 	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", reference).
@@ -562,17 +581,13 @@ func (service *BaseService) FetchManifest(ctx context.Context, repo, reference s
 
 // SyncImage on demand.
 func (service *BaseService) SyncImage(ctx context.Context, repo, reference string) error {
-	remoteRepo := repo
+	// Content and exclude rules are local config — apply them before credential refresh or upstream I/O.
+	remoteRepo := service.getRemoteRepo(repo)
+	if remoteRepo == "" {
+		service.log.Info().Str("remote", service.remoteHostName()).Str("repo", repo).Str("reference", reference).
+			Msg("will not sync image, filtered out by content or exclude rules")
 
-	// Content rules are local config — apply them before credential refresh or upstream I/O.
-	if len(service.config.Content) > 0 {
-		remoteRepo = service.contentManager.GetRepoSource(repo)
-		if remoteRepo == "" {
-			service.log.Info().Str("remote", service.remoteHostName()).Str("repo", repo).Str("reference", reference).
-				Msg("will not sync image, filtered out by content")
-
-			return zerr.ErrSyncImageFilteredOut
-		}
+		return zerr.ErrSyncImageFilteredOut
 	}
 
 	/* Refresh before taking the read lock: a refresh reinitializes the client under the
@@ -610,17 +625,13 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 // tag, feeding repo:tag's staged streams as it copies (see StreamSyncer). The result is still
 // committed under tag.
 func (service *BaseService) SyncImageForStream(ctx context.Context, repo, tag string, digest godigest.Digest) error {
-	remoteRepo := repo
+	// Content and exclude rules are local config — apply them before credential refresh or upstream I/O.
+	remoteRepo := service.getRemoteRepo(repo)
+	if remoteRepo == "" {
+		service.log.Info().Str("remote", service.remoteHostName()).Str("repo", repo).Str("reference", tag).
+			Msg("will not sync image, filtered out by content or exclude rules")
 
-	// Content rules are local config — apply them before credential refresh or upstream I/O.
-	if len(service.config.Content) > 0 {
-		remoteRepo = service.contentManager.GetRepoSource(repo)
-		if remoteRepo == "" {
-			service.log.Info().Str("remote", service.remoteHostName()).Str("repo", repo).Str("reference", tag).
-				Msg("will not sync image, filtered out by content")
-
-			return zerr.ErrSyncImageFilteredOut
-		}
+		return zerr.ErrSyncImageFilteredOut
 	}
 
 	/* Refresh before taking the read lock: a refresh reinitializes the client under the
@@ -659,18 +670,14 @@ func (service *BaseService) SyncImageForStream(ctx context.Context, repo, tag st
 func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
-	remoteRepo := repo
+	// Content and exclude rules are local config — apply them before credential refresh or upstream I/O.
+	remoteRepo := service.getRemoteRepo(repo)
+	if remoteRepo == "" {
+		service.log.Info().Str("remote", service.remoteHostName()).Str("repository", repo).
+			Str("subject", subjectDigestStr).Interface("reference types", referenceTypes).
+			Msg("will not sync reference for image, filtered out by content or exclude rules")
 
-	// Content rules are local config — apply them before credential refresh or upstream I/O.
-	if len(service.config.Content) > 0 {
-		remoteRepo = service.contentManager.GetRepoSource(repo)
-		if remoteRepo == "" {
-			service.log.Info().Str("remote", service.remoteHostName()).Str("repository", repo).
-				Str("subject", subjectDigestStr).Interface("reference types", referenceTypes).
-				Msg("will not sync reference for image, filtered out by content")
-
-			return zerr.ErrSyncImageFilteredOut
-		}
+		return zerr.ErrSyncImageFilteredOut
 	}
 
 	/* Refresh before taking the read lock: a refresh reinitializes the client under the

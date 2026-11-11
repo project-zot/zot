@@ -4133,6 +4133,110 @@ func TestOnDemandContentFiltering(t *testing.T) {
 	})
 }
 
+func TestSyncExclude(t *testing.T) {
+	Convey("Verify sync exclude rules", t, func() {
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		srcBaseURL := scm.StartAndWait()
+
+		defer scm.StopServer()
+
+		var tlsVerify bool
+
+		defaultVal := true
+
+		Convey("Test excluded repos are not synced on demand", func() {
+			syncRegistryConfig := syncconf.RegistryConfig{
+				URLs:       []string{srcBaseURL},
+				TLSVerify:  &tlsVerify,
+				OnDemand:   true,
+				MaxRetries: &maxRetries,
+				Exclude:    []string{testImage},
+			}
+
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			dctlr, _, _ := makeDownstreamServer(t, false, syncConfig)
+
+			dcm := test.NewControllerManager(dctlr)
+			destBaseURL := dcm.StartAndWait()
+
+			defer dcm.StopServer()
+
+			// present upstream, but excluded
+			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"will not sync image, filtered out by content or exclude rules", 15*time.Second)
+			So(err, ShouldBeNil)
+			So(found, ShouldBeTrue)
+
+			// not excluded
+			resp, err = resty.R().Get(destBaseURL + "/v2/" + testCveImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// an image pushed to an excluded repo is served from local storage
+			image := CreateRandomImage()
+			err = UploadImage(image, destBaseURL, testImage, "local")
+			So(err, ShouldBeNil)
+
+			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/local")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldEqual, image.DigestStr())
+
+			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Test excluded repos are not synced periodically", func() {
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{
+						Prefix: "**",
+					},
+				},
+				URLs:         []string{srcBaseURL},
+				PollInterval: 30 * time.Minute,
+				TLSVerify:    &tlsVerify,
+				MaxRetries:   &maxRetries,
+				Exclude:      []string{"/" + testImage},
+			}
+
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
+
+			dcm := test.NewControllerManager(dctlr)
+			destBaseURL := dcm.StartAndWait()
+
+			defer dcm.StopServer()
+
+			So(waitFinishedSyncingRepo(dctlr.Config.Log.Output, testCveImage, 60*time.Second), ShouldBeTrue)
+			So(waitSyncFinish(dctlr.Config.Log.Output), ShouldBeTrue)
+
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testCveImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
+	})
+}
+
 func TestConfigRules(t *testing.T) {
 	Convey("Verify sync config rules", t, func() {
 		sctlr, _, _ := makeUpstreamServer(t, false, false)

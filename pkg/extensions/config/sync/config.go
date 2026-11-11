@@ -123,6 +123,11 @@ type RegistryConfig struct {
 	// Entries are validated with regclient platform.Parse (os/arch[/variant]); extra slash
 	// components beyond three are ignored by that parser, not rejected by zot.
 	Platforms []string `mapstructure:",omitempty"`
+	// Exclude lists glob patterns (same syntax as content[].prefix) of local repositories that this
+	// registry never syncs, neither periodically nor on demand, so they are served from local storage
+	// unless another registry syncs them. They are matched against the local repository name, after
+	// content[].destination and stripPrefix are applied, and win over content rules.
+	Exclude []string `mapstructure:",omitempty"`
 	// Stream serves an on-demand image to the client while it downloads, instead of after the
 	// local commit. Requires OnDemand and https URLs; incompatible with OnDemandInBackground,
 	// MaxRetries/RetryDelay and TLSVerify: false.
