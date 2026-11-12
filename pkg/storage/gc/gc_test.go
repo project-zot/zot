@@ -446,6 +446,12 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 				retentionMeta.Statistics[gcNew3.DigestStr()] = gcNew3Stats
 				retentionMeta.Statistics[gcNew4.DigestStr()] = gcNew4Stats
 
+				// each tag was pushed together with its image
+				for tag, desc := range retentionMeta.Tags {
+					desc.TaggedTimestamp = retentionMeta.Statistics[desc.Digest].PushTimestamp
+					retentionMeta.Tags[tag] = desc
+				}
+
 				// update repo meta
 				err = metaDB.SetRepoMeta("retention", retentionMeta)
 				So(err, ShouldBeNil)
@@ -1035,6 +1041,49 @@ func TestGarbageCollectAndRetentionMetaDB(t *testing.T) {
 					So(tags, ShouldNotContain, "0.0.2")
 					So(tags, ShouldNotContain, "0.0.3")
 					So(tags, ShouldNotContain, "0.0.7")
+				})
+
+				Convey("retain a new tag of an image first pushed before pushedWithin", func() {
+					// the same image pushed again under a new tag, e.g. by a reproducible build
+					err := WriteImageToFileSystem(gcOld1, "retention", "0.0.9", storeController)
+					So(err, ShouldBeNil)
+
+					err = metaDB.SetRepoReference(ctx, "retention", "0.0.9", gcOld1.AsImageMeta())
+					So(err, ShouldBeNil)
+
+					sevenDays := 7 * 24 * time.Hour
+
+					gc := gc.NewGarbageCollect(imgStore, metaDB, gc.Options{
+						Delay: storageConstants.DefaultGCDelay,
+						ImageRetention: config.ImageRetention{
+							Delay: storageConstants.DefaultGCDelay,
+							Policies: []config.RetentionPolicy{
+								{
+									Repositories:    []string{"**"},
+									DeleteReferrers: true,
+									DeleteUntagged:  &trueVal,
+									KeepTags: []config.KeepTagsPolicy{
+										{
+											Patterns:     []string{".*"},
+											PushedWithin: &sevenDays,
+										},
+									},
+								},
+							},
+						},
+					}, audit, log, metrics)
+
+					err = gc.CleanRepo(ctx, "retention")
+					So(err, ShouldBeNil)
+
+					tags, err := imgStore.GetImageTags("retention")
+					So(err, ShouldBeNil)
+
+					So(tags, ShouldContain, "0.0.9")
+					So(tags, ShouldNotContain, "0.0.1")
+
+					_, _, _, err = imgStore.GetImageManifest("retention", gcOld1.DigestStr())
+					So(err, ShouldBeNil)
 				})
 
 				Convey("retain 3 most recently pushed images", func() {

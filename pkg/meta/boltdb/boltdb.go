@@ -264,8 +264,9 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 					taggedTimestamp = existingTag.GetTaggedTimestamp()
 				}
 				// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
-			} else {
-				// New tag - set timestamp to now
+			} else if options.PushTimestamp.IsZero() {
+				// Live push records the current time. A re-parse sets PushTimestamp from the manifest
+				// blob mod time, shared by every tag of the digest, so leave TaggedTimestamp unset.
 				taggedTimestamp = timestamppb.Now()
 			}
 			protoRepoMeta.Tags[reference] = &proto_go.TagDescriptor{
