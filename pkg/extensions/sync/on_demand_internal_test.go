@@ -560,3 +560,132 @@ func TestSyncImageInBackgroundDockerCompatPreference(t *testing.T) {
 		So(second.syncImageCalls, ShouldEqual, 1)
 	})
 }
+
+// nsCheckService overrides the upstream freshness check of the shared stub.
+type nsCheckService struct {
+	*stubOnDemandService
+	check bool
+}
+
+func (s *nsCheckService) ShouldCheckUpstream(_, _ string) bool { return s.check }
+
+func TestOnDemandShouldCheckUpstreamManifestNamespace(t *testing.T) {
+	Convey("ShouldCheckUpstreamManifest only consults services from the requested namespace", t, func() {
+		docker := &nsCheckService{stubOnDemandService: &stubOnDemandService{matchNS: "docker.io"}, check: false}
+		k8s := &nsCheckService{stubOnDemandService: &stubOnDemandService{matchNS: "registry.k8s.io"}, check: true}
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(docker)
+		onDemand.Add(k8s)
+
+		Convey("a recently checked registry does not hide another registry's check", func() {
+			So(onDemand.ShouldCheckUpstreamManifest("repo", "latest", "docker.io"), ShouldBeFalse)
+			So(onDemand.ShouldCheckUpstreamManifest("repo", "latest", "registry.k8s.io"), ShouldBeTrue)
+		})
+
+		Convey("an empty namespace still consults every service", func() {
+			So(onDemand.ShouldCheckUpstreamManifest("repo", "latest", ""), ShouldBeFalse)
+		})
+
+		Convey("a namespace no service matches has nothing to throttle", func() {
+			So(onDemand.ShouldCheckUpstreamManifest("repo", "latest", "quay.io"), ShouldBeTrue)
+		})
+	})
+}
+
+func TestOnDemandInBackgroundServicesForRepoNamespace(t *testing.T) {
+	Convey("on-demand-in-background services are filtered by namespace", t, func() {
+		docker := &stubOnDemandService{onDemandInBackground: true, matchNS: "docker.io"}
+		k8s := &stubOnDemandService{onDemandInBackground: true, matchNS: "registry.k8s.io"}
+		disabled := &stubOnDemandService{onDemandInBackground: false, matchNS: "ghcr.io"}
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.Add(docker)
+		onDemand.Add(k8s)
+		onDemand.Add(disabled)
+
+		Convey("only the matching registry is selected", func() {
+			So(onDemand.onDemandInBackgroundServicesForRepo("repo", "docker.io"), ShouldResemble, []Service{docker})
+			So(onDemand.ShouldQueueOnDemandSync("repo", "docker.io"), ShouldBeTrue)
+		})
+
+		Convey("an empty namespace keeps every background service", func() {
+			So(onDemand.onDemandInBackgroundServicesForRepo("repo", ""), ShouldResemble, []Service{docker, k8s})
+		})
+
+		Convey("a namespace that matches nothing queues no background sync", func() {
+			So(onDemand.onDemandInBackgroundServicesForRepo("repo", "quay.io"), ShouldBeEmpty)
+			So(onDemand.ShouldQueueOnDemandSync("repo", "quay.io"), ShouldBeFalse)
+		})
+
+		Convey("syncImageInBackground only runs the matching registry", func() {
+			err := onDemand.syncImageInBackground(context.Background(), "repo", "tag", "docker.io")
+			So(err, ShouldBeNil)
+			So(docker.syncImageCalls, ShouldEqual, 1)
+			So(k8s.syncImageCalls, ShouldEqual, 0)
+		})
+	})
+}
+
+func TestJoinStagedNamespaceRestriction(t *testing.T) {
+	newStagedOnDemand := func(t *testing.T, source string) (*BaseOnDemand, *StreamableManifest) {
+		t.Helper()
+
+		onDemand := NewOnDemand(log.NewTestLogger())
+		streamManager := newFakeStreamManagerForOnDemand()
+		onDemand.SetStreamManager(streamManager)
+		onDemand.Add(&stubOnDemandService{matchNS: "docker.io"})
+		onDemand.Add(&stubOnDemandService{matchNS: "registry.k8s.io"})
+
+		staged := NewStreamableManifest(newTestManifestForStream(t))
+		staged.source = source
+
+		streamManager.mu.Lock()
+		streamManager.staged["repo:latest"] = staged
+		streamManager.mu.Unlock()
+
+		return onDemand, staged
+	}
+
+	Convey("joinStaged only serves a staged manifest from the requested namespace", t, func() {
+		Convey("a manifest staged by another registry is not served", func() {
+			onDemand := NewOnDemand(log.NewTestLogger())
+			streamManager := newFakeStreamManagerForOnDemand()
+			onDemand.SetStreamManager(streamManager)
+			onDemand.Add(&stubOnDemandService{matchNS: "docker.io"})
+			onDemand.Add(&stubOnDemandService{matchNS: "registry.k8s.io"})
+
+			man := newTestManifestForStream(t)
+			staged := NewStreamableManifest(man)
+			staged.source = onDemand.streamSource(1) // registry.k8s.io
+
+			streamManager.mu.Lock()
+			streamManager.staged["repo:latest"] = staged
+			streamManager.mu.Unlock()
+
+			_, ok := onDemand.joinStaged("repo", "latest", "docker.io", nil)
+			So(ok, ShouldBeFalse)
+
+			result, ok := onDemand.joinStaged("repo", "latest", "registry.k8s.io", nil)
+			So(ok, ShouldBeTrue)
+			So(result, ShouldEqual, man)
+		})
+
+		Convey("an empty namespace serves the staged manifest without filtering", func() {
+			onDemand, staged := newStagedOnDemand(t, "1.1") // index 1: registry.k8s.io
+
+			result, ok := onDemand.joinStaged("repo", "latest", "", nil)
+			So(ok, ShouldBeTrue)
+			So(result, ShouldEqual, staged.referenceManifest)
+		})
+
+		Convey("malformed sources are never served for a scoped request", func() {
+			for _, source := range []string{"", "notanindex", "0.notanint", "0.99", "0.-1"} {
+				onDemand, _ := newStagedOnDemand(t, source)
+
+				_, ok := onDemand.joinStaged("repo", "latest", "docker.io", nil)
+				So(ok, ShouldBeFalse)
+			}
+		})
+	})
+}
