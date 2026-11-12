@@ -294,7 +294,7 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	if !hasSessionHeader(request) && needsAuthChallenge {
 		if authConfig.ShouldAdvertiseBearerChallenge() {
 			setBearerAuthChallenge(response, authConfig, nil)
-		} else if authConfig.CanAuthenticateWithBasicCredentials() {
+		} else if authConfig.CanAuthenticateWithBasicCredentials() && !suppressBasicAuthChallenge(request) {
 			setBasicAuthChallenge(response, rh.c.Config.GetRealm())
 		}
 	}
@@ -2977,6 +2977,10 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 
 		return
 	}
+
+	// The cookies directive also clears browser-cached HTTP authentication credentials.
+	response.Header().Set("Clear-Site-Data", `"cookies"`)
+	response.Header().Set("Cache-Control", "no-store")
 
 	zcommon.WriteJSON(response, http.StatusOK, LogoutResponse{
 		EndSessionURL: rh.buildEndSessionURL(provider),

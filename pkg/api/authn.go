@@ -1099,8 +1099,7 @@ func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
 		time.Sleep(time.Duration(delay) * time.Second)
 	}
 
-	// don't send auth headers if request is coming from UI
-	if !hasSessionHeader(r) {
+	if !suppressBasicAuthChallenge(r) {
 		setBasicAuthChallenge(w, realm)
 	}
 
@@ -1173,6 +1172,13 @@ func hasSessionHeader(request *http.Request) bool {
 	clientHeader := request.Header.Get(constants.SessionClientHeaderName)
 
 	return clientHeader == constants.SessionClientHeaderValue
+}
+
+func suppressBasicAuthChallenge(request *http.Request) bool {
+	// Browsers can navigate or fetch before the UI adds its session header. A Basic
+	// challenge would populate the browser's HTTP auth cache independently of our session.
+	return hasSessionHeader(request) || request.Header.Get("Sec-Fetch-Mode") != "" ||
+		strings.Contains(request.Header.Get("Accept"), "text/html")
 }
 
 func getUsernamePasswordBasicAuth(request *http.Request) (string, string, error) {
