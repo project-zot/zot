@@ -628,7 +628,7 @@ func TestOnDemandInBackgroundServicesForRepoNamespace(t *testing.T) {
 }
 
 func TestJoinStagedNamespaceRestriction(t *testing.T) {
-	newStagedOnDemand := func(t *testing.T, source string) (*BaseOnDemand, *StreamableManifest) {
+	newStagedOnDemand := func(t *testing.T, registryHosts []string) (*BaseOnDemand, *StreamableManifest) {
 		t.Helper()
 
 		onDemand := NewOnDemand(log.NewTestLogger())
@@ -638,7 +638,7 @@ func TestJoinStagedNamespaceRestriction(t *testing.T) {
 		onDemand.Add(&stubOnDemandService{matchNS: "registry.k8s.io"})
 
 		staged := NewStreamableManifest(newTestManifestForStream(t))
-		staged.source = source
+		staged.registryHosts = registryHosts
 
 		streamManager.mu.Lock()
 		streamManager.staged["repo:latest"] = staged
@@ -648,44 +648,66 @@ func TestJoinStagedNamespaceRestriction(t *testing.T) {
 	}
 
 	Convey("joinStaged only serves a staged manifest from the requested namespace", t, func() {
-		Convey("a manifest staged by another registry is not served", func() {
-			onDemand := NewOnDemand(log.NewTestLogger())
-			streamManager := newFakeStreamManagerForOnDemand()
-			onDemand.SetStreamManager(streamManager)
-			onDemand.Add(&stubOnDemandService{matchNS: "docker.io"})
-			onDemand.Add(&stubOnDemandService{matchNS: "registry.k8s.io"})
+		Convey("a manifest staged by another registry is not served and takes no callback", func() {
+			onDemand, staged := newStagedOnDemand(t, []string{"registry.k8s.io"})
 
-			man := newTestManifestForStream(t)
-			staged := NewStreamableManifest(man)
-			staged.source = onDemand.streamSource(1) // registry.k8s.io
+			onSynced := func(manifest.Manifest) {}
 
-			streamManager.mu.Lock()
-			streamManager.staged["repo:latest"] = staged
-			streamManager.mu.Unlock()
-
-			_, ok := onDemand.joinStaged("repo", "latest", "docker.io", nil)
+			_, ok := onDemand.joinStaged("repo", "latest", "docker.io", onSynced)
 			So(ok, ShouldBeFalse)
+			So(staged.onSynced, ShouldBeEmpty)
 
-			result, ok := onDemand.joinStaged("repo", "latest", "registry.k8s.io", nil)
+			result, ok := onDemand.joinStaged("repo", "latest", "registry.k8s.io", onSynced)
 			So(ok, ShouldBeTrue)
-			So(result, ShouldEqual, man)
+			So(result, ShouldEqual, staged.referenceManifest)
+			So(staged.onSynced, ShouldHaveLength, 1)
 		})
 
 		Convey("an empty namespace serves the staged manifest without filtering", func() {
-			onDemand, staged := newStagedOnDemand(t, "1.1") // index 1: registry.k8s.io
+			onDemand, staged := newStagedOnDemand(t, []string{"registry.k8s.io"})
 
 			result, ok := onDemand.joinStaged("repo", "latest", "", nil)
 			So(ok, ShouldBeTrue)
 			So(result, ShouldEqual, staged.referenceManifest)
 		})
 
-		Convey("malformed sources are never served for a scoped request", func() {
-			for _, source := range []string{"", "notanindex", "0.notanint", "0.99", "0.-1"} {
-				onDemand, _ := newStagedOnDemand(t, source)
+		Convey("a manifest staged without registry identity is never served to a scoped request", func() {
+			onDemand, _ := newStagedOnDemand(t, nil)
 
-				_, ok := onDemand.joinStaged("repo", "latest", "docker.io", nil)
-				So(ok, ShouldBeFalse)
-			}
+			_, ok := onDemand.joinStaged("repo", "latest", "docker.io", nil)
+			So(ok, ShouldBeFalse)
+		})
+
+		Convey("a reload reordering services does not remap a staged manifest to another registry", func() {
+			// The stream manager survives reloads, so this old stream must be matched by the
+			// registry that staged it, not by the index it used in the old configuration.
+			streamManager := newFakeStreamManagerForOnDemand()
+
+			beforeReload := NewOnDemand(log.NewTestLogger())
+			beforeReload.SetStreamManager(streamManager)
+			beforeReload.Add(&stubOnDemandService{matchNS: "docker.io"})
+			beforeReload.Add(&stubOnDemandService{matchNS: "registry.k8s.io"})
+
+			staged := NewStreamableManifest(newTestManifestForStream(t))
+			staged.source = beforeReload.streamSource(0)
+			staged.registryHosts = []string{"docker.io"}
+
+			streamManager.mu.Lock()
+			streamManager.staged["repo:latest"] = staged
+			streamManager.mu.Unlock()
+
+			afterReload := NewOnDemand(log.NewTestLogger())
+			afterReload.SetStreamManager(streamManager)
+			// Reordered: index 0 now names registry.k8s.io.
+			afterReload.Add(&stubOnDemandService{matchNS: "registry.k8s.io"})
+			afterReload.Add(&stubOnDemandService{matchNS: "docker.io"})
+
+			_, ok := afterReload.joinStaged("repo", "latest", "registry.k8s.io", nil)
+			So(ok, ShouldBeFalse)
+
+			result, ok := afterReload.joinStaged("repo", "latest", "docker.io", nil)
+			So(ok, ShouldBeTrue)
+			So(result, ShouldEqual, staged.referenceManifest)
 		})
 	})
 }

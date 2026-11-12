@@ -34,6 +34,8 @@ type onDemandInBackgroundMock struct {
 	streaming           bool
 	fetchForStreamFn    func(ctx context.Context) (manifest.Manifest, error)
 	fetchForStreamCalls int
+	// fetchForStreamNS is the ns of the most recent FetchManifestForStream call.
+	fetchForStreamNS string
 	// streamManager is what StreamManager returns (nil by default).
 	streamManager sync.StreamManager
 }
@@ -78,10 +80,11 @@ func (mock *onDemandInBackgroundMock) QueueImage(ctx context.Context, repo, refe
 	}
 }
 
-func (mock *onDemandInBackgroundMock) FetchManifestForStream(ctx context.Context, _, _, _ string,
+func (mock *onDemandInBackgroundMock) FetchManifestForStream(ctx context.Context, _, _, ns string,
 	_ func(manifest.Manifest),
 ) (manifest.Manifest, error) {
 	mock.fetchForStreamCalls++
+	mock.fetchForStreamNS = ns
 
 	if mock.fetchForStreamFn != nil {
 		return mock.fetchForStreamFn(ctx)
@@ -250,18 +253,11 @@ func TestGetImageManifestForwardsNamespaceToOnDemand(t *testing.T) {
 		Sync: &syncconf.Config{Enable: &enabled},
 	}
 
-	var (
-		checkNS string
-		queueNS string
-	)
+	var queueNS string
 
 	onDemand := &onDemandInBackgroundMock{
-		shouldCheckUpstreamFn: func(checkedRepo, checkedReference, ns string) bool {
-			if checkedRepo != repo || checkedReference != reference {
-				t.Fatalf("checked %s:%s, want %s:%s", checkedRepo, checkedReference, repo, reference)
-			}
-
-			checkNS = ns
+		shouldCheckUpstreamFn: func(_, _, _ string) bool {
+			t.Fatal("ShouldCheckUpstreamManifest must not be consulted for a namespaced request")
 
 			return true
 		},
@@ -301,12 +297,119 @@ func TestGetImageManifestForwardsNamespaceToOnDemand(t *testing.T) {
 		t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
 	}
 
-	if checkNS != namespace {
-		t.Fatalf("ShouldCheckUpstreamManifest() ns = %q, want %q", checkNS, namespace)
-	}
-
 	if queueNS != namespace {
 		t.Fatalf("ShouldQueueOnDemandSync() ns = %q, want %q", queueNS, namespace)
+	}
+}
+
+// TestGetImageManifestNamespacedBypassesUpstreamCheckShortcut: the manifest check tracker is keyed
+// by repo:reference only, so a fresh check for namespace A must not let a local tag overwritten by
+// namespace B's sync be served for A. Requesting A, then B, then A must contact A every time.
+func TestGetImageManifestNamespacedBypassesUpstreamCheckShortcut(t *testing.T) {
+	t.Parallel()
+
+	const (
+		repo      = "library/test"
+		reference = "latest"
+		nsA       = "registry.example.com"
+		nsB       = "registry.other.com"
+	)
+
+	enabled := true
+	appConfig := config.New()
+	appConfig.Extensions = &extconf.ExtensionConfig{
+		Sync: &syncconf.Config{Enable: &enabled},
+	}
+
+	newUpstream := func(t *testing.T, namespace string) manifest.Manifest {
+		t.Helper()
+
+		man, err := manifest.New(manifest.WithRaw([]byte(`{"schemaVersion":2,` +
+			`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+			`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
+			`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},` +
+			`"layers":[],"annotations":{"namespace":"` + namespace + `"}}`)))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return man
+	}
+
+	upstream := map[string]manifest.Manifest{
+		nsA: newUpstream(t, "A"),
+		nsB: newUpstream(t, "B"),
+	}
+
+	var (
+		localContent []byte
+		localDigest  godigest.Digest
+		checks       int
+	)
+
+	onDemand := &onDemandInBackgroundMock{
+		streaming:        true,
+		enabledForRepoFn: func(string) bool { return false },
+		shouldCheckUpstreamFn: func(_, _, _ string) bool {
+			checks++
+
+			// A recently validated check would let the route serve the local tag.
+			return false
+		},
+	}
+
+	// Each successful stream's sync commits that namespace's manifest as the shared local tag.
+	onDemand.fetchForStreamFn = func(context.Context) (manifest.Manifest, error) {
+		up := upstream[onDemand.fetchForStreamNS]
+
+		content, err := up.RawBody()
+		if err != nil {
+			return nil, err
+		}
+
+		localContent = content
+		localDigest = up.GetDescriptor().Digest
+
+		return up, nil
+	}
+
+	handler := &RouteHandler{c: &Controller{
+		Config:       appConfig,
+		SyncOnDemand: onDemand,
+		Log:          log.NewTestLogger(),
+	}}
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(_, _ string) ([]byte, godigest.Digest, string, error) {
+			if localDigest == "" {
+				return nil, "", "", zerr.ErrManifestNotFound
+			}
+
+			return localContent, localDigest, ispec.MediaTypeImageManifest, nil
+		},
+	}
+
+	for _, namespace := range []string{nsA, nsB, nsA} {
+		_, digest, _, streamed, err := getImageManifest(context.Background(), handler, store, repo,
+			reference, namespace, nil)
+		if err != nil {
+			t.Fatalf("getImageManifest(ns=%s) error = %v", namespace, err)
+		}
+
+		if !streamed {
+			t.Fatalf("getImageManifest(ns=%s) streamed = false, want true", namespace)
+		}
+
+		if want := upstream[namespace].GetDescriptor().Digest; digest != want {
+			t.Fatalf("getImageManifest(ns=%s) digest = %s, want %s", namespace, digest, want)
+		}
+	}
+
+	if onDemand.fetchForStreamCalls != 3 {
+		t.Fatalf("FetchManifestForStream() called %d times, want 3", onDemand.fetchForStreamCalls)
+	}
+
+	if checks != 0 {
+		t.Fatalf("ShouldCheckUpstreamManifest() called %d times for namespaced requests, want 0", checks)
 	}
 }
 

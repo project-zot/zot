@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"io"
+	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/blob"
@@ -23,7 +24,9 @@ type OnDemand interface {
 		ns string) error
 	// ShouldCheckUpstreamManifest reports whether repo:reference still needs an upstream check.
 	// ns, when non-empty, restricts the check to services whose upstream registry matches the
-	// containerd ?ns= namespace/query parameter.
+	// containerd ?ns= namespace/query parameter. A false result must only short-circuit an
+	// unscoped request: the check tracker is keyed by repo:reference and cannot tell which
+	// namespaced upstream last validated the local tag.
 	ShouldCheckUpstreamManifest(repo, reference, ns string) bool
 	// ShouldQueueOnDemandSync reports whether a missing local manifest for repo should
 	// return immediately while a background sync copies the image into storage.
@@ -67,9 +70,11 @@ type StreamManager interface {
 	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest) (*StreamableManifest, error)
 	// StreamingImageManifest returns the manifest staged for repo:reference, if any.
 	StreamingImageManifest(repo, reference string) (*StreamableManifest, bool)
-	// JoinStreamingImage returns repo:reference's staged manifest, if any, and registers onSynced
-	// (if non-nil) to run once its sync commits.
-	JoinStreamingImage(repo, reference string, onSynced func(manifest.Manifest)) (*StreamableManifest, bool)
+	// JoinStreamingImage returns repo:reference's staged manifest if it exists and accept (when
+	// non-nil) accepts it, and registers onSynced (if non-nil) to run once its sync commits. The
+	// check and the registration are atomic: a rejected manifest gets no callback.
+	JoinStreamingImage(repo, reference string, accept func(*StreamableManifest) bool,
+		onSynced func(manifest.Manifest)) (*StreamableManifest, bool)
 	// RemoveStreamingImage unstages repo:reference after its sync. If synced, its onSynced
 	// callbacks run.
 	RemoveStreamingImage(repo, reference string, synced bool)
@@ -115,6 +120,11 @@ type StreamableManifest struct {
 	// source names the registry that supplied this manifest (BaseOnDemand.streamSource). Streams
 	// are keyed by it, so clients never get another registry's unverified bytes.
 	source string //nolint:unused // only read/written by sync-tagged files (stream_manager.go, on_demand.go)
+	// registryHosts identifies the upstream registry that supplied this manifest: the authority
+	// (host:port) of that service's configured URLs. It is captured at staging time so a join can
+	// validate the manifest against the registry that produced it, even after a config reload has
+	// replaced or reordered services.
+	registryHosts []string //nolint:unused // only read/written by sync-tagged files
 	// onSynced holds every served request's callback, run once the sync commits. Guarded by
 	// streamLock.
 	onSynced []func(manifest.Manifest) //nolint:unused // only used by sync-tagged files
@@ -135,4 +145,67 @@ func NewStreamableManifest(mainManifest manifest.Manifest) *StreamableManifest {
 		referenceManifest: mainManifest,
 		done:              make(chan struct{}),
 	}
+}
+
+// MatchesNamespace reports whether ns (the containerd ?ns= namespace/query parameter) names the
+// upstream registry that supplied this manifest. An empty ns matches every manifest; a manifest
+// staged without registry information matches no namespace, so a scoped request never joins it.
+func (m *StreamableManifest) MatchesNamespace(nsParam string) bool {
+	if nsParam == "" {
+		return true
+	}
+
+	return registryMatches(m.registryHosts, nsParam)
+}
+
+// registryMatches reports whether ns names one of hosts. A host is a registry authority
+// (host:port) as configured for an upstream service. Docker Hub aliases compare equal regardless
+// of port; every other authority is compared case-insensitively and port-sensitively.
+func registryMatches(hosts []string, nsParam string) bool {
+	nsNormalized := normalizeRegistryName(nsParam)
+
+	for _, host := range hosts {
+		if isDockerHubHost(stripPort(nsParam)) || isDockerHubHost(stripPort(host)) {
+			if normalizeRegistryName(host) == nsNormalized {
+				return true
+			}
+
+			continue
+		}
+
+		if strings.EqualFold(host, nsParam) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// stripPort returns host without its port, if any.
+func stripPort(host string) string {
+	host, _, _ = strings.CutLast(host, ":")
+
+	return host
+}
+
+// isDockerHubHost reports whether host (port already stripped) is a Docker Hub alias.
+func isDockerHubHost(host string) bool {
+	switch strings.ToLower(host) {
+	case "docker.io", "registry-1.docker.io", "index.docker.io":
+		return true
+	default:
+		return false
+	}
+}
+
+// normalizeRegistryName strips the port and normalizes Docker Hub aliases so that
+// docker.io, registry-1.docker.io and index.docker.io all compare equal.
+func normalizeRegistryName(host string) string {
+	host = stripPort(host)
+
+	if isDockerHubHost(host) {
+		return "docker.io"
+	}
+
+	return strings.ToLower(host)
 }

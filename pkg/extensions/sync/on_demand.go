@@ -6,8 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -287,31 +285,19 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 	}
 }
 
-// joinStaged returns repo:reference's staged manifest, if any, registering onSynced on its sync.
-// ns, when non-empty, only serves a staged manifest if it was staged by a service whose upstream
-// registry matches the containerd ?ns= namespace/query parameter.
+// joinStaged returns repo:reference's staged manifest if it was supplied by the upstream registry
+// named by ns (when non-empty), registering onSynced on its sync. The source check and the
+// registration happen atomically inside the stream manager, so a rejected join leaves the staged
+// entry (and its callbacks) untouched.
 func (onDemand *BaseOnDemand) joinStaged(repo, reference, nsParam string,
 	onSynced func(manifest.Manifest),
 ) (manifest.Manifest, bool) {
-	staged, ok := onDemand.streamManager.JoinStreamingImage(repo, reference, onSynced)
+	staged, ok := onDemand.streamManager.JoinStreamingImage(repo, reference,
+		func(staged *StreamableManifest) bool {
+			return staged.MatchesNamespace(nsParam)
+		}, onSynced)
 	if !ok {
 		return nil, false
-	}
-
-	// When ns is set, only serve a staged manifest if it came from a matching registry.
-	// The source encodes the service index that staged it (streamSource).
-	if nsParam != "" {
-		parts := strings.Split(staged.source, ".")
-		if len(parts) != 2 {
-			return nil, false
-		}
-		idx, err := strconv.Atoi(parts[1])
-		if err != nil || idx < 0 || idx >= len(onDemand.services) {
-			return nil, false
-		}
-		if !onDemand.services[idx].MatchesRegistry(nsParam) {
-			return nil, false
-		}
 	}
 
 	onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
@@ -411,6 +397,14 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 	return err
 }
 
+// registryHostsProvider is implemented by services that can name their upstream registry
+// authorities. A streaming flight records them on the staged manifest, so a later namespaced join
+// validates against the registry that produced the stream, not against services a config reload may
+// have replaced or reordered (see StreamableManifest.registryHosts).
+type registryHostsProvider interface {
+	RegistryHosts() []string
+}
+
 // stageForStream fetches repo:reference from the first streaming registry that serves it and
 // stages it. It returns the staged manifest and that registry's index, or, with joined set,
 // the manifest another flight (from before a reload) staged meanwhile, whose sync owns it.
@@ -483,6 +477,12 @@ func (onDemand *BaseOnDemand) stageForStream(ctx context.Context, repo, referenc
 	streamable := NewStreamableManifest(resultManifest)
 	// Streams are keyed by source, so clients never get another registry's unverified bytes.
 	streamable.source = onDemand.streamSource(selectedIdx)
+	// Capture who supplied it: a later namespaced join must not resolve selectedIdx against a
+	// reloaded config where that index names another registry (or serve another namespace's
+	// stream).
+	if provider, ok := onDemand.services[selectedIdx].(registryHostsProvider); ok {
+		streamable.registryHosts = provider.RegistryHosts()
+	}
 
 	if onSynced != nil {
 		streamable.onSynced = []func(manifest.Manifest){onSynced}
@@ -506,6 +506,10 @@ func (onDemand *BaseOnDemand) stageForStream(ctx context.Context, repo, referenc
 // validated against upstream. ns, when non-empty, restricts the check to services whose
 // upstream registry matches the containerd ?ns= namespace/query parameter, so a request
 // scoped to one registry is not served another registry's recently-checked cache.
+//
+// The tracker behind ShouldCheckUpstream is keyed by repo:reference only, so a false result
+// must not short-circuit a namespaced request: it does not record which upstream last validated
+// the shared local tag (see getImageManifest).
 func (onDemand *BaseOnDemand) ShouldCheckUpstreamManifest(repo, reference, nsParam string) bool {
 	services := onDemand.servicesMatchingNS(nsParam)
 	for _, service := range services {

@@ -60,7 +60,8 @@ func (f *fakeStreamManager) StreamingImageManifest(_, _ string) (*sync.Streamabl
 	return nil, false
 }
 
-func (f *fakeStreamManager) JoinStreamingImage(_, _ string, _ func(manifest.Manifest),
+func (f *fakeStreamManager) JoinStreamingImage(_, _ string, _ func(*sync.StreamableManifest) bool,
+	_ func(manifest.Manifest),
 ) (*sync.StreamableManifest, bool) {
 	return nil, false
 }
