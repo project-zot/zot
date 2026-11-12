@@ -82,7 +82,19 @@ func (driver *Driver) Reader(path string, offset int64) (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	return errclass.WrapReadCloser(reader, driver.formatErr), nil
+	return &fileReader{ReadCloser: errclass.WrapReadCloser(reader, driver.formatErr), file: file}, nil
+}
+
+// fileReader preserves classified Read and Close errors and exposes the file descriptor.
+// net.TCPConn.ReadFrom uses syscall.Conn to select sendfile for local blob responses.
+type fileReader struct {
+	io.ReadCloser
+
+	file *os.File
+}
+
+func (r *fileReader) SyscallConn() (syscall.RawConn, error) {
+	return r.file.SyscallConn()
 }
 
 // openReader seeks an already-opened file and maps Seek / undershoot failures
