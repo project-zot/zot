@@ -948,7 +948,7 @@ func TestChunkingStreamManagerOnSyncedCallbacks(t *testing.T) {
 		_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, stager)
 		require.NoError(t, err)
 
-		_, ok := sm.JoinStreamingImage("repo-a", predictTestTag, record("joiner"))
+		_, ok := sm.JoinStreamingImage("repo-a", predictTestTag, nil, record("joiner"))
 		require.True(t, ok)
 
 		loser := NewStreamableManifest(base.referenceManifest)
@@ -967,9 +967,50 @@ func TestChunkingStreamManagerOnSyncedCallbacks(t *testing.T) {
 		}
 
 		// Nothing left to join once unstaged.
-		_, ok = sm.JoinStreamingImage("repo-a", predictTestTag, record("late"))
+		_, ok = sm.JoinStreamingImage("repo-a", predictTestTag, nil, record("late"))
 		assert.False(t, ok)
 	}
+}
+
+// TestChunkingStreamManagerRejectedJoinTakesNoCallback: accept and callback registration are
+// atomic, so a rejected join (e.g. for another namespace) never gets its callback recorded on the
+// existing stream.
+func TestChunkingStreamManagerRejectedJoinTakesNoCallback(t *testing.T) {
+	t.Parallel()
+
+	root, storeCtrl := newTestStore(t)
+	regClient := regclient.New()
+
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
+
+	sm := newTestStreamManager(t, storeCtrl, 0)
+
+	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
+	defer closeManifest()
+
+	streamable.registryHosts = []string{"registry.k8s.io"}
+
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	require.NoError(t, err)
+
+	calls := 0
+	record := func(manifest.Manifest) { calls++ }
+
+	acceptK8s := func(m *StreamableManifest) bool { return m.MatchesNamespace("registry.k8s.io") }
+	acceptDocker := func(m *StreamableManifest) bool { return m.MatchesNamespace("docker.io") }
+
+	_, ok := sm.JoinStreamingImage("repo-a", predictTestTag, acceptDocker, record)
+	assert.False(t, ok)
+
+	sm.streamLock.Lock()
+	assert.Empty(t, streamable.onSynced, "a rejected join must not register its callback")
+	sm.streamLock.Unlock()
+
+	_, ok = sm.JoinStreamingImage("repo-a", predictTestTag, acceptK8s, record)
+	require.True(t, ok)
+
+	sm.RemoveStreamingImage("repo-a", predictTestTag, true)
+	assert.Equal(t, 1, calls)
 }
 
 // TestChunkingStreamManagerSkipsLocalBlobs: blobs the repo already stores get no stream, so they

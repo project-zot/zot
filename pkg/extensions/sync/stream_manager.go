@@ -658,20 +658,26 @@ func (sm *ChunkingStreamManager) StreamingImageManifest(repo, reference string) 
 	return manifest, ok
 }
 
-// JoinStreamingImage returns repo:reference's staged manifest, if any, and registers onSynced on
-// it, both under streamLock so RemoveStreamingImage can't drop the callback.
+// JoinStreamingImage returns repo:reference's staged manifest if it exists and accept (when
+// non-nil) accepts it, and registers onSynced on it, all under streamLock. Validating under the
+// same lock as the registration matters: a rejected join must not leave a callback on a stream
+// it was not allowed to use, and RemoveStreamingImage must not drop an accepted callback.
 func (sm *ChunkingStreamManager) JoinStreamingImage(repo, reference string,
-	onSynced func(manifestpkg.Manifest),
+	accept func(*StreamableManifest) bool, onSynced func(manifestpkg.Manifest),
 ) (*StreamableManifest, bool) {
 	sm.streamLock.Lock()
 	defer sm.streamLock.Unlock()
 
 	manifest, ok := sm.streamingRefs[repo+":"+reference]
-	if ok && onSynced != nil {
+	if !ok || (accept != nil && !accept(manifest)) {
+		return nil, false
+	}
+
+	if onSynced != nil {
 		manifest.onSynced = append(manifest.onSynced, onSynced)
 	}
 
-	return manifest, ok
+	return manifest, true
 }
 
 // waitSynced waits until m is unstaged and reports whether its sync succeeded. Only for a manifest

@@ -353,33 +353,22 @@ func (service *BaseService) remoteHostName() string {
 	return service.remote.GetHostName()
 }
 
-// stripPort returns host without its port, if any.
-func stripPort(host string) string {
-	host, _, _ = strings.CutLast(host, ":")
+// RegistryHosts returns the authority (host:port) of each configured upstream URL. It identifies
+// the registry this service syncs from, so a manifest staged by it can still be matched to a
+// requested namespace after a config reload replaces or reorders services.
+func (service *BaseService) RegistryHosts() []string {
+	hosts := make([]string, 0, len(service.config.URLs))
 
-	return host
-}
+	for _, u := range service.config.URLs {
+		parsed, err := url.Parse(u)
+		if err != nil {
+			continue
+		}
 
-// isDockerHubHost reports whether host (port already stripped) is a Docker Hub alias.
-func isDockerHubHost(host string) bool {
-	switch strings.ToLower(host) {
-	case "docker.io", "registry-1.docker.io", "index.docker.io":
-		return true
-	default:
-		return false
-	}
-}
-
-// normalizeRegistryName strips the port and normalizes Docker Hub aliases so that
-// docker.io, registry-1.docker.io and index.docker.io all compare equal.
-func normalizeRegistryName(host string) string {
-	host = stripPort(host)
-
-	if isDockerHubHost(host) {
-		return "docker.io"
+		hosts = append(hosts, parsed.Host) // includes port
 	}
 
-	return strings.ToLower(host)
+	return hosts
 }
 
 // MatchesRegistry reports whether this service syncs from the upstream registry named by ns
@@ -393,34 +382,7 @@ func (service *BaseService) MatchesRegistry(nsParam string) bool {
 		return true
 	}
 
-	nsNormalized := normalizeRegistryName(nsParam)
-
-	for _, u := range service.config.URLs {
-		parsed, err := url.Parse(u)
-		if err != nil {
-			continue
-		}
-
-		host := parsed.Host // includes port
-
-		// If either side is a Docker Hub alias, compare normalized names
-		// (Docker Hub matching is port-insensitive).
-		if isDockerHubHost(stripPort(nsParam)) || isDockerHubHost(stripPort(host)) {
-			if normalizeRegistryName(host) == nsNormalized {
-				return true
-			}
-
-			continue
-		}
-
-		// Otherwise compare the full authority (host:port), so registries using
-		// an explicit port match ns values that include it.
-		if strings.EqualFold(host, nsParam) {
-			return true
-		}
-	}
-
-	return false
+	return registryMatches(service.RegistryHosts(), nsParam)
 }
 
 func (service *BaseService) CanRetryOnError() bool {

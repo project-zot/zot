@@ -3287,7 +3287,13 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		// When manifestCheckInterval is configured and a recent upstream check already
 		// validated this reference, serve the local manifest instead of contacting upstream.
 		// A local miss (for instance after garbage collection) falls through to a normal sync.
-		if !routeHandler.c.SyncOnDemand.ShouldCheckUpstreamManifest(name, reference, nsParam) {
+		//
+		// The check tracker is keyed by repo:reference only: it does not record which namespaced
+		// upstream last validated the local tag. Requesting the same tag from namespace A, then B,
+		// then A can return B's manifest on the final A request, since B overwrote the shared local
+		// tag while A's check stayed fresh. Namespaced requests therefore always check upstream.
+		if nsParam == "" &&
+			!routeHandler.c.SyncOnDemand.ShouldCheckUpstreamManifest(name, reference, nsParam) {
 			content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 			if err == nil {
 				routeHandler.c.Log.Debug().Str("repository", name).Str("reference", reference).

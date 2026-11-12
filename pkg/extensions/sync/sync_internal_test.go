@@ -3745,17 +3745,21 @@ func (f *fakeStreamManagerForOnDemand) StreamingImageManifest(repo, reference st
 }
 
 func (f *fakeStreamManagerForOnDemand) JoinStreamingImage(repo, reference string,
-	onSynced func(manifest.Manifest),
+	accept func(*StreamableManifest) bool, onSynced func(manifest.Manifest),
 ) (*StreamableManifest, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	m, ok := f.staged[repo+":"+reference]
-	if ok && onSynced != nil {
+	if !ok || (accept != nil && !accept(m)) {
+		return nil, false
+	}
+
+	if onSynced != nil {
 		m.onSynced = append(m.onSynced, onSynced)
 	}
 
-	return m, ok
+	return m, true
 }
 
 func (f *fakeStreamManagerForOnDemand) RemoveStreamingImage(repo, reference string, synced bool) {
@@ -3897,7 +3901,7 @@ type stageOnFirstJoinMiss struct {
 }
 
 func (f *stageOnFirstJoinMiss) JoinStreamingImage(repo, reference string,
-	onSynced func(manifest.Manifest),
+	accept func(*StreamableManifest) bool, onSynced func(manifest.Manifest),
 ) (*StreamableManifest, bool) {
 	if !f.missed {
 		f.missed = true
@@ -3907,7 +3911,7 @@ func (f *stageOnFirstJoinMiss) JoinStreamingImage(repo, reference string,
 		return nil, false
 	}
 
-	return f.fakeStreamManagerForOnDemand.JoinStreamingImage(repo, reference, onSynced)
+	return f.fakeStreamManagerForOnDemand.JoinStreamingImage(repo, reference, accept, onSynced)
 }
 
 func TestStagingSlotOwnership(t *testing.T) {
@@ -4498,7 +4502,9 @@ type joinChecksMiss struct {
 	*ChunkingStreamManager
 }
 
-func (*joinChecksMiss) JoinStreamingImage(_, _ string, _ func(manifest.Manifest)) (*StreamableManifest, bool) {
+func (*joinChecksMiss) JoinStreamingImage(_, _ string, _ func(*StreamableManifest) bool,
+	_ func(manifest.Manifest),
+) (*StreamableManifest, bool) {
 	return nil, false
 }
 
