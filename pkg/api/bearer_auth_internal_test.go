@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,7 +15,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -129,6 +133,94 @@ func TestBearerAuthMiddlewareDefaultsUnknownMethodsToPull(t *testing.T) {
 	if !strings.Contains(response.Header().Get("WWW-Authenticate"), "scope=\"repository:repo:pull\"") {
 		t.Fatalf("expected pull challenge, got %q", response.Header().Get("WWW-Authenticate"))
 	}
+}
+
+func TestBearerAuthChallengesInvalidTokens(t *testing.T) {
+	t.Parallel()
+
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expiredToken, err := jwt.NewWithClaims(jwt.SigningMethodEdDSA, ClaimsWithAccess{
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
+		IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Hour)),
+		Access:    []ResourceAccess{{Type: "repository", Name: "repo", Actions: []string{"pull", "push"}}},
+	}).SignedString(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{Bearer: &config.BearerConfig{Realm: "realm", Service: "service"}}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+	bearerAuth := &BearerAuth{
+		authConfig:   conf.HTTP.Auth,
+		bearerConfig: conf.HTTP.Auth.Bearer,
+		log:          ctlr.Log,
+		traditional: NewBearerAuthorizer("realm", "service", func(context.Context, *jwt.Token) (any, error) {
+			return publicKey, nil
+		}),
+	}
+	authn := &AuthnMiddleware{bearerAuth: bearerAuth, log: ctlr.Log}
+
+	middlewares := map[string]mux.MiddlewareFunc{
+		"bearer only":   bearerAuth.Middleware(ctlr),
+		"combined auth": authn.tryAuthnHandlers(ctlr),
+	}
+
+	for name, middleware := range middlewares {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			serve := func(authorization string) *httptest.ResponseRecorder {
+				request := httptest.NewRequest(http.MethodPatch, "/v2/repo/blobs/uploads/session", nil)
+				request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+				request.Header.Set("Authorization", authorization)
+				response := httptest.NewRecorder()
+
+				middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+					t.Fatal("expected protected handler not to be called")
+				})).ServeHTTP(response, request)
+
+				return response
+			}
+
+			response := serve("Bearer " + expiredToken)
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
+			}
+
+			wantChallenge := `Bearer realm="realm",service="service",scope="repository:repo:push",error="invalid_token"`
+			if challenge := response.Header().Get("WWW-Authenticate"); challenge != wantChallenge {
+				t.Fatalf("expected challenge %q, got %q", wantChallenge, challenge)
+			}
+
+			if !strings.Contains(response.Body.String(), apiErr.UNAUTHORIZED.String()) {
+				t.Fatalf("expected %s error, got %s", apiErr.UNAUTHORIZED.String(), response.Body.String())
+			}
+		})
+	}
+
+	t.Run("a credential that is not a bearer token is not challenged", func(t *testing.T) {
+		t.Parallel()
+
+		request := httptest.NewRequest(http.MethodGet, "/v2/repo/manifests/latest", nil)
+		request = mux.SetURLVars(request, map[string]string{"name": "repo"})
+		request.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("user:pass")))
+		response := httptest.NewRecorder()
+
+		bearerAuth.Middleware(ctlr)(http.NotFoundHandler()).ServeHTTP(response, request)
+
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, response.Code)
+		}
+
+		if challenge := response.Header().Get("WWW-Authenticate"); challenge != "" {
+			t.Fatalf("expected no challenge, got %q", challenge)
+		}
+	})
 }
 
 func TestRequestedBearerResourceActionBaseRoute(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -264,6 +265,79 @@ func TestBearerAuthorizer(t *testing.T) {
 
 			err := authorizer.Authorize(context.Background(), authHeader, nil)
 			So(err, ShouldWrap, zerr.ErrInvalidBearerToken)
+
+			var challenge *api.AuthChallengeError
+			So(errors.As(err, &challenge), ShouldBeFalse)
+		})
+
+		Convey("Invalid bearer tokens get an invalid_token challenge", func() {
+			requested := &api.ResourceAction{
+				Type:   "repository",
+				Name:   "authorized-repository",
+				Action: "pull",
+			}
+
+			signToken := func(key any, expiresAt time.Time) string {
+				claims := api.ClaimsWithAccess{
+					Access: []api.ResourceAccess{{
+						Name:    "authorized-repository",
+						Type:    "repository",
+						Actions: []string{"pull"},
+					}},
+					ExpiresAt: jwt.NewNumericDate(expiresAt),
+					IssuedAt:  jwt.NewNumericDate(expiresAt.Add(-time.Hour)),
+					Issuer:    "Zot",
+					Audience:  []string{"Zot Registry"},
+				}
+
+				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(key)
+				So(err, ShouldBeNil)
+
+				return token
+			}
+
+			assertInvalidTokenChallenge := func(err error) {
+				var challenge *api.AuthChallengeError
+				So(errors.As(err, &challenge), ShouldBeTrue)
+				So(err, ShouldWrap, zerr.ErrInvalidBearerToken)
+				So(challenge.Header(), ShouldEqual, `Bearer realm="realm",service="service",`+
+					`scope="repository:authorized-repository:pull",error="invalid_token"`)
+			}
+
+			Convey("Expired token", func() {
+				token := signToken(privKey, time.Now().Add(-time.Minute))
+
+				err := authorizer.Authorize(context.Background(), "Bearer "+token, requested)
+				assertInvalidTokenChallenge(err)
+				So(err, ShouldWrap, jwt.ErrTokenExpired)
+			})
+
+			Convey("Token signed by an untrusted key", func() {
+				otherKey, err := rsa.GenerateKey(rand.Reader, 2048)
+				So(err, ShouldBeNil)
+
+				token := signToken(otherKey, time.Now().Add(time.Minute))
+
+				err = authorizer.Authorize(context.Background(), "Bearer "+token, requested)
+				assertInvalidTokenChallenge(err)
+				So(err, ShouldWrap, jwt.ErrTokenSignatureInvalid)
+			})
+
+			Convey("Malformed token", func() {
+				err := authorizer.Authorize(context.Background(), "Bearer invalid", requested)
+				assertInvalidTokenChallenge(err)
+			})
+
+			Convey("No access requested", func() {
+				token := signToken(privKey, time.Now().Add(-time.Minute))
+
+				var challenge *api.AuthChallengeError
+
+				err := authorizer.Authorize(context.Background(), "Bearer "+token, nil)
+				So(errors.As(err, &challenge), ShouldBeTrue)
+				So(challenge.Header(), ShouldEqual,
+					`Bearer realm="realm",service="service",scope="",error="invalid_token"`)
+			})
 		})
 	})
 }
