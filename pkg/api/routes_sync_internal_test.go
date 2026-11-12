@@ -23,10 +23,12 @@ import (
 var errStorageUnavailable = errors.New("storage unavailable")
 
 type onDemandInBackgroundMock struct {
-	queueImageFn     func(ctx context.Context, repo, reference, ns string)
-	enabledForRepoFn func(repo string) bool
-	syncImageFn      func(ctx context.Context, repo, reference string) error
-	syncImageCalls   int
+	queueImageFn              func(ctx context.Context, repo, reference, ns string)
+	enabledForRepoFn          func(repo string) bool
+	shouldQueueOnDemandSyncFn func(repo, ns string) bool
+	shouldCheckUpstreamFn     func(repo, reference, ns string) bool
+	syncImageFn               func(ctx context.Context, repo, reference string) error
+	syncImageCalls            int
 	// streaming makes IsStreamingEnabledForRepo true, as if a separate stream registry also matched
 	// the repo.
 	streaming           bool
@@ -50,11 +52,19 @@ func (mock *onDemandInBackgroundMock) SyncReferrers(context.Context, string, str
 	return nil
 }
 
-func (mock *onDemandInBackgroundMock) ShouldCheckUpstreamManifest(_, _, _ string) bool {
+func (mock *onDemandInBackgroundMock) ShouldCheckUpstreamManifest(repo, reference, ns string) bool {
+	if mock.shouldCheckUpstreamFn != nil {
+		return mock.shouldCheckUpstreamFn(repo, reference, ns)
+	}
+
 	return true
 }
 
-func (mock *onDemandInBackgroundMock) ShouldQueueOnDemandSync(repo, _ string) bool {
+func (mock *onDemandInBackgroundMock) ShouldQueueOnDemandSync(repo, ns string) bool {
+	if mock.shouldQueueOnDemandSyncFn != nil {
+		return mock.shouldQueueOnDemandSyncFn(repo, ns)
+	}
+
 	if mock.enabledForRepoFn != nil {
 		return mock.enabledForRepoFn(repo)
 	}
@@ -222,6 +232,81 @@ func TestGetImageManifestOnDemandInBackgroundDigestMiss(t *testing.T) {
 	}
 	if onDemand.syncImageCalls != 0 {
 		t.Fatalf("SyncImage() called %d times, want 0", onDemand.syncImageCalls)
+	}
+}
+
+func TestGetImageManifestForwardsNamespaceToOnDemand(t *testing.T) {
+	t.Parallel()
+
+	const (
+		repo      = "library/test"
+		reference = "latest"
+		namespace = "registry.k8s.io"
+	)
+
+	enabled := true
+	appConfig := config.New()
+	appConfig.Extensions = &extconf.ExtensionConfig{
+		Sync: &syncconf.Config{Enable: &enabled},
+	}
+
+	var (
+		checkNS string
+		queueNS string
+	)
+
+	onDemand := &onDemandInBackgroundMock{
+		shouldCheckUpstreamFn: func(checkedRepo, checkedReference, ns string) bool {
+			if checkedRepo != repo || checkedReference != reference {
+				t.Fatalf("checked %s:%s, want %s:%s", checkedRepo, checkedReference, repo, reference)
+			}
+
+			checkNS = ns
+
+			return true
+		},
+		shouldQueueOnDemandSyncFn: func(queuedRepo, ns string) bool {
+			if queuedRepo != repo {
+				t.Fatalf("queued repo %s, want %s", queuedRepo, repo)
+			}
+
+			queueNS = ns
+
+			return true
+		},
+		queueImageFn: func(_ context.Context, queuedRepo, queuedReference, ns string) {
+			if queuedRepo != repo || queuedReference != reference {
+				t.Fatalf("queued %s:%s, want %s:%s", queuedRepo, queuedReference, repo, reference)
+			}
+
+			if queueNS != ns {
+				t.Fatalf("QueueImage() ns = %q, want %q", ns, queueNS)
+			}
+		},
+	}
+
+	handler := &RouteHandler{c: &Controller{
+		Config:       appConfig,
+		SyncOnDemand: onDemand,
+		Log:          log.NewTestLogger(),
+	}}
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(_, _ string) ([]byte, godigest.Digest, string, error) {
+			return nil, "", "", zerr.ErrManifestNotFound
+		},
+	}
+
+	_, _, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, namespace, nil)
+	if !errors.Is(err, zerr.ErrManifestNotFound) {
+		t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
+	}
+
+	if checkNS != namespace {
+		t.Fatalf("ShouldCheckUpstreamManifest() ns = %q, want %q", checkNS, namespace)
+	}
+
+	if queueNS != namespace {
+		t.Fatalf("ShouldQueueOnDemandSync() ns = %q, want %q", queueNS, namespace)
 	}
 }
 
