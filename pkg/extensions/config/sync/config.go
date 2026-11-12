@@ -70,10 +70,16 @@ type RegistryConfig struct {
 	// long after a successful one, and a negative value never checks a stored tag.
 	// Requires OnDemand.
 	ManifestCheckInterval time.Duration
-	CertDir               string
-	MaxRetries            *int
-	RetryDelay            *time.Duration
-	MaxRetryDelay         *time.Duration // max HTTP retry backoff; when unset defaults to retryDelay (fixed delay)
+	// ManifestCheckTimeout bounds the upstream manifest request of an on-demand sync (dial, TLS,
+	// authentication and the response, retries included), so that an unreachable upstream fails
+	// fast and a stored manifest is served instead of the client timing out. It does not bound
+	// the blob copy that follows. 0 (default) leaves the request bounded by SyncTimeout only.
+	// Requires OnDemand.
+	ManifestCheckTimeout time.Duration
+	CertDir              string
+	MaxRetries           *int
+	RetryDelay           *time.Duration
+	MaxRetryDelay        *time.Duration // max HTTP retry backoff; when unset defaults to retryDelay (fixed delay)
 	// OnlySigned: tag sync requires remote signatures; on-demand digest pulls skip that check
 	// (see examples/README.md).
 	OnlySigned             *bool

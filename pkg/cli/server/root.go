@@ -1829,6 +1829,21 @@ func validateRegistryManifestCheckInterval(regCfg syncconf.RegistryConfig) error
 	return nil
 }
 
+// validateRegistryManifestCheckTimeout rejects a manifestCheckTimeout that cannot take effect.
+// The timeout only bounds on-demand upstream manifest requests, so it is meaningless without
+// onDemand.
+func validateRegistryManifestCheckTimeout(regCfg syncconf.RegistryConfig) error {
+	if regCfg.ManifestCheckTimeout < 0 {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "manifestCheckTimeout cannot be negative")
+	}
+
+	if regCfg.ManifestCheckTimeout != 0 && !regCfg.OnDemand {
+		return fmt.Errorf("%w: %s", zerr.ErrBadConfig, "manifestCheckTimeout requires onDemand to be enabled")
+	}
+
+	return nil
+}
+
 // validateRegistryOnDemandInBackground rejects onDemandInBackground settings that cannot
 // take effect or conflict with blocking on-demand refresh semantics.
 func validateRegistryOnDemandInBackground(regCfg syncconf.RegistryConfig) error {
@@ -1992,6 +2007,13 @@ func validateSyncRegistry(config *config.Config, regID int, regCfg syncconf.Regi
 			regCfg).Msg("invalid config for manifestCheckInterval")
 
 		return intervalValidationErr
+	}
+
+	if timeoutValidationErr := validateRegistryManifestCheckTimeout(regCfg); timeoutValidationErr != nil {
+		logger.Error().Err(timeoutValidationErr).Int("id", regID).Interface("extensions.sync.registries[id]",
+			regCfg).Msg("invalid config for manifestCheckTimeout")
+
+		return timeoutValidationErr
 	}
 
 	if streamValidationErr := validateRegistryStreamingSyncConfig(regCfg); streamValidationErr != nil {
