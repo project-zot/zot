@@ -1513,6 +1513,7 @@ Configure each registry sync:
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"platforms": ["linux/amd64"],       # periodic sync default: sparse-copy these OS/arch[/variant] children; omit/empty = all. Overridden by content[].platforms when set. On-demand ignores both. Extra slash tokens beyond three are ignored by platform.Parse (not rejected).
 				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream; when negative (e.g. -1) a locally present tag is never checked upstream. Requires onDemand.
+				"manifestCheckTimeout": "10s",      # max time the upstream has to answer the manifest request of an on-demand sync (dial, TLS, auth and response, retries included); past it a locally present manifest is served. 0 or unset: bounded by syncTimeout only. Requires onDemand. See "Sync's manifestCheckTimeout option" below
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
@@ -1647,6 +1648,40 @@ A locally present tag is then served without contacting upstream, also when it w
 storage instead of synced, and also after a restart. A tag that is not present locally is still
 synced on demand. A tag repushed upstream is not updated. With `content` rules, this applies only
 to the repositories they match.
+
+### Sync's manifestCheckTimeout option
+
+An on-demand request for a tag asks the upstream registry for the manifest, to check whether the
+tag moved, before the locally stored manifest is served. When the upstream can't be reached, for
+instance because packets to it are dropped, that request only fails after the TCP dial timeout,
+and clients such as Docker often give up before zot falls back to the stored manifest.
+`manifestCheckTimeout` bounds how long the upstream has to answer:
+
+```
+			"registries": [{
+				"urls": ["https://registry-1.docker.io"],
+				"onDemand": true,
+				"manifestCheckTimeout": "10s"
+			}]
+```
+
+Past the timeout the upstream request is abandoned and the request is handled like any other
+failed upstream check: a locally present manifest is served, and a manifest that isn't stored
+locally gets an error instead of a response that never comes. Notes:
+
+ - the default is 0, which leaves the request bounded by `syncTimeout` only
+ - it requires `onDemand`, since it only affects on-demand requests, never periodic sync
+ - it covers connecting, the TLS handshake, authenticating to the upstream and its response, with
+   retries (`maxRetries`) included; it does not bound downloading the image once the manifest has
+   been received
+ - it applies to each upstream request on its own: with several registries matching a repository,
+   each one that is tried gets the full timeout, and with `stream`, a request whose streaming
+   lookup times out gets it once more for the regular on-demand sync it falls back to
+ - pick a value well above the time the upstream normally takes to answer, or images that are not
+   stored locally fail to sync
+ - a check that timed out is not recorded as a successful one, so the next request checks
+   upstream again; combine it with `manifestCheckInterval` to skip the upstream check for tags
+   that were checked recently
 
 ### On-demand sync in the background
 
