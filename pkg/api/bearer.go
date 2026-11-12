@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -16,6 +17,10 @@ import (
 )
 
 var bearerTokenMatch = regexp.MustCompile("(?i)bearer (.*)")
+
+// invalidTokenErrorCode is the RFC 6750 error code for a bearer token that is expired, malformed
+// or invalid for another reason. It tells the client to fetch a new token.
+const invalidTokenErrorCode = "invalid_token"
 
 // ResourceAccess is a single entry in the private 'access' claim specified by the distribution token authentication
 // specification.
@@ -54,22 +59,33 @@ type AuthChallengeError struct {
 	realm          string
 	service        string
 	resourceAction *ResourceAction
+	// errorCode is the RFC 6750 error attribute of the challenge, left out when empty.
+	errorCode string
 }
 
 func (c AuthChallengeError) Error() string {
 	return c.err.Error()
 }
 
+func (c AuthChallengeError) Unwrap() error {
+	return c.err
+}
+
 // Header constructs an appropriate value for the WWW-Authenticate header to be returned to the client.
 func (c AuthChallengeError) Header() string {
-	if c.resourceAction == nil {
-		// no access was requested, so return an empty scope
-		return fmt.Sprintf("Bearer realm=\"%s\",service=\"%s\",scope=\"\"",
-			c.realm, c.service)
+	// if no access was requested, return an empty scope
+	scope := ""
+	if c.resourceAction != nil {
+		scope = fmt.Sprintf("%s:%s:%s", c.resourceAction.Type, c.resourceAction.Name, c.resourceAction.Action)
 	}
 
-	return fmt.Sprintf("Bearer realm=\"%s\",service=\"%s\",scope=\"%s:%s:%s\"",
-		c.realm, c.service, c.resourceAction.Type, c.resourceAction.Name, c.resourceAction.Action)
+	header := fmt.Sprintf("Bearer realm=\"%s\",service=\"%s\",scope=\"%s\"", c.realm, c.service, scope)
+
+	if c.errorCode != "" {
+		header += fmt.Sprintf(",error=\"%s\"", c.errorCode)
+	}
+
+	return header
 }
 
 type BearerAuthorizer struct {
@@ -198,7 +214,20 @@ func (a *BearerAuthorizer) Authenticate(
 		return a.keyFunc(ctx, token)
 	}, jwt.WithValidMethods(a.allowedSigningAlgorithms()), jwt.WithIssuedAt())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
+		err = fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
+
+		authScheme, _, ok := splitAuthorizationHeader(header)
+		if !ok || !strings.EqualFold(authScheme, "bearer") {
+			// not a bearer token at all, so there is no token to refresh
+			return nil, err
+		}
+
+		// The token is expired, malformed or not signed by a trusted key: challenge the client,
+		// so that it fetches a new token, the same as the distribution token authentication does.
+		challenge.err = err
+		challenge.errorCode = invalidTokenErrorCode
+
+		return nil, challenge
 	}
 
 	claims, ok := token.Claims.(*ClaimsWithAccess)
@@ -239,8 +268,8 @@ func (a *BearerAuthorizer) Authenticate(
 }
 
 // Authorize verifies whether the bearer token in the given Authorization header is valid, and whether it has sufficient
-// scope for the requested resource action. If an authorization error occurs (e.g. no token is given or the token has
-// insufficient scope), an AuthChallengeError is returned as the error.
+// scope for the requested resource action. If an authorization error occurs (e.g. no token is given, the bearer token
+// is expired or invalid, or it has insufficient scope), an AuthChallengeError is returned as the error.
 func (a *BearerAuthorizer) Authorize(ctx context.Context, header string, requested *ResourceAction) error {
 	_, err := a.Authenticate(ctx, header, requested)
 
