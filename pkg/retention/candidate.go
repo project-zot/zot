@@ -1,6 +1,8 @@
 package retention
 
 import (
+	"time"
+
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.dev/zot/v2/pkg/compat"
@@ -28,7 +30,7 @@ func GetCandidates(repoMeta mTypes.RepoMeta) []*types.Candidate {
 			MediaType:     desc.MediaType,
 			DigestStr:     desc.Digest,
 			Tag:           tag,
-			PushTimestamp: stats.PushTimestamp,
+			PushTimestamp: tagPushTimestamp(desc, stats),
 			PullTimestamp: stats.LastPullTimestamp,
 		}
 
@@ -36,6 +38,16 @@ func GetCandidates(repoMeta mTypes.RepoMeta) []*types.Candidate {
 	}
 
 	return candidates
+}
+
+// tagPushTimestamp returns when the tag was pushed. The statistics hold the first push of the
+// digest, so a tag pushed later for the same digest is younger than its statistics say.
+func tagPushTimestamp(desc mTypes.Descriptor, stats mTypes.DescriptorStatistics) time.Time {
+	if desc.TaggedTimestamp.After(stats.PushTimestamp) {
+		return desc.TaggedTimestamp
+	}
+
+	return stats.PushTimestamp
 }
 
 func GetUntaggedCandidates(repoMeta mTypes.RepoMeta, index ispec.Index) []*types.Candidate {

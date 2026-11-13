@@ -528,6 +528,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		stats, ok := repoMeta.Statistics[manifestDigest.String()]
 		So(ok, ShouldBeTrue)
 		So(stats.PushTimestamp, ShouldHappenWithin, time.Minute, pushedAt)
+		So(repoMeta.Tags["tag1"].TaggedTimestamp.IsZero(), ShouldBeTrue)
 	})
 
 	Convey("Test with simple case", func() {
@@ -775,6 +776,10 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 
 			err := WriteImageToFileSystem(
 				image, repo, fmt.Sprintf("tag%d", i), storeController)
+			So(err, ShouldBeNil)
+
+			// a tag first seen by a re-parse has no TaggedTimestamp, so record a live push
+			err = metaDB.SetRepoReference(ctx, repo, fmt.Sprintf("tag%d", i), image.AsImageMeta())
 			So(err, ShouldBeNil)
 		}
 

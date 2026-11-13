@@ -280,3 +280,34 @@ func TestGetRetainedUntaggedFromMetaDB(t *testing.T) {
 		So(retained, ShouldNotContain, oldDigest.String())
 	})
 }
+
+func TestGetCandidatesTagPushTimestamp(t *testing.T) {
+	Convey("GetCandidates dates a tag by the later of its own and its digest's push", t, func() {
+		now := time.Now()
+		tenDaysAgo := now.Add(-10 * 24 * time.Hour)
+
+		repoMeta := mTypes.RepoMeta{
+			Name: "test-repo",
+			Tags: map[string]mTypes.Descriptor{
+				"old":      {Digest: "sha256:digest1", TaggedTimestamp: tenDaysAgo},
+				"retagged": {Digest: "sha256:digest1", TaggedTimestamp: now},
+				"legacy":   {Digest: "sha256:digest1"},
+				"moved":    {Digest: "sha256:digest2", TaggedTimestamp: tenDaysAgo},
+			},
+			Statistics: map[string]mTypes.DescriptorStatistics{
+				"sha256:digest1": {PushTimestamp: tenDaysAgo},
+				"sha256:digest2": {PushTimestamp: now},
+			},
+		}
+
+		pushTimestamps := map[string]time.Time{}
+		for _, candidate := range retention.GetCandidates(repoMeta) {
+			pushTimestamps[candidate.Tag] = candidate.PushTimestamp
+		}
+
+		So(pushTimestamps["old"], ShouldEqual, tenDaysAgo)
+		So(pushTimestamps["retagged"], ShouldEqual, now)
+		So(pushTimestamps["legacy"], ShouldEqual, tenDaysAgo)
+		So(pushTimestamps["moved"], ShouldEqual, now)
+	})
+}
