@@ -259,4 +259,5 @@ var (
 	ErrSyncNoStreamingRegistry          = errors.New("no sync registry streams the repo")
 	ErrSyncJoinedStreamFailed           = errors.New("the streaming sync this request joined failed")
 	ErrSyncImageAlreadyLocal            = errors.New("image is already synced locally at the upstream digest")
+	ErrSyncStagedNamespaceMismatch      = errors.New("the manifest staged for this reference came from another registry")
 )

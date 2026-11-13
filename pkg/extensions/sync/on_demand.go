@@ -360,6 +360,9 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 		case errors.Is(stageErr, zerr.ErrSyncNoStreamingRegistry):
 			onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
 				Msg("no registry streams repo any more, using non-streaming on-demand sync")
+		case errors.Is(stageErr, zerr.ErrSyncStagedNamespaceMismatch):
+			onDemand.log.Debug().Str("repo", repo).Str("reference", reference).
+				Msg("another registry's flight staged the reference, using non-streaming on-demand sync")
 		case errors.Is(stageErr, zerr.ErrTooManyConcurrentStreams):
 			onDemand.log.Info().Str("repo", repo).Str("reference", reference).
 				Msg("max concurrent streams reached, falling back to non-streaming on-demand sync")
@@ -488,7 +491,13 @@ func (onDemand *BaseOnDemand) stageForStream(ctx context.Context, repo, referenc
 		streamable.onSynced = []func(manifest.Manifest){onSynced}
 	}
 
-	staged, err := onDemand.streamManager.StoreImageForStreaming(repo, reference, streamable)
+	// Like joinStaged, a collision against a manifest another flight staged between our join
+	// checks and this call must not adopt another registry's stream: the accept check inside
+	// StoreImageForStreaming rejects it, and the flight falls back to a plain ns-scoped sync.
+	staged, err := onDemand.streamManager.StoreImageForStreaming(repo, reference, streamable,
+		func(existing *StreamableManifest) bool {
+			return existing.MatchesNamespace(nsParam)
+		})
 	if err != nil {
 		return nil, -1, false, err
 	}

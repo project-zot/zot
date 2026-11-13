@@ -66,8 +66,11 @@ type StreamManager interface {
 		fetch, priority BlobFetcher) map[godigest.Digest]string
 	// StoreImageForStreaming stages a manifest and creates a stream per blob the repo lacks. If
 	// repo:reference is already staged, that manifest is returned instead; use the returned one,
-	// since only its blobs have streams.
-	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest) (*StreamableManifest, error)
+	// since only its blobs have streams. accept, if non-nil, must accept that existing manifest:
+	// a rejected collision is not adopted and returns ErrSyncStagedNamespaceMismatch, leaving the
+	// existing entry (and its callbacks) untouched.
+	StoreImageForStreaming(repo, reference string, streamManifest *StreamableManifest,
+		accept func(*StreamableManifest) bool) (*StreamableManifest, error)
 	// StreamingImageManifest returns the manifest staged for repo:reference, if any.
 	StreamingImageManifest(repo, reference string) (*StreamableManifest, bool)
 	// JoinStreamingImage returns repo:reference's staged manifest if it exists and accept (when
