@@ -80,6 +80,10 @@ func (mock *onDemandInBackgroundMock) QueueImage(ctx context.Context, repo, refe
 	}
 }
 
+func (mock *onDemandInBackgroundMock) IsTagFromNamespace(_, _, ns string) bool {
+	return ns == ""
+}
+
 func (mock *onDemandInBackgroundMock) FetchManifestForStream(ctx context.Context, _, _, ns string,
 	_ func(manifest.Manifest),
 ) (manifest.Manifest, error) {

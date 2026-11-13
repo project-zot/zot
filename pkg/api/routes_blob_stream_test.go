@@ -52,6 +52,7 @@ func (f *fakeStreamManager) DownloadStreamedBlobs(_ context.Context, _, _ string
 }
 
 func (f *fakeStreamManager) StoreImageForStreaming(_, _ string, m *sync.StreamableManifest,
+	_ func(*sync.StreamableManifest) bool,
 ) (*sync.StreamableManifest, error) {
 	return m, nil
 }

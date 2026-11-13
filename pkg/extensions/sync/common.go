@@ -33,6 +33,12 @@ type OnDemand interface {
 	// ns, when non-empty, restricts the check to services whose upstream registry matches the
 	// containerd ?ns= namespace/query parameter.
 	ShouldQueueOnDemandSync(repo, ns string) bool
+	// IsTagFromNamespace reports whether repo:reference's local tag was last committed by a
+	// sync scoped to ns (the containerd ?ns= namespace/query parameter). An empty ns always
+	// reports true: unscoped requests serve the shared tag regardless of its origin. A tag
+	// synced without a namespace is unrecorded and matches none, so a namespaced request
+	// treats it as another registry's content.
+	IsTagFromNamespace(repo, reference, ns string) bool
 	// QueueImage schedules at most one background SyncImage for repo:reference from
 	// onDemandInBackground registries that match the repo. The request context is detached.
 	// ns, when non-empty, restricts the queued sync to services whose upstream registry matches
