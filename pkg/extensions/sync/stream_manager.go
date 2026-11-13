@@ -27,6 +27,7 @@ import (
 const streamDrainTimeout = 30 * time.Second
 
 type ChunkingStreamManager struct {
+	priority        syncPriority
 	tempStore       StreamTempStore
 	storeController storage.StoreController
 	// activeStreams maps streamKey(source, digest) to that blob's stream. Clients pulling a blob

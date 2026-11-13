@@ -154,6 +154,34 @@ Notes:
 
 ## Concurrency: one sync per `repo:reference`
 
+### Streaming priority over background replication
+
+Streaming and background replication are mutually exclusive **across all configured registries**.
+A streaming flight reserves priority before fetching its manifest, cancels active background
+attempts, and waits for them to unwind before starting upstream I/O. The reservation lasts through
+staging, copying, commit and stream teardown; concurrent streaming flights may run together.
+The coordinator lives with the shared stream manager so priority also covers streams from before
+a config reload, regardless of registry configuration order.
+
+Periodic repository sync (including catalog fetches), queued `onDemandInBackground` image sync,
+and background image/referrer retries yield to streaming. A background attempt arriving during
+streaming backs off by waiting for a coordinator notification, without polling or opening upstream
+requests. Preempted attempts restart after the last streaming flight releases priority; committed
+content can be skipped or seeded normally, but an incomplete background download may need to be
+downloaded again. Real errors and the original background deadline still propagate. Ordinary
+non-streaming foreground pulls keep their existing behavior.
+
+This favors waiting clients without adding another registry client or doubling the upstream
+request budget. Both approaches can slow background work and neither guarantees higher client
+throughput. Unlike extra-client priority, this approach deliberately stops background transfers:
+indefinite postponement and losing partial-download progress are more direct risks here. Its
+advantage is stronger bandwidth isolation. It does not prioritize a requested blob over other
+layers of the streamed image. Raising `reqConcurrent`
+can reduce that layer queuing at the cost of more concurrent upstream requests; it is not a
+per-blob priority guarantee or a guarantee of higher throughput.
+
+### Per-reference deduplication
+
 Streaming runs as the leader of the **same singleflight key** `SyncImage` uses
 (`image\0repo\0reference`). There is never a second, streaming-only sync. A request in
 `FetchManifestForStream` takes the first case that applies:
@@ -162,7 +190,8 @@ Streaming runs as the leader of the **same singleflight key** `SyncImage` uses
 |--------------------------------|--------|
 | `repo:reference` already staged | Join it: get the staged manifest, register `onSynced`. Streamed. |
 | A streaming leader is still fetching/staging | Wait for it to stage, then join as above. Every streaming request registers the per-key `staging` channel *before* entering the flight, and the leader closes that same channel once staged, so this also covers a request that entered the flight just after the leader did. |
-| Any other flight in progress (plain `SyncImage`, background retry, a leader that fell back) | Join that flight, wait for it to finish, get `ErrSyncNotStreamed`, serve from storage. **Not streamed.** |
+| Background retry in progress | Cancel its attempt and wait for it to yield the flight; become the streaming leader (or join another streaming leader). The background retry waits outside the flight until streaming finishes. |
+| Any other foreground flight in progress (plain `SyncImage`, a leader that fell back) | Join that flight, wait for it to finish, get `ErrSyncNotStreamed`, serve from storage. **Not streamed.** |
 | Nothing in flight | Become leader: stage and stream, or fall back (below). |
 
 So a request is only streamed when it, or a streaming leader it joins, starts the sync.
