@@ -5,6 +5,7 @@ package sync
 import (
 	"context"
 
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/manifest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
@@ -12,8 +13,10 @@ import (
 
 type BaseOnDemand struct{}
 
-func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference, _ string) error {
-	return nil
+func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference, _ string) (godigest.Digest,
+	error,
+) {
+	return "", nil
 }
 
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,

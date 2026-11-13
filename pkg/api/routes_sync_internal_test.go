@@ -40,14 +40,16 @@ type onDemandInBackgroundMock struct {
 	streamManager sync.StreamManager
 }
 
-func (mock *onDemandInBackgroundMock) SyncImage(ctx context.Context, repo, reference, _ string) error {
+func (mock *onDemandInBackgroundMock) SyncImage(ctx context.Context, repo, reference, _ string) (godigest.Digest,
+	error,
+) {
 	mock.syncImageCalls++
 
 	if mock.syncImageFn != nil {
-		return mock.syncImageFn(ctx, repo, reference)
+		return "", mock.syncImageFn(ctx, repo, reference)
 	}
 
-	return nil
+	return "", nil
 }
 
 func (mock *onDemandInBackgroundMock) SyncReferrers(context.Context, string, string, []string, string) error {

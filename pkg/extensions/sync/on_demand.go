@@ -264,12 +264,16 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 		// Detached: the sync goes on after the client that started it disconnects.
 		syncCtx := context.WithoutCancel(ctx)
 
-		result <- onDemand.doOnDemandFlight(key, repo, reference,
-			"image already demanded, on-demand sync result was shared",
-			func() error {
-				return onDemand.streamOrSyncImage(syncCtx, repo, reference, nsParam, onSynced,
-					outcome)
-			})
+		result <- func() error {
+			_, err := onDemand.doOnDemandFlight(key, repo, reference,
+				"image already demanded, on-demand sync result was shared",
+				func() (any, error) {
+					return nil, onDemand.streamOrSyncImage(syncCtx, repo, reference, nsParam, onSynced,
+						outcome)
+				})
+
+			return err
+		}()
 	}()
 
 	for {
@@ -408,7 +412,7 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 
 		releaseStaging()
 
-		err := onDemand.syncImage(ctx, repo, reference, nsParam, -1, "", true)
+		_, err := onDemand.syncImage(ctx, repo, reference, nsParam, -1, "", true)
 		onDemand.logImageSyncErr(repo, reference, err)
 
 		return err
@@ -422,7 +426,7 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 
 	// Pinned to the registry and digest just served, so the streams get exactly that manifest's
 	// blobs even if the tag moves upstream or another registry also matches repo.
-	err := onDemand.syncImage(ctx, repo, reference, nsParam, selectedIdx,
+	_, err := onDemand.syncImage(ctx, repo, reference, nsParam, selectedIdx,
 		staged.referenceManifest.GetDescriptor().Digest, true)
 	onDemand.logImageSyncErr(repo, reference, err)
 
@@ -602,10 +606,10 @@ func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference, n
 			onDemand.requestStore.Delete(req)
 		}()
 
-		err := onDemand.doOnDemandFlight(key, repo, reference,
+		_, err := onDemand.doOnDemandFlight(key, repo, reference,
 			"image already demanded, on-demand sync result was shared",
-			func() error {
-				return onDemand.syncImageInBackground(detachedContext, repo, reference, nsParam)
+			func() (any, error) {
+				return nil, onDemand.syncImageInBackground(detachedContext, repo, reference, nsParam)
 			})
 		if err != nil {
 			onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
@@ -621,20 +625,25 @@ func onDemandKey(kind, repo, reference, nsParam string) string {
 // onDemandSyncFn runs one registry sync attempt (image or referrers) under a timeout ctx.
 type onDemandSyncFn func(ctx context.Context, service Service) error
 
-func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference, nsParam string) error {
+func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference,
+	nsParam string,
+) (godigest.Digest, error) {
 	// Classify after the flight so waiters that join a background retry (same key,
 	// raw syncImage result) still receive opaque client sentinels. Root-cause
 	// logging stays in the leader closure only.
-	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference, nsParam), repo, reference,
+	res, err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference, nsParam),
+		repo, reference,
 		"image already demanded, on-demand sync result was shared",
-		func() error {
-			err := onDemand.syncImage(ctx, repo, reference, nsParam, -1, "", true)
+		func() (any, error) {
+			digest, err := onDemand.syncImage(ctx, repo, reference, nsParam, -1, "", true)
 			onDemand.logImageSyncErr(repo, reference, err)
 
-			return err
+			return digest, err
 		})
 
-	return classifyOnDemandClientError(err)
+	digest, _ := res.(godigest.Digest)
+
+	return digest, classifyOnDemandClientError(err)
 }
 
 // logImageSyncErr logs a hard on-demand image sync failure. Called by flight leaders only.
@@ -648,10 +657,10 @@ func (onDemand *BaseOnDemand) logImageSyncErr(repo, reference string, err error)
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string, nsParam string,
 ) error {
-	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindReferrers, repo, subjectDigestStr, nsParam),
+	_, err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindReferrers, repo, subjectDigestStr, nsParam),
 		repo, subjectDigestStr,
 		"referrers for image already demanded, on-demand sync result was shared",
-		func() error {
+		func() (any, error) {
 			err := onDemand.syncReferrers(ctx, repo, subjectDigestStr, referenceTypes, nsParam, true)
 
 			if err != nil && !isSoftOnDemandSyncErr(err) {
@@ -659,22 +668,25 @@ func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 					Msg("on-demand referrer sync failed")
 			}
 
-			return err
+			return nil, err
 		})
 
 	return classifyOnDemandClientError(err)
 }
 
+// doOnDemandFlight runs syncFn under a shared flight keyed by key: concurrent callers for the
+// same key share the first caller's run and its result (waiters get the leader's returned value,
+// e.g. the digest its sync committed).
 func (onDemand *BaseOnDemand) doOnDemandFlight(key, repo, reference, sharedMsg string,
-	syncFn func() error,
-) error {
+	syncFn func() (any, error),
+) (any, error) {
 	// leader is set only in the closure that actually runs; waiters never execute it.
 	leader := false
 
-	_, err, shared := onDemand.flight.Do(key, func() (any, error) {
+	res, err, shared := onDemand.flight.Do(key, func() (any, error) {
 		leader = true
 
-		return nil, syncFn()
+		return syncFn()
 	})
 
 	// singleflight sets shared for every participant when dups > 0, including the leader.
@@ -682,7 +694,7 @@ func (onDemand *BaseOnDemand) doOnDemandFlight(key, repo, reference, sharedMsg s
 		onDemand.log.Info().Str("repo", repo).Str("reference", reference).Msg(sharedMsg)
 	}
 
-	return err
+	return res, err
 }
 
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
@@ -712,7 +724,7 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 // containerd ?ns= namespace parameter. If ns is set and no service matches, the sync fails.
 func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference, nsParam string,
 	pinnedIdx int, pinnedDigest godigest.Digest, scheduleBackground bool,
-) error {
+) (godigest.Digest, error) {
 	// A pinned sync only runs on the service that served the streamed manifest.
 	var services []Service
 	if pinnedIdx >= 0 { //nolint:gocritic // branches on different expressions
@@ -720,17 +732,24 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference, ns
 	} else if nsParam != "" {
 		services = onDemand.servicesMatchingNS(nsParam)
 		if len(services) == 0 {
-			return fmt.Errorf("%w: %q", errNoSyncRegistryForNamespace, nsParam)
+			return "", fmt.Errorf("%w: %q", errNoSyncRegistryForNamespace, nsParam)
 		}
 	} else {
 		services = onDemand.services
 	}
 
-	return onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand image sync",
+	// The digest of the manifest the winning service committed: a caller reading the shared
+	// local tag can serve it by digest instead, immune to another namespace re-committing the
+	// tag meanwhile (see SyncImage).
+	var syncedDigest godigest.Digest
+
+	err := onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand image sync",
 		services,
 		func(syncCtx context.Context, service Service) error {
-			err := syncImageOnService(syncCtx, service, repo, reference, pinnedDigest)
+			digest, err := syncImageOnService(syncCtx, service, repo, reference, pinnedDigest)
 			if err == nil {
+				syncedDigest = digest
+
 				// Every service in this sync matches ns, so a commit came from the namespace's
 				// registry (a pinned sync runs only its staging service).
 				onDemand.recordTagProvenance(repo, reference, nsParam)
@@ -743,22 +762,26 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference, ns
 					func(retryCtx context.Context) error {
 						// Unpinned: by the time a retry leads, the streams are gone, so it is a
 						// plain sync over every registry matching the requested namespace.
-						return onDemand.syncImage(retryCtx, repo, reference, nsParam, -1, "", false)
+						_, retryErr := onDemand.syncImage(retryCtx, repo, reference, nsParam, -1, "", false)
+
+						return retryErr
 					})
 			}
 
 			return err
 		})
+
+	return syncedDigest, err
 }
 
-// syncImageOnService syncs repo:reference on service. With pinnedDigest set, a StreamSyncer
-// service syncs that digest and feeds the staged streams.
+// syncImageOnService syncs repo:reference on service and returns the digest it committed. With
+// pinnedDigest set, a StreamSyncer service syncs that digest and feeds the staged streams.
 func syncImageOnService(ctx context.Context, service Service, repo, reference string,
 	pinnedDigest godigest.Digest,
-) error {
+) (godigest.Digest, error) {
 	if pinnedDigest != "" {
 		if streamSyncer, ok := service.(StreamSyncer); ok {
-			return streamSyncer.SyncImageForStream(ctx, repo, reference, pinnedDigest)
+			return pinnedDigest, streamSyncer.SyncImageForStream(ctx, repo, reference, pinnedDigest)
 		}
 	}
 
@@ -776,7 +799,7 @@ func (onDemand *BaseOnDemand) syncImageInBackground(ctx context.Context, repo, r
 	return onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand-in-background image sync",
 		services,
 		func(syncCtx context.Context, service Service) error {
-			err := service.SyncImage(syncCtx, repo, reference)
+			_, err := service.SyncImage(syncCtx, repo, reference)
 			if err == nil {
 				// Every background service here matches ns.
 				onDemand.recordTagProvenance(repo, reference, nsParam)
@@ -949,10 +972,10 @@ func (onDemand *BaseOnDemand) maybeRetryInBackground(
 		for {
 			leader := false
 
-			err := onDemand.doOnDemandFlight(key, repo, reference, sharedMsg, func() error {
+			_, err := onDemand.doOnDemandFlight(key, repo, reference, sharedMsg, func() (any, error) {
 				leader = true
 
-				return backgroundFullSync(context.WithoutCancel(ctx))
+				return nil, backgroundFullSync(context.WithoutCancel(ctx))
 			})
 			if leader {
 				if err != nil {

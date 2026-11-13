@@ -3418,11 +3418,16 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			}
 		}
 
+		// The digest the sync committed. When known, serve it by digest below: the shared local
+		// tag can be re-committed by another namespace's concurrent sync between this sync's
+		// commit and the local read, and a digest read is immune to that.
+		var syncedDigest godigest.Digest
+
 		if !synced {
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 				Msg("trying to get updated image by syncing on demand")
 
-			syncErr = routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference, nsParam)
+			syncedDigest, syncErr = routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference, nsParam)
 		}
 
 		if syncErr != nil {
@@ -3434,6 +3439,19 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			if scopedErr, scoped := scopedSyncFailureError(syncErr, nsParam, isDigest); scoped {
 				return nil, "", "", false, scopedErr
 			}
+		}
+
+		// Serve the manifest the sync resolved, not the shared tag's current content.
+		if syncedDigest != "" {
+			content, digest, mediaType, localErr := imgStore.GetImageManifest(name, syncedDigest.String())
+			if localErr == nil {
+				return content, digest, mediaType, false, nil
+			}
+
+			// The digest read failed (e.g. garbage-collected): fall through to the tag read.
+			routeHandler.c.Log.Warn().Err(localErr).Str("repository", name).
+				Str("reference", syncedDigest.String()).
+				Msg("failed to read the synced manifest by digest, falling back to the local tag")
 		}
 	}
 

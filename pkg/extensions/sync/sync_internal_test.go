@@ -285,13 +285,65 @@ func TestService(t *testing.T) {
 		service.destination = mockDest
 
 		ctx := context.Background()
-		err = service.syncImage(ctx, "localrepo", "remoterepo", digestRef, []string{}, syncImageOptions{
+		_, err = service.syncImage(ctx, "localrepo", "remoterepo", digestRef, []string{}, syncImageOptions{
 			WithReferrers: false,
 			Strategy:      copySparseIndex,
 		})
 
 		So(err, ShouldBeNil)
 		So(commitAllCalled, ShouldBeTrue)
+	})
+
+	Convey("test syncImage returns the digest it committed", t, func() {
+		conf := syncconf.RegistryConfig{
+			URLs: []string{"http://localhost"},
+		}
+
+		service, err := New(conf, "", nil, t.TempDir(), storage.StoreController{}, nil, mocks.MetaDBMock{}, log.NewTestLogger())
+		So(err, ShouldBeNil)
+
+		remoteDigest := godigest.FromString("committed manifest")
+
+		mockRemote := &mocks.SyncRemoteMock{
+			GetImageReferenceFn: func(repo string, tag string) (ref.Ref, error) {
+				return ref.New("mock-registry/" + repo + ":" + tag)
+			},
+			HeadManifestFn: func(ctx context.Context, repo, tag string) (godigest.Digest, string, error) {
+				return remoteDigest, ispec.MediaTypeImageManifest, nil
+			},
+		}
+		service.remote = mockRemote
+
+		committed := godigest.Digest("")
+
+		mockDest := &mocks.SyncDestinationMock{
+			GetImageReferenceFn: func(repo string, tag string) (ref.Ref, error) {
+				return ref.New("local/" + repo + ":" + tag)
+			},
+			CanSkipImageFn: func(repo string, tag string, digest godigest.Digest) (bool, error) {
+				// Short-circuit the copy (the mock remote cannot serve blobs), but the
+				// commit and the returned digest still go through syncImage.
+				return true, nil
+			},
+			CommitAllFn: func(repo string, imageReference ref.Ref) error {
+				committed = remoteDigest
+
+				return nil
+			},
+			CleanupImageFn: func(imageReference ref.Ref, repo string) error {
+				return nil
+			},
+		}
+		service.destination = mockDest
+
+		// The tag's remote content is committed; the resolved digest must come back so the
+		// caller can serve it by digest instead of re-reading the shared tag.
+		syncedDigest, err := service.syncImage(context.Background(), "localrepo", "remoterepo", "tag1",
+			[]string{}, syncImageOptions{WithReferrers: false, Strategy: copySparseIndex})
+
+		So(err, ShouldBeNil)
+		So(syncedDigest, ShouldEqual, remoteDigest)
+		So(committed, ShouldEqual, remoteDigest)
 	})
 
 	Convey("test ensureImage flight key separates feeding and non-feeding syncs", t, func() {
@@ -335,7 +387,7 @@ func TestService(t *testing.T) {
 		}
 		service.remote = mockRemote
 
-		err = service.syncImage(context.Background(), "localrepo", "remoterepo", digestRef, nil, syncImageOptions{})
+		_, err = service.syncImage(context.Background(), "localrepo", "remoterepo", digestRef, nil, syncImageOptions{})
 		So(err, ShouldNotBeNil)
 		So(errors.Is(err, zerr.ErrSyncDockerCompatRequired), ShouldBeTrue)
 	})
@@ -360,7 +412,7 @@ func TestService(t *testing.T) {
 		}
 		service.remote = mockRemote
 
-		err = service.syncImage(context.Background(), "localrepo", "remoterepo", digestRef, nil, syncImageOptions{})
+		_, err = service.syncImage(context.Background(), "localrepo", "remoterepo", digestRef, nil, syncImageOptions{})
 		So(err, ShouldNotBeNil)
 		So(errors.Is(err, zerr.ErrMediaTypeNotSupported), ShouldBeTrue)
 	})
@@ -396,7 +448,7 @@ func TestService(t *testing.T) {
 		service.destination = mockDest
 
 		ctx := context.Background()
-		err = service.syncImage(ctx, "localrepo", "remoterepo", "tag1", []string{}, syncImageOptions{
+		_, err = service.syncImage(ctx, "localrepo", "remoterepo", "tag1", []string{}, syncImageOptions{
 			WithReferrers: true,
 			Strategy:      copySparseIndex,
 		})
@@ -481,7 +533,7 @@ func TestService(t *testing.T) {
 			},
 		}
 
-		err = service.syncImage(context.Background(), "localrepo", "repo", "latest", nil, syncImageOptions{
+		_, err = service.syncImage(context.Background(), "localrepo", "repo", "latest", nil, syncImageOptions{
 			Strategy: copySparseIndex,
 		})
 		So(err, ShouldEqual, tagsErr)
@@ -577,7 +629,7 @@ func TestService(t *testing.T) {
 		So(preImageCount, ShouldEqual, 1) // Should be 1 after pre-population
 
 		// Step 4: Trigger sync - should execute continue path
-		err = onDemand.SyncImage(ctx, "test-duplicate-repo", "test-duplicate-tag", "")
+		_, err = onDemand.SyncImage(ctx, "test-duplicate-repo", "test-duplicate-tag", "")
 		So(err, ShouldNotBeNil) // Should still error due to invalid registry
 
 		// Step 5: Verify CONTINUE PATH EXECUTED - no new requests created
@@ -684,7 +736,7 @@ func TestService(t *testing.T) {
 
 		// Test ErrSyncImageFilteredOut continue path in SyncImage
 		// The first service returns ErrSyncImageFilteredOut (causes continue), second service processes but errors
-		err = onDemand.SyncImage(ctx, "test-filtered-repo", "test-tag", "")
+		_, err = onDemand.SyncImage(ctx, "test-filtered-repo", "test-tag", "")
 		So(err, ShouldNotBeNil) // Should get error from second service (network error)
 
 		// Test ErrSyncImageFilteredOut continue path in SyncReferrers
@@ -727,7 +779,7 @@ func TestService(t *testing.T) {
 		// Test SyncImage continue path
 		Convey("SyncImage continue path", func() {
 			_, onDemand := createFilteredService("different-image-prefix")
-			err := onDemand.SyncImage(ctx, "test-unfiltered-image-repo", "test-tag", "")
+			_, err := onDemand.SyncImage(ctx, "test-unfiltered-image-repo", "test-tag", "")
 			So(err, ShouldNotBeNil) // Should get error from sync process (filtered out -> continue -> network error)
 		})
 	})
@@ -813,7 +865,7 @@ func TestService(t *testing.T) {
 			// 1. Network error (not a continue-path error)
 			// 2. CanRetryOnError() returns true (maxRetries > 0)
 			// 3. No existing background retry
-			err := onDemand.SyncImage(ctx, "test-background-image-retry", "background-image-tag", "")
+			_, err := onDemand.SyncImage(ctx, "test-background-image-retry", "background-image-tag", "")
 			So(err, ShouldNotBeNil) // Should get original network error
 
 			// Wait for background goroutine to start and store request
@@ -924,7 +976,9 @@ func TestService(t *testing.T) {
 
 			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo", "dedup-tag", ""), &syncCalls, nil,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", "", -1, "", false)
+					_, err := onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", "", -1, "", false)
+
+					return err
 				})
 		})
 
@@ -947,7 +1001,9 @@ func TestService(t *testing.T) {
 			runConcurrentDedup(t, &onDemand.flight, onDemandKey(onDemandKindImage, "dedup-repo-err", "dedup-tag", ""),
 				&syncCalls, wantErr,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", "", -1, "", false)
+					_, err := onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", "", -1, "", false)
+
+					return err
 				})
 		})
 
@@ -2907,7 +2963,7 @@ func TestCredentialRefreshOnEverySyncEntryPoint(t *testing.T) {
 			helper := &countingCredentialHelper{}
 			service := newService(helper, "oauth2")
 
-			_ = service.SyncImage(context.Background(), "some/repo", "latest")
+			_, _ = service.SyncImage(context.Background(), "some/repo", "latest")
 			So(helper.refreshCalls.Load(), ShouldBeGreaterThan, 0)
 		})
 
@@ -2986,14 +3042,14 @@ func (s *mockCheckService) GetNextRepo(_ string) (string, error) { return "", ni
 
 func (s *mockCheckService) SyncRepo(_ context.Context, _ string) error { return nil }
 
-func (s *mockCheckService) SyncImage(ctx context.Context, repo, reference string) error {
+func (s *mockCheckService) SyncImage(ctx context.Context, repo, reference string) (godigest.Digest, error) {
 	s.syncImageCalls.Add(1)
 
 	if s.syncImageFn != nil {
-		return s.syncImageFn(ctx, repo, reference)
+		return "", s.syncImageFn(ctx, repo, reference)
 	}
 
-	return nil
+	return "", nil
 }
 
 func (s *mockCheckService) SyncReferrers(_ context.Context, _ string, _ string, _ []string) error {
@@ -3465,7 +3521,7 @@ func TestBaseServiceExclude(t *testing.T) {
 		_, err = service.FetchManifest(ctx, "private/app", "latest")
 		So(err, ShouldWrap, zerr.ErrSyncImageFilteredOut)
 
-		err = service.SyncImage(ctx, "private/app", "latest")
+		_, err = service.SyncImage(ctx, "private/app", "latest")
 		So(err, ShouldWrap, zerr.ErrSyncImageFilteredOut)
 
 		err = service.SyncImageForStream(ctx, "private/app", "latest", digest)
@@ -3816,14 +3872,14 @@ func (s *fakeStreamService) GetNextRepo(_ string) (string, error) { return "", n
 
 func (s *fakeStreamService) SyncRepo(_ context.Context, _ string) error { return nil }
 
-func (s *fakeStreamService) SyncImage(_ context.Context, _, _ string) error {
+func (s *fakeStreamService) SyncImage(_ context.Context, _, _ string) (godigest.Digest, error) {
 	atomic.AddInt32(&s.syncImageCalls, 1)
 
 	if s.syncImageBlock != nil {
 		<-s.syncImageBlock
 	}
 
-	return s.syncImageErr
+	return "", s.syncImageErr
 }
 
 func (s *fakeStreamService) SyncReferrers(_ context.Context, _ string, _ string, _ []string) error {
@@ -4238,7 +4294,11 @@ func TestFetchManifestForStream(t *testing.T) {
 
 		plainDone := make(chan error, 1)
 
-		go func() { plainDone <- onDemand.SyncImage(context.Background(), "repo", "latest", "") }()
+		go func() {
+			_, err := onDemand.SyncImage(context.Background(), "repo", "latest", "")
+
+			plainDone <- err
+		}()
 
 		for i := 0; i < 100 && atomic.LoadInt32(&service.syncImageCalls) < 1; i++ {
 			time.Sleep(10 * time.Millisecond)

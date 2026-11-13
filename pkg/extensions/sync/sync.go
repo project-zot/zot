@@ -27,8 +27,10 @@ type Service interface { //nolint:interfacebloat
 	GetNextRepo(lastRepo string) (string, error) // used by task scheduler
 	// Sync a repo with all of its tags and references (signatures, artifacts, sboms) into ImageStore.
 	SyncRepo(ctx context.Context, repo string) error // used by periodically sync
-	// Sync an image (repo:tag || repo:digest) into ImageStore.
-	SyncImage(ctx context.Context, repo, reference string) error // used by sync on demand
+	// Sync an image (repo:tag || repo:digest) into ImageStore. Returns the digest of the
+	// manifest it committed, so a caller reading the shared local tag can instead serve that
+	// immutable result even if another sync re-committed the tag meanwhile.
+	SyncImage(ctx context.Context, repo, reference string) (godigest.Digest, error) // used by sync on demand
 	// Sync referrers for an image (repo:subjectDigestStr) into ImageStore.
 	SyncReferrers(ctx context.Context, repo string, subjectDigestStr string, referenceTypes []string) error
 	// Remove all internal catalog entries.
