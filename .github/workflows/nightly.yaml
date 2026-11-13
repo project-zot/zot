@@ -311,6 +311,28 @@ jobs:
           sudo ./scripts/enable_userns.sh
           make USE_PREBUILT=1 run-kind-sync-ondemand
 
+  kind-agentregistry:
+    name: AgentRegistry to Zot to Kagent on kind
+    needs: build-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          check-latest: true
+          go-version-file: .go-version
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # main
+      - name: Run AgentRegistry, Zot, and Kagent integration test
+        run: |
+          sudo apt-get install -y netcat-openbsd
+          sudo ./scripts/enable_userns.sh
+          make USE_PREBUILT=1 run-kind-agentregistry
+
   oidc-workload-identity:
     name: OIDC Workload Identity E2E
     needs: build-binaries

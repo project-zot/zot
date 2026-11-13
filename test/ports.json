@@ -1,4 +1,14 @@
 {
+  "blackbox/agentregistry.bats": {
+    "zot": {
+      "begin": 11720,
+      "end": 11729
+    },
+    "agentregistry": {
+      "begin": 11740,
+      "end": 11749
+    }
+  },
   "blackbox/annotations.bats": {
     "zot": {
       "begin": 1300,
