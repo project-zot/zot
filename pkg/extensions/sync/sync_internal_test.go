@@ -3825,8 +3825,10 @@ func (f *fakeStreamManagerForOnDemand) DownloadStreamedBlobs(_ context.Context, 
 }
 
 // StoreImageForStreaming keeps the real "first stage wins" behavior: a second call for the same
-// repo:reference gets the first manifest back.
+// repo:reference gets the first manifest back. accept mirrors the real manager: a rejected
+// collision is not adopted.
 func (f *fakeStreamManagerForOnDemand) StoreImageForStreaming(repo, reference string, m *StreamableManifest,
+	accept func(*StreamableManifest) bool,
 ) (*StreamableManifest, error) {
 	if f.storeErr != nil {
 		return nil, f.storeErr
@@ -3837,6 +3839,10 @@ func (f *fakeStreamManagerForOnDemand) StoreImageForStreaming(repo, reference st
 
 	key := repo + ":" + reference
 	if existing, ok := f.staged[key]; ok {
+		if accept != nil && !accept(existing) {
+			return nil, zerr.ErrSyncStagedNamespaceMismatch
+		}
+
 		existing.onSynced = append(existing.onSynced, m.onSynced...)
 
 		return existing, nil
@@ -4017,7 +4023,7 @@ func (f *stageOnFirstJoinMiss) JoinStreamingImage(repo, reference string,
 	if !f.missed {
 		f.missed = true
 
-		_, _ = f.StoreImageForStreaming(repo, reference, NewStreamableManifest(f.manifest))
+		_, _ = f.StoreImageForStreaming(repo, reference, NewStreamableManifest(f.manifest), nil)
 
 		return nil, false
 	}
@@ -4165,7 +4171,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		onDemand.SetStreamManager(fakeSM)
 
 		man := newTestManifestForStream(t)
-		_, storeErr := fakeSM.StoreImageForStreaming("repo", "latest", NewStreamableManifest(man))
+		_, storeErr := fakeSM.StoreImageForStreaming("repo", "latest", NewStreamableManifest(man), nil)
 		So(storeErr, ShouldBeNil)
 
 		called := false
@@ -4189,7 +4195,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		onDemand.SetStreamManager(fakeSM)
 
 		man := newTestManifestForStream(t)
-		_, storeErr := fakeSM.StoreImageForStreaming("repo", "latest", NewStreamableManifest(man))
+		_, storeErr := fakeSM.StoreImageForStreaming("repo", "latest", NewStreamableManifest(man), nil)
 		So(storeErr, ShouldBeNil)
 
 		fetched := false
@@ -4630,7 +4636,7 @@ func TestStreamOrSyncImageJoinsPreReloadStream(t *testing.T) {
 			man := newTestManifestForStream(t)
 
 			// The pre-reload flight's staged entry.
-			_, err := streamManager.StoreImageForStreaming("repo", "latest", NewStreamableManifest(man))
+			_, err := streamManager.StoreImageForStreaming("repo", "latest", NewStreamableManifest(man), nil)
 			So(err, ShouldBeNil)
 
 			onDemand := NewOnDemand(log.NewTestLogger())

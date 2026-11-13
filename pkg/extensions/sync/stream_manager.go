@@ -493,9 +493,10 @@ func (sm *ChunkingStreamManager) prepareActiveStreamForBlob(repo, source string,
 }
 
 // StoreImageForStreaming stages repo:reference's manifest and creates a stream per blob not
-// already local. See StreamManager for why the returned manifest may differ from the one passed in.
+// already local. See StreamManager for why the returned manifest may differ from the one passed
+// in, and for accept's collision semantics.
 func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
-	manifest *StreamableManifest,
+	manifest *StreamableManifest, accept func(*StreamableManifest) bool,
 ) (*StreamableManifest, error) {
 	// Dedupe blobs and check storage before taking streamLock: a slow backend must not stall
 	// every other repo's streams.
@@ -537,7 +538,19 @@ func (sm *ChunkingStreamManager) StoreImageForStreaming(repo, reference string,
 
 	// Already staged: return that manifest, not ours. For a moved tag they differ, and only the
 	// staged one has streams. Our callbacks ride on its sync.
+	//
+	// Like JoinStreamingImage, the source check and the callback registration happen atomically
+	// under streamLock: a collision from another registry's flight (see stageForStream) must not
+	// adopt, nor register callbacks on, a manifest our namespace rejected.
 	if existing, ok := sm.streamingRefs[key]; ok {
+		if accept != nil && !accept(existing) {
+			sm.streamLock.Unlock()
+			sm.logger.Warn().Str("repo", repo).Str("reference", reference).
+				Msg("streaming manifest already exists for repo:reference, from another registry")
+
+			return nil, zerr.ErrSyncStagedNamespaceMismatch
+		}
+
 		existing.onSynced = append(existing.onSynced, manifest.onSynced...)
 
 		sm.streamLock.Unlock()

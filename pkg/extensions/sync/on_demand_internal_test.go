@@ -35,6 +35,11 @@ type stubOnDemandService struct {
 	isOnDemandInBackground func(repo string) bool
 	// matchNS, when non-empty, makes MatchesRegistry match only this namespace.
 	matchNS string
+	// streaming, when true, makes IsStreamingForRepo report streaming and FetchManifest serve
+	// fetchManifest (or fetchErr).
+	streaming     bool
+	fetchManifest manifest.Manifest
+	fetchErr      error
 }
 
 func (s *stubOnDemandService) GetNextRepo(_ string) (string, error) { return "", nil }
@@ -74,10 +79,18 @@ func (s *stubOnDemandService) IsOnDemandInBackgroundForRepo(repo string) bool {
 }
 
 func (s *stubOnDemandService) FetchManifest(_ context.Context, _, _ string) (manifest.Manifest, error) {
+	if s.streaming {
+		if s.fetchErr != nil {
+			return nil, s.fetchErr
+		}
+
+		return s.fetchManifest, nil
+	}
+
 	return nil, zerr.ErrManifestNotFound
 }
 
-func (s *stubOnDemandService) IsStreamingForRepo(_ string) bool { return false }
+func (s *stubOnDemandService) IsStreamingForRepo(_ string) bool { return s.streaming }
 
 func (s *stubOnDemandService) MatchesRegistry(ns string) bool {
 	if s.matchNS == "" {
@@ -709,5 +722,42 @@ func TestJoinStagedNamespaceRestriction(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(result, ShouldEqual, staged.referenceManifest)
 		})
+	})
+}
+
+// TestStageForStreamRejectsForeignNamespaceCollision covers the race in stageForStream: another
+// registry's flight stages repo:reference between this request's joinStaged checks and its
+// StoreImageForStreaming call. The collision is rejected instead of adopted, so the request does
+// not serve another namespace's manifest, and its flight falls back to a plain ns-scoped sync.
+func TestStageForStreamRejectsForeignNamespaceCollision(t *testing.T) {
+	Convey("a collision with another registry's staged manifest is rejected, not adopted", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		streamManager := newFakeStreamManagerForOnDemand()
+		onDemand.SetStreamManager(streamManager)
+
+		// A registry.k8s.io flight staged repo:latest in the window after docker.io's request
+		// passed its joinStaged checks. Pre-staging reproduces that exact state.
+		foreign := NewStreamableManifest(newTestManifestForStream(t))
+		foreign.registryHosts = []string{"registry.k8s.io"}
+		streamManager.mu.Lock()
+		streamManager.staged["repo:latest"] = foreign
+		streamManager.mu.Unlock()
+
+		bService := &stubOnDemandService{
+			matchNS:       "docker.io",
+			streaming:     true,
+			fetchManifest: newTestManifestForStream(t),
+		}
+		onDemand.Add(bService)
+
+		outcome := make(chan manifest.Manifest, 1)
+
+		err := onDemand.streamOrSyncImage(context.Background(), "repo", "latest", "docker.io",
+			nil, outcome)
+		So(err, ShouldBeNil)
+
+		So(<-outcome, ShouldBeNil)
+		So(bService.syncImageCalls, ShouldEqual, 1)
+		So(foreign.onSynced, ShouldBeEmpty)
 	})
 }
