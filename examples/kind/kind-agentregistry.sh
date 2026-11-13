@@ -63,7 +63,8 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
-KIND_NODE_IMAGE="kindest/node:v1.28.7"
+# kind v0.31.0's default node image (containerd 2.x); override to test other node versions.
+KIND_NODE_IMAGE=${KIND_NODE_IMAGE:-kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f}
 ZOT_LISTEN_PORT=5000
 RUN_SUFFIX="$(git rev-parse --short HEAD)-$$"
 CLUSTER_NAME="zot-agentregistry-${RUN_SUFFIX}"
@@ -154,11 +155,23 @@ apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
   image: ${KIND_NODE_IMAGE}
+# containerd 2.x rejects registry.mirrors once config_path is set (CRI fails to load and
+# kubelet never starts), so route localhost:<port> to Zot through hosts.toml instead.
+# Setting config_path explicitly keeps this working on containerd 1.7 node images too.
 containerdConfigPatches:
 - |-
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:${ZOT_HOST_PORT}"]
-    endpoint = ["http://${ZOT_CONTAINER_NAME}:${ZOT_LISTEN_PORT}"]
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = "/etc/containerd/certs.d"
 EOF
+# containerd reads hosts.toml on each pull, so writing it after cluster creation needs no restart.
+REGISTRY_DIR="/etc/containerd/certs.d/localhost:${ZOT_HOST_PORT}"
+for node in $("${KIND}" get nodes --name "${CLUSTER_NAME}"); do
+    docker exec "${node}" mkdir -p "${REGISTRY_DIR}"
+    docker exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/hosts.toml" <<EOF
+[host."http://${ZOT_CONTAINER_NAME}:${ZOT_LISTEN_PORT}"]
+  capabilities = ["pull", "resolve"]
+EOF
+done
 kubectl --context "${KUBECTL_CTX}" wait --for=condition=Ready nodes --all --timeout=180s
 
 log_info "Starting Zot on the kind network..."
