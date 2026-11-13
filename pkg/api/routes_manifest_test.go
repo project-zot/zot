@@ -51,7 +51,9 @@ var (
 var errUpstreamUnreachable = errors.New("upstream unreachable")
 
 type mockSyncOnDemand struct {
-	syncImageFn     func(ctx context.Context, repo, reference, ns string) error
+	syncImageFn func(ctx context.Context, repo, reference, ns string) error
+	// syncImageDigest is the digest SyncImage reports as committed.
+	syncImageDigest godigest.Digest
 	syncReferrersFn func(ctx context.Context, repo, subjectDigestStr string,
 		referenceTypes []string, ns string) error
 	shouldCheckUpstreamManifestFn func(repo, reference, ns string) bool
@@ -68,12 +70,14 @@ type mockSyncOnDemand struct {
 	streamManager  sync.StreamManager
 }
 
-func (m *mockSyncOnDemand) SyncImage(ctx context.Context, repo, reference, ns string) error {
+func (m *mockSyncOnDemand) SyncImage(ctx context.Context, repo, reference, ns string) (godigest.Digest,
+	error,
+) {
 	if m.syncImageFn != nil {
-		return m.syncImageFn(ctx, repo, reference, ns)
+		return m.syncImageDigest, m.syncImageFn(ctx, repo, reference, ns)
 	}
 
-	return nil
+	return "", nil
 }
 
 func (m *mockSyncOnDemand) SyncReferrers(ctx context.Context, repo, subjectDigestStr string,
@@ -765,6 +769,48 @@ func TestGetManifestNamespaceScopedCache(t *testing.T) {
 			defer resp.Body.Close()
 
 			So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
+		})
+
+		Convey("a successful sync serves the manifest it resolved, not the shared tag", func() {
+			// The sync committed digest A and recorded it; a concurrent namespace-B sync then
+			// re-committed the shared tag. A tag read would serve B's content, so the route
+			// must read the synced digest instead.
+			digestA := godigest.FromString("namespace-a manifest")
+			manifestA := []byte(`{"schemaVersion":2,"a":true}`)
+			manifestB := []byte(`{"schemaVersion":2,"b":true}`)
+
+			racedStore := mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, reference string) ([]byte, godigest.Digest, string, error) {
+					if reference == digestA.String() {
+						return manifestA, digestA, ispec.MediaTypeImageManifest, nil
+					}
+
+					// The tag now points at B's re-commit (or holds no provenance at all).
+					return manifestB, godigest.FromBytes(manifestB), ispec.MediaTypeImageManifest, nil
+				},
+			}
+
+			syncOnDemand := &mockSyncOnDemand{
+				shouldQueueOnDemandSyncFn: func(_, _ string) bool { return false },
+				syncImageDigest:           digestA,
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
+					return nil
+				},
+			}
+			handler := newSyncTestRouteHandler(t, racedStore, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq(nsA))
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(resp.Header.Get(constants.DistContentDigestKey), ShouldEqual, digestA.String())
+
+			body, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(body, ShouldResemble, manifestA)
 		})
 	})
 }

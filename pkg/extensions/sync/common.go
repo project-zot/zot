@@ -13,10 +13,12 @@ import (
 
 // OnDemand pulls images and referrers from upstream registries on client request.
 type OnDemand interface {
-	// SyncImage syncs a single image (repo:tag or repo:digest) into local storage.
+	// SyncImage syncs a single image (repo:tag or repo:digest) into local storage. Returns the
+	// digest of the manifest it committed, so a caller reading the shared local tag can serve
+	// that immutable result instead.
 	// ns, when non-empty, restricts the sync to the upstream registry named by the
 	// containerd ?ns= namespace/query parameter (e.g. "docker.io").
-	SyncImage(ctx context.Context, repo, reference, ns string) error
+	SyncImage(ctx context.Context, repo, reference, ns string) (godigest.Digest, error)
 	// SyncReferrers syncs referrers for the given subject digest into local storage.
 	// ns, when non-empty, restricts the sync to the upstream registry named by the
 	// containerd ?ns= namespace/query parameter.
