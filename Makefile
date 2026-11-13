@@ -37,6 +37,11 @@ STACKER := $(TOOLSDIR)/bin/stacker
 STACKER_VERSION := v1.1.0-rc3
 KIND := $(TOOLSDIR)/bin/kind
 KIND_VERSION := v0.31.0
+ARCTL := $(TOOLSDIR)/bin/arctl
+ARCTL_VERSION := v0.4.0
+AGENTREGISTRY_VERSION := v0.4.0
+KMCP := $(TOOLSDIR)/bin/kmcp
+KMCP_VERSION := v0.4.0
 BATS := $(TOOLSDIR)/bin/bats
 SKOPEO := $(TOOLSDIR)/bin/skopeo
 SKOPEO_VERSION ?= v1.12.0
@@ -572,7 +577,7 @@ $(SKOPEO):
 	rm -rf skopeo-src
 
 .PHONY: check-blackbox-prerequisites
-check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(MODCTL) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(KIND)
+check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(MODCTL) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(KIND) $(ARCTL) $(KMCP)
 	which skopeo && skopeo --version; \
 	which stacker && stacker --version; \
 	which regctl && regctl version; \
@@ -586,7 +591,7 @@ check-blackbox-prerequisites: check-linux check-skopeo $(BATS) $(REGCLIENT) $(OR
 
 # Download blackbox client tools into hack/tools/bin (includes skopeo for CI artifacts).
 .PHONY: blackbox-tools
-blackbox-tools: $(BATS) $(REGCLIENT) $(ORAS) $(MODCTL) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(KIND) $(SKOPEO)
+blackbox-tools: $(BATS) $(REGCLIENT) $(ORAS) $(MODCTL) $(HELM) $(CRICTL) $(NOTATION) $(COSIGN) $(STACKER) $(KIND) $(SKOPEO) $(ARCTL) $(KMCP)
 
 .PHONY: run-blackbox-tests
 run-blackbox-tests: $(BATS_TEST_FILE_PATH) check-blackbox-prerequisites $(ZOT_BIN_DEP) $(ZOT_MIN_DEP) $(ZLI_DEP) $(ZB_DEP)
@@ -656,6 +661,12 @@ run-kind-sync-ondemand: $(KIND) $(ZOT_BIN_DEP)
 run-kind-config-reload: $(KIND) $(ZOT_BIN_DEP)
 	./examples/kind/kind-config-reload.sh
 
+.PHONY: run-kind-agentregistry
+run-kind-agentregistry: OS=linux
+run-kind-agentregistry: $(BATS) $(KIND) $(HELM) $(ARCTL) $(KMCP) $(ZOT_BIN_DEP)
+	AGENTREGISTRY_VERSION="$(AGENTREGISTRY_VERSION)" \
+	KMCP_VERSION="$(KMCP_VERSION)" $(BATS) $(BATS_FLAGS) test/blackbox/agentregistry.bats
+
 # When USE_PREBUILT=1, assert compile outputs already exist so test targets
 # can reuse a downloaded bin/ without invoking the phony binary/bench/cli targets.
 .PHONY: require-binary
@@ -701,6 +712,24 @@ $(KIND): | check-linux
 	mkdir -p $(TOOLSDIR)/bin; \
 	curl -fsSL https://kind.sigs.k8s.io/dl/$(KIND_VERSION)/kind-$(OS)-$(ARCH) -o $@; \
 	chmod +x $@
+
+$(ARCTL):
+	set -euo pipefail; \
+	mkdir -p $(TOOLSDIR)/bin; \
+	tmp=$$(mktemp "$@.XXXXXX"); trap 'rm -f "$$tmp"' EXIT; \
+	curl -fsSL https://github.com/agentregistry-dev/agentregistry/releases/download/$(ARCTL_VERSION)/arctl-$(OS)-$(ARCH) -o "$$tmp"; \
+	expected=$$(curl -fsSL https://github.com/agentregistry-dev/agentregistry/releases/download/$(ARCTL_VERSION)/arctl-$(OS)-$(ARCH).sha256 | awk '{print $$1}'); \
+	echo "$$expected  $$tmp" | sha256sum --check -; \
+	chmod +x "$$tmp"; mv "$$tmp" $@
+
+$(KMCP):
+	set -euo pipefail; \
+	mkdir -p $(TOOLSDIR)/bin; \
+	tmp=$$(mktemp "$@.XXXXXX"); trap 'rm -f "$$tmp"' EXIT; \
+	curl -fsSL https://github.com/kagent-dev/kmcp/releases/download/$(KMCP_VERSION)/kmcp-$(OS)-$(ARCH) -o "$$tmp"; \
+	expected=$$(curl -fsSL https://github.com/kagent-dev/kmcp/releases/download/$(KMCP_VERSION)/kmcp-$(OS)-$(ARCH).sha256 | awk '{print $$1}'); \
+	echo "$$expected  $$tmp" | sha256sum --check -; \
+	chmod +x "$$tmp"; mv "$$tmp" $@
 
 # set ZUI_VERSION to empty string in order to clone zui locally and build default branch
 .PHONY: ui

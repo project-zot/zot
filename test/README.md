@@ -29,6 +29,20 @@ replace `FILENAME` with the name of the test file along with its extension e.g. 
 
 A test file may have multiple services defined by a unique key. You can use any key for the service identifier, however, ensure that the same key is used in the BATS test file as an argument to the `get_free_port_for_service` function.
 
+## AgentRegistry, Zot, and Kagent
+
+Run `make run-kind-agentregistry` to exercise a CI/CD pipeline that uses `arctl`
+to scaffold and build a FastMCP server, pushes its image to the locally built Zot,
+registers its metadata in AgentRegistry, and deploys it with Kagent's KMCP
+controller. The test verifies the pulled image digest and calls an MCP tool.
+It requires Docker, kubectl, curl, jq, Python 3, and netcat on the host; the
+Makefile installs BATS, kind, Helm, arctl, and kmcp.
+
+The test runs in its own nightly kind job rather than the concurrent blackbox
+shards. It needs network access for Kubernetes, Helm charts, and container
+images, but no LLM credentials. Its kubeconfig, cluster, and Zot container are
+isolated per run and cleaned up on success or failure.
+
 The eMudhra CA distrust test runs in the default `host-deps` blackbox CI shard.
 CI automatically installs mitmproxy 12.3.0 in an isolated Python environment.
 To run the test locally, install mitmproxy with Python 3.12 or newer, then select the test:
