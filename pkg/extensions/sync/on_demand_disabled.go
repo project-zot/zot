@@ -32,6 +32,10 @@ func (onDemand *BaseOnDemand) ShouldQueueOnDemandSync(_, _ string) bool {
 
 func (onDemand *BaseOnDemand) QueueImage(_ context.Context, _, _, _ string) {}
 
+func (onDemand *BaseOnDemand) IsTagFromNamespace(_, _, _ string) bool {
+	return false
+}
+
 // Streaming stubs for builds without the sync extension: nothing is ever streamed.
 
 func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
