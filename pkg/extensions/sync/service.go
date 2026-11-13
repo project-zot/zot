@@ -444,12 +444,14 @@ func withManifestCheckTimeout(ctx context.Context, timeout time.Duration) (conte
 
 // logManifestCheckTimeout logs that a failed upstream manifest request ran out of
 // manifestCheckTimeout: checkCtx's deadline fired while ctx, the sync's own context, is not done.
+// Caller must hold clientLock for reading (it reads service.remote directly, as taking the
+// read lock again could deadlock against a waiting credential refresh).
 func (service *BaseService) logManifestCheckTimeout(ctx, checkCtx context.Context, reference string) {
 	if ctx.Err() != nil || !errors.Is(checkCtx.Err(), context.DeadlineExceeded) {
 		return
 	}
 
-	service.log.Warn().Str("remote", service.remoteHostName()).Str("reference", reference).
+	service.log.Warn().Str("remote", service.remote.GetHostName()).Str("reference", reference).
 		Dur("manifestCheckTimeout", service.config.ManifestCheckTimeout).
 		Msg("upstream did not answer the manifest request within the manifest check timeout")
 }
