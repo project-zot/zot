@@ -96,6 +96,7 @@ type BaseService struct {
 	// SyncRepo index/child ensures).
 	imageFlight   singleflight.Group
 	streamManager StreamManager
+	priority      *syncPriority
 
 	clientLock sync.RWMutex
 	log        log.Logger
@@ -119,6 +120,7 @@ func New(
 	service.contentManager = NewContentManager(config.Content, log)
 	service.storeController = storeController
 	service.streamManager = streamManager
+	service.priority = priorityFor(streamManager)
 	service.tagsCache = newTagsCache(defaultExpireMinutes)
 
 	if config.ManifestCheckInterval > 0 {
@@ -465,8 +467,19 @@ func (service *BaseService) getNextRepoFromCatalog(lastRepo string) string {
 }
 
 func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
-	var err error
+	var repo string
 
+	err := service.priority.runBackground(context.Background(), service.log, func(ctx context.Context) error {
+		var err error
+		repo, err = service.getNextRepo(ctx, lastRepo)
+
+		return err
+	})
+
+	return repo, err
+}
+
+func (service *BaseService) getNextRepo(ctx context.Context, lastRepo string) (string, error) {
 	/* Refresh before taking the read lock: a refresh reinitializes the client under the
 	write lock, which a held read lock would deadlock against. */
 	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
@@ -475,15 +488,17 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 
 	if len(service.repositories) == 0 {
 		service.clientLock.RLock()
-		service.repositories, err = service.remote.GetRepositories(context.Background())
+		repositories, catalogErr := service.remote.GetRepositories(ctx)
 		service.clientLock.RUnlock()
 
-		if err != nil {
-			service.log.Error().Str("errorType", common.TypeOf(err)).Str("remote registry", service.remoteHostName()).
-				Err(err).Msg("error while getting repositories from remote registry")
+		if catalogErr != nil {
+			service.log.Error().Str("errorType", common.TypeOf(catalogErr)).Str("remote registry", service.remoteHostName()).
+				Err(catalogErr).Msg("error while getting repositories from remote registry")
 
-			return "", err
+			return "", catalogErr
 		}
+
+		service.repositories = repositories
 	}
 
 	var matches bool
@@ -527,6 +542,12 @@ func (service *BaseService) GetNextRepo(lastRepo string) (string, error) {
 // children are fetched when a client pulls them). It applies SyncImage's content and OnlySigned
 // checks, so streaming never serves what a plain sync would refuse.
 func (service *BaseService) FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, error) {
+	release, err := service.priority.startStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
 	remoteURL := service.remoteHostName()
 
 	remoteRepo := service.getRemoteRepo(repo)
@@ -581,6 +602,16 @@ func (service *BaseService) FetchManifest(ctx context.Context, repo, reference s
 
 // SyncImage on demand.
 func (service *BaseService) SyncImage(ctx context.Context, repo, reference string) error {
+	if isBackgroundSync(ctx) {
+		return service.priority.runBackground(ctx, service.log, func(ctx context.Context) error {
+			return service.syncOnDemandImage(ctx, repo, reference)
+		})
+	}
+
+	return service.syncOnDemandImage(ctx, repo, reference)
+}
+
+func (service *BaseService) syncOnDemandImage(ctx context.Context, repo, reference string) error {
 	// Content and exclude rules are local config — apply them before credential refresh or upstream I/O.
 	remoteRepo := service.getRemoteRepo(repo)
 	if remoteRepo == "" {
@@ -625,6 +656,12 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 // tag, feeding repo:tag's staged streams as it copies (see StreamSyncer). The result is still
 // committed under tag.
 func (service *BaseService) SyncImageForStream(ctx context.Context, repo, tag string, digest godigest.Digest) error {
+	release, err := service.priority.startStream(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	// Content and exclude rules are local config — apply them before credential refresh or upstream I/O.
 	remoteRepo := service.getRemoteRepo(repo)
 	if remoteRepo == "" {
@@ -668,6 +705,18 @@ func (service *BaseService) SyncImageForStream(ctx context.Context, repo, tag st
 }
 
 func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
+	subjectDigestStr string, referenceTypes []string,
+) error {
+	if isBackgroundSync(ctx) {
+		return service.priority.runBackground(ctx, service.log, func(ctx context.Context) error {
+			return service.syncOnDemandReferrers(ctx, repo, subjectDigestStr, referenceTypes)
+		})
+	}
+
+	return service.syncOnDemandReferrers(ctx, repo, subjectDigestStr, referenceTypes)
+}
+
+func (service *BaseService) syncOnDemandReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
 	// Content and exclude rules are local config — apply them before credential refresh or upstream I/O.
@@ -748,6 +797,12 @@ func (service *BaseService) SyncReferrers(ctx context.Context, repo string,
 
 // SyncRepo syncs repo periodically.
 func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
+	return service.priority.runBackground(ctx, service.log, func(ctx context.Context) error {
+		return service.syncRepo(ctx, repo)
+	})
+}
+
+func (service *BaseService) syncRepo(ctx context.Context, repo string) error {
 	/* Refresh before taking the read lock: a refresh reinitializes the client under the
 	write lock, which a held read lock would deadlock against. */
 	if err := service.refreshRegistryTemporaryCredentials(); err != nil {

@@ -39,7 +39,30 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 		var (
 			streamManager        sync.StreamManager
 			maxConcurrentStreams int
+			hasStreamingRegistry bool
 		)
+
+		// Select the shared manager before building any service: config order must not
+		// let an earlier non-streaming registry bypass global streaming priority.
+		for _, registryConfig := range syncConfig.Registries {
+			if registryConfig.IsStreamEnabled() {
+				hasStreamingRegistry = true
+				if registryConfig.MaxConcurrentStreams != nil {
+					maxConcurrentStreams = *registryConfig.MaxConcurrentStreams
+				}
+
+				streamManager = reuseOrNewStreamManager(prev, storeController, maxConcurrentStreams, log)
+
+				break
+			}
+		}
+
+		if streamManager == nil && prev != nil {
+			// Old streams still reserve priority even if this reload turns streaming off.
+			streamManager = prev.StreamManager()
+		}
+
+		onDemand.SetStreamManager(streamManager)
 
 		for _, registryConfig := range syncConfig.Registries {
 			if len(registryConfig.URLs) > 1 {
@@ -68,18 +91,7 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 			registryConfig.SetDockerCompat(config.IsDockerCompatEnabled())
 
-			// Built from the first streaming registry; config validation ensures the others use
-			// the same maxConcurrentStreams.
-			if registryConfig.IsStreamEnabled() && streamManager == nil {
-				if registryConfig.MaxConcurrentStreams != nil {
-					maxConcurrentStreams = *registryConfig.MaxConcurrentStreams
-				}
-
-				streamManager = reuseOrNewStreamManager(prev, storeController, maxConcurrentStreams, log)
-				onDemand.SetStreamManager(streamManager)
-			}
-
-			// Every service gets it, but only uses it for a staged repo:reference (see syncRef).
+			// Every service shares streaming priority; only a staged sync feeds blob streams.
 			service, err := sync.New(registryConfig, credsPath, clusterConfig, tmpDir, storeController,
 				streamManager, metaDB, log)
 			if err != nil {
@@ -104,15 +116,8 @@ func EnableSyncExtension(config *config.Config, metaDB mTypes.MetaDB,
 
 		// Resize a reused manager only now that every service is up: a reload that fails above
 		// keeps the previous SyncOnDemand, which must keep its cap too.
-		if chunking, ok := streamManager.(*sync.ChunkingStreamManager); ok {
+		if chunking, ok := streamManager.(*sync.ChunkingStreamManager); ok && hasStreamingRegistry {
 			chunking.SetMaxConcurrentStreams(maxConcurrentStreams)
-		}
-
-		// No registry streams any more: keep the previous manager anyway, so the blob routes can
-		// still serve the streams staged before the reload until they drain. Nothing new is
-		// staged: the manifest route only streams repos a streaming registry matches.
-		if streamManager == nil && prev != nil && prev.StreamManager() != nil {
-			onDemand.SetStreamManager(prev.StreamManager())
 		}
 
 		return onDemand, nil

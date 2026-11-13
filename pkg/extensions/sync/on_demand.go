@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/regclient/regclient/types/manifest"
@@ -15,6 +16,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/common"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 )
 
@@ -223,7 +225,16 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 		// Detached: the sync goes on after the client that started it disconnects.
 		syncCtx := context.WithoutCancel(ctx)
 
-		result <- onDemand.doOnDemandFlight(key, repo, reference,
+		// Preempt a background leader before joining its flight, so it yields the key.
+		releasePriority, err := onDemand.acquireStreamPriority(syncCtx, repo)
+		if err != nil {
+			result <- err
+
+			return
+		}
+		defer releasePriority()
+
+		result <- onDemand.doForegroundFlight(key, repo, reference,
 			"image already demanded, on-demand sync result was shared",
 			func() error {
 				return onDemand.streamOrSyncImage(syncCtx, repo, reference, onSynced, outcome)
@@ -274,6 +285,26 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 			}
 		}
 	}
+}
+
+func (onDemand *BaseOnDemand) acquireStreamPriority(ctx context.Context, repo string) (func(), error) {
+	var timeout time.Duration
+
+	for _, service := range onDemand.services {
+		if service.IsStreamingForRepo(repo) {
+			timeout = max(timeout, service.GetSyncTimeout())
+		}
+	}
+
+	if timeout == 0 {
+		timeout = syncConstants.DefaultSyncTimeout
+	}
+
+	// The client context is detached; bound the wait for background cancellation too.
+	priorityCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	return priorityFor(onDemand.streamManager).startStream(priorityCtx)
 }
 
 // joinStaged returns repo:reference's staged manifest, if any, registering onSynced on its sync.
@@ -505,7 +536,7 @@ func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference st
 		return
 	}
 
-	detachedContext := context.WithoutCancel(ctx)
+	detachedContext := backgroundSyncContext(context.WithoutCancel(ctx))
 	key := onDemandKey(onDemandKindImage, repo, reference)
 
 	go func() {
@@ -513,14 +544,28 @@ func (onDemand *BaseOnDemand) QueueImage(ctx context.Context, repo, reference st
 			onDemand.requestStore.Delete(req)
 		}()
 
-		err := onDemand.doOnDemandFlight(key, repo, reference,
-			"image already demanded, on-demand sync result was shared",
-			func() error {
-				return onDemand.syncImageInBackground(detachedContext, repo, reference)
-			})
-		if err != nil {
-			onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
-				Msg("on-demand-in-background image sync failed")
+		for {
+			if err := onDemand.waitForBackground(detachedContext); err != nil {
+				onDemand.logImageSyncErr(repo, reference, err)
+
+				return
+			}
+
+			err := onDemand.doOnDemandFlight(key, repo, reference,
+				"image already demanded, on-demand sync result was shared",
+				func() error {
+					return onDemand.syncImageInBackground(detachedContext, repo, reference)
+				})
+			if errors.Is(err, errBackgroundSyncPreempted) {
+				continue
+			}
+
+			if err != nil {
+				onDemand.log.Error().Err(err).Str("repo", repo).Str("reference", reference).
+					Msg("on-demand-in-background image sync failed")
+			}
+
+			return
 		}
 	}()
 }
@@ -536,7 +581,7 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 	// Classify after the flight so waiters that join a background retry (same key,
 	// raw syncImage result) still receive opaque client sentinels. Root-cause
 	// logging stays in the leader closure only.
-	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindImage, repo, reference), repo, reference,
+	err := onDemand.doForegroundFlight(onDemandKey(onDemandKindImage, repo, reference), repo, reference,
 		"image already demanded, on-demand sync result was shared",
 		func() error {
 			err := onDemand.syncImage(ctx, repo, reference, -1, "", true)
@@ -559,7 +604,7 @@ func (onDemand *BaseOnDemand) logImageSyncErr(repo, reference string, err error)
 func (onDemand *BaseOnDemand) SyncReferrers(ctx context.Context, repo string,
 	subjectDigestStr string, referenceTypes []string,
 ) error {
-	err := onDemand.doOnDemandFlight(onDemandKey(onDemandKindReferrers, repo, subjectDigestStr),
+	err := onDemand.doForegroundFlight(onDemandKey(onDemandKindReferrers, repo, subjectDigestStr),
 		repo, subjectDigestStr,
 		"referrers for image already demanded, on-demand sync result was shared",
 		func() error {
@@ -594,6 +639,23 @@ func (onDemand *BaseOnDemand) doOnDemandFlight(key, repo, reference, sharedMsg s
 	}
 
 	return err
+}
+
+func (onDemand *BaseOnDemand) doForegroundFlight(key, repo, reference, sharedMsg string,
+	syncFn func() error,
+) error {
+	for {
+		err := onDemand.doOnDemandFlight(key, repo, reference, sharedMsg, syncFn)
+		if !errors.Is(err, errBackgroundSyncPreempted) {
+			return err
+		}
+	}
+}
+
+func (onDemand *BaseOnDemand) waitForBackground(ctx context.Context) error {
+	// Wait outside singleflight; streaming must be able to become its next leader.
+	return priorityFor(onDemand.streamManager).runBackground(ctx, onDemand.log,
+		func(context.Context) error { return nil })
 }
 
 func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDigestStr string,
@@ -770,6 +832,10 @@ func (onDemand *BaseOnDemand) runOnDemandServices(ctx context.Context, repo, ref
 			return nil
 		}
 
+		if errors.Is(err, errBackgroundSyncPreempted) {
+			return err
+		}
+
 		preferredErr = rankOnDemandErr(preferredErr, err)
 	}
 
@@ -812,14 +878,20 @@ func (onDemand *BaseOnDemand) maybeRetryInBackground(ctx context.Context, kind, 
 		// a Do started while the failed call still holds the key shares that failure and
 		// would otherwise skip the retry while still holding requestStore.
 		for {
+			if err := onDemand.waitForBackground(context.WithoutCancel(ctx)); err != nil {
+				onDemand.logImageSyncErr(repo, reference, err)
+
+				return
+			}
+
 			leader := false
 
 			err := onDemand.doOnDemandFlight(key, repo, reference, sharedMsg, func() error {
 				leader = true
 
-				return backgroundFullSync(context.WithoutCancel(ctx))
+				return backgroundFullSync(backgroundSyncContext(context.WithoutCancel(ctx)))
 			})
-			if leader {
+			if leader && !errors.Is(err, errBackgroundSyncPreempted) {
 				if err != nil {
 					onDemand.log.Error().Str("errorType", common.TypeOf(err)).
 						Str("repo", repo).Str("reference", reference).
