@@ -3,6 +3,7 @@
 package lint_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/extensions/lint"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
 	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
@@ -904,5 +906,67 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		pass, err = linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
 		So(err, ShouldBeNil)
 		So(pass, ShouldBeTrue)
+	})
+}
+
+func TestLintSkipSyncedImages(t *testing.T) {
+	Convey("Lint synced images depending on skipSyncedImages", t, func() {
+		enable := true
+
+		dir := t.TempDir()
+
+		testStoreCtlr := ociutils.GetDefaultStoreController(dir, log.NewTestLogger())
+		err := WriteImageToFileSystem(CreateRandomImage(), "zot-test", "0.0.1", testStoreCtlr)
+		So(err, ShouldBeNil)
+
+		var index ispec.Index
+
+		indexContent, err := testStoreCtlr.GetDefaultImageStore().GetIndexContent("zot-test")
+		So(err, ShouldBeNil)
+		err = json.Unmarshal(indexContent, &index)
+		So(err, ShouldBeNil)
+
+		// the random image has none of the mandatory annotations
+		manifestDigest := index.Manifests[0].Digest
+		syncedCtx := storageCommon.WithSyncedContent(context.Background())
+
+		Convey("skipSyncedImages disabled lints synced and pushed images", func() {
+			lintConfig := &extconf.LintConfig{
+				Enable:               &enable,
+				MandatoryAnnotations: []string{"annotation1"},
+			}
+
+			linter := lint.NewLinter(lintConfig, log.NewTestLogger())
+			imgStore := local.NewImageStore(dir, false, false,
+				log.NewTestLogger(), monitoring.NewNopMetricServer(), linter, nil, nil, nil)
+
+			pass, err := linter.Lint(syncedCtx, "zot-test", manifestDigest, imgStore)
+			So(err, ShouldNotBeNil)
+			So(pass, ShouldBeFalse)
+
+			pass, err = linter.Lint(context.Background(), "zot-test", manifestDigest, imgStore)
+			So(err, ShouldNotBeNil)
+			So(pass, ShouldBeFalse)
+		})
+
+		Convey("skipSyncedImages enabled lints only pushed images", func() {
+			lintConfig := &extconf.LintConfig{
+				Enable:               &enable,
+				MandatoryAnnotations: []string{"annotation1"},
+				SkipSyncedImages:     true,
+			}
+
+			linter := lint.NewLinter(lintConfig, log.NewTestLogger())
+			imgStore := local.NewImageStore(dir, false, false,
+				log.NewTestLogger(), monitoring.NewNopMetricServer(), linter, nil, nil, nil)
+
+			pass, err := linter.Lint(syncedCtx, "zot-test", manifestDigest, imgStore)
+			So(err, ShouldBeNil)
+			So(pass, ShouldBeTrue)
+
+			pass, err = linter.Lint(context.Background(), "zot-test", manifestDigest, imgStore)
+			So(err, ShouldNotBeNil)
+			So(pass, ShouldBeFalse)
+		})
 	})
 }

@@ -1085,7 +1085,7 @@ func (is *ImageStore) PutImageManifest(ctx context.Context, repo, reference, med
 		changedTags = []string{reference}
 	}
 
-	pass, err := common.ApplyLinter(is, is.linter, repo, lintDesc)
+	pass, err := common.ApplyLinter(ctx, is, is.linter, repo, lintDesc)
 	if !pass {
 		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).
 			Msg("linter didn't pass")

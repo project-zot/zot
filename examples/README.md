@@ -49,6 +49,7 @@ Examples of working configurations for various use cases are available [here](..
     - [Specifying S3 credentials](#specifying-s3-credentials)
   - [Sync](#sync)
   - [Search and CVE scanning (Trivy)](#search-and-cve-scanning-trivy)
+  - [Lint](#lint)
 
 ## Generated JSON Schema
 
@@ -1746,3 +1747,31 @@ Scan results are cached by manifest digest. Editing an ignore file does not inva
 `scanRemovedPkgs` mirrors Trivy's `--removed-pkgs` and reports vulnerabilities for packages deleted in later image layers. `includeDevDeps` mirrors Trivy's `--include-dev-deps` and reports development dependencies. Both default to `false`.
 
 `sbom.enable` lets zot generate SBOMs while scanning and store them as OCI artifacts attached to the scanned image. `sbom.format` supports `spdx-json` (default) and `cyclonedx`.
+
+## Lint
+
+The `lint` extension rejects image manifests that are missing any of the `mandatoryAnnotations`. An annotation is also accepted when it is set as a label in the image config. See [config-lint.json](config-lint.json).
+
+Images that the [sync](#sync) extension copies from an upstream registry are linted too, so third-party images that lack the annotations cannot be mirrored. Set `skipSyncedImages` to `true` to lint only the images that clients push:
+
+```json
+"extensions": {
+  "lint": {
+    "enable": true,
+    "mandatoryAnnotations": ["org.opencontainers.image.title", "org.opencontainers.image.description"],
+    "skipSyncedImages": true
+  },
+  "sync": {
+    "enable": true,
+    "registries": [
+      {
+        "urls": ["https://registry-1.docker.io"],
+        "onDemand": true,
+        "content": [{ "prefix": "**" }]
+      }
+    ]
+  }
+}
+```
+
+`skipSyncedImages` defaults to `false`.

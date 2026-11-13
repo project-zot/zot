@@ -806,7 +806,8 @@ func collectReferencedBlobs(ctx context.Context, memo *WalkMemo, imgStore storag
 	return nil
 }
 
-func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, descriptor ispec.Descriptor,
+func ApplyLinter(ctx context.Context, imgStore storageTypes.ImageStore, linter Lint, repo string,
+	descriptor ispec.Descriptor,
 ) (bool, error) {
 	pass := true
 
@@ -817,7 +818,7 @@ func ApplyLinter(imgStore storageTypes.ImageStore, linter Lint, repo string, des
 
 	if linter != nil && !IsSignature(descriptor) {
 		// lint new index with new manifest before writing to disk
-		pass, err := linter.Lint(repo, descriptor.Digest, imgStore)
+		pass, err := linter.Lint(ctx, repo, descriptor.Digest, imgStore)
 		if err != nil {
 			return false, err
 		}

@@ -3,6 +3,7 @@
 package lint
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -12,6 +13,7 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/config"
 	"zotregistry.dev/zot/v2/pkg/log"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
@@ -110,9 +112,16 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 	return true, nil
 }
 
-func (linter *Linter) Lint(repo string, manifestDigest godigest.Digest,
+func (linter *Linter) Lint(ctx context.Context, repo string, manifestDigest godigest.Digest,
 	imageStore storageTypes.ImageStore,
 ) (bool, error) {
+	if linter.config != nil && linter.config.SkipSyncedImages && storageCommon.IsSyncedContent(ctx) {
+		linter.log.Debug().Str("component", "linter").Str("repository", repo).
+			Str("digest", manifestDigest.String()).Msg("skipping lint of synced image")
+
+		return true, nil
+	}
+
 	return linter.CheckMandatoryAnnotations(repo, manifestDigest, imageStore)
 }
 

@@ -45,6 +45,10 @@ type LintConfig struct {
 	BaseConfig `mapstructure:",squash"`
 
 	MandatoryAnnotations []string
+	// SkipSyncedImages skips the checks for images that the sync extension copies from an upstream
+	// registry, so that third-party images missing the mandatory annotations can still be mirrored.
+	// Images pushed by clients are always checked. Defaults to false.
+	SkipSyncedImages bool
 }
 
 type SearchConfig struct {
