@@ -565,6 +565,9 @@ func TestRedisUnreachable(t *testing.T) {
 
 		err = metaDB.DeleteUserAPIKey(ctx, "test")
 		So(err, ShouldNotBeNil)
+
+		err = metaDB.DeleteUserAPIKeys(ctx)
+		So(err, ShouldNotBeNil)
 	})
 }
 
@@ -1361,6 +1364,24 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("DeleteUserAPIKeys", func() {
+			Convey("bad userdata", func() {
+				err = setUserData("test", []byte("dsa8"), client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.DeleteUserAPIKeys(ctx)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("no userid found", func() {
+				userAc := reqCtx.NewUserAccessControl()
+				ctx := userAc.DeriveContext(context.Background())
+
+				err = metaDB.DeleteUserAPIKeys(ctx) //nolint: contextcheck
+				So(err, ShouldEqual, zerr.ErrUserDataNotAllowed)
+			})
+		})
+
 		Convey("GetUserData", func() {
 			err = setUserData("test", []byte("dsa8"), client)
 			So(err, ShouldBeNil)
@@ -1579,6 +1600,14 @@ func TestWrapperErrors(t *testing.T) {
 			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			err := metaDB.DeleteUserAPIKey(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserAPIKeys bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			err := metaDB.DeleteUserAPIKeys(ctx)
 			So(err, ShouldNotBeNil)
 		})
 

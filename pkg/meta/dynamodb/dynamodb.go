@@ -2064,6 +2064,40 @@ func (dwr DynamoDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 	return nil
 }
 
+func (dwr DynamoDB) DeleteUserAPIKeys(ctx context.Context) error {
+	userData, err := dwr.GetUserData(ctx)
+	if errors.Is(err, zerr.ErrUserDataNotFound) {
+		// a user who never logged in has no api keys
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to get userData %w", err)
+	}
+
+	if len(userData.APIKeys) == 0 {
+		return nil
+	}
+
+	// Remove the key entries first, they are what authentication looks up. If a deletion
+	// fails, the remaining keys are still listed in the user data and a retry removes them.
+	for hash := range userData.APIKeys {
+		_, err = dwr.Client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+			TableName: aws.String(dwr.APIKeyTablename),
+			Key: map[string]types.AttributeValue{
+				"TableKey": &types.AttributeValueMemberS{Value: hash},
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete userAPIKey entry for hash %s %w", hash, err)
+		}
+	}
+
+	userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
+
+	return dwr.SetUserData(ctx, userData)
+}
+
 func (dwr DynamoDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 	var userid string
 

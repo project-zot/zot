@@ -394,6 +394,89 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(userGroups, ShouldResemble, userProfileSrc.Groups)
 			})
 
+			Convey("Test deleting all API keys of a user", func() {
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("test")
+
+				ctx := userAc.DeriveContext(context.Background())
+
+				otherUserAc := reqCtx.NewUserAccessControl()
+				otherUserAc.SetUsername("other")
+
+				otherCtx := otherUserAc.DeriveContext(context.Background())
+
+				err := metaDB.SetUserGroups(ctx, userProfileSrc.Groups)
+				So(err, ShouldBeNil)
+
+				err = metaDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
+				So(err, ShouldBeNil)
+
+				err = metaDB.AddUserAPIKey(ctx, "key", &mTypes.APIKeyDetails{Label: "apiKey2", UUID: "key"})
+				So(err, ShouldBeNil)
+
+				err = metaDB.AddUserAPIKey(otherCtx, "otherKey", &mTypes.APIKeyDetails{Label: "other", UUID: "otherKey"})
+				So(err, ShouldBeNil)
+
+				err = metaDB.DeleteUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+
+				storedAPIKeys, err := metaDB.GetUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+				So(storedAPIKeys, ShouldBeEmpty)
+
+				_, err = metaDB.GetUserAPIKeyInfo(hashKey1)
+				So(err, ShouldNotBeNil)
+
+				_, err = metaDB.GetUserAPIKeyInfo("key")
+				So(err, ShouldNotBeNil)
+
+				// the rest of the user data is kept
+				userGroups, err := metaDB.GetUserGroups(ctx)
+				So(err, ShouldBeNil)
+				So(userGroups, ShouldResemble, userProfileSrc.Groups)
+
+				// the keys of other users are kept
+				identity, err := metaDB.GetUserAPIKeyInfo("otherKey")
+				So(err, ShouldBeNil)
+				So(identity, ShouldEqual, "other")
+
+				storedAPIKeys, err = metaDB.GetUserAPIKeys(otherCtx)
+				So(err, ShouldBeNil)
+				So(len(storedAPIKeys), ShouldEqual, 1)
+
+				// no keys left
+				err = metaDB.DeleteUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+
+				// a user can get new keys
+				err = metaDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
+				So(err, ShouldBeNil)
+
+				identity, err = metaDB.GetUserAPIKeyInfo(hashKey1)
+				So(err, ShouldBeNil)
+				So(identity, ShouldEqual, "test")
+
+				// a user without user data has no keys
+				unknownUserAc := reqCtx.NewUserAccessControl()
+				unknownUserAc.SetUsername("unknown")
+
+				err = metaDB.DeleteUserAPIKeys(unknownUserAc.DeriveContext(context.Background()))
+				So(err, ShouldBeNil)
+
+				// clean up, the DynamoDB user data table is not reset between tests
+				err = metaDB.DeleteUserAPIKeys(ctx)
+				So(err, ShouldBeNil)
+
+				err = metaDB.DeleteUserAPIKeys(otherCtx)
+				So(err, ShouldBeNil)
+
+				err = metaDB.DeleteUserData(ctx)
+				So(err, ShouldBeNil)
+
+				err = metaDB.DeleteUserData(otherCtx)
+				So(err, ShouldBeNil)
+			})
+
 			Convey("Test API keys operations with invalid access control context", func() {
 				var invalid struct{}
 
@@ -411,6 +494,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(err, ShouldNotBeNil)
 
 				err = metaDB.DeleteUserAPIKey(ctx, hashKey1)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.DeleteUserAPIKeys(ctx)
 				So(err, ShouldNotBeNil)
 
 				_, err = metaDB.GetUserData(ctx)
@@ -452,6 +538,9 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(err, ShouldNotBeNil)
 
 				err = metaDB.DeleteUserAPIKey(ctx, hashKey1)
+				So(err, ShouldNotBeNil)
+
+				err = metaDB.DeleteUserAPIKeys(ctx)
 				So(err, ShouldNotBeNil)
 
 				_, err = metaDB.GetUserData(ctx)

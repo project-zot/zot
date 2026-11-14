@@ -923,6 +923,49 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("DeleteUserAPIKeys", func() {
+			err = boltdbWrapper.AddUserAPIKey(ctx, "hashedKey", &mTypes.APIKeyDetails{})
+			So(err, ShouldBeNil)
+
+			Convey("no such bucket", func() {
+				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					return tx.DeleteBucket([]byte(boltdb.UserAPIKeysBucket))
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.DeleteUserAPIKeys(ctx)
+				So(err, ShouldEqual, zerr.ErrBucketDoesNotExist)
+			})
+
+			Convey("bad userdata", func() {
+				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					return tx.Bucket([]byte(boltdb.UserDataBucket)).Put([]byte("test"), []byte("bad userdata"))
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.DeleteUserAPIKeys(ctx)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("no userdata bucket", func() {
+				err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					return tx.DeleteBucket([]byte(boltdb.UserDataBucket))
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.DeleteUserAPIKeys(ctx)
+				So(err, ShouldEqual, zerr.ErrBucketDoesNotExist)
+			})
+
+			Convey("no userid found", func() {
+				userAc := reqCtx.NewUserAccessControl()
+				ctx := userAc.DeriveContext(context.Background())
+
+				err = boltdbWrapper.DeleteUserAPIKeys(ctx) //nolint: contextcheck
+				So(err, ShouldEqual, zerr.ErrUserDataNotAllowed)
+			})
+		})
+
 		Convey("GetUserAPIKeyInfo", func() {
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
 				return tx.DeleteBucket([]byte(boltdb.UserAPIKeysBucket))
@@ -1119,6 +1162,14 @@ func TestWrapperErrors(t *testing.T) {
 			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			err := boltdbWrapper.DeleteUserAPIKey(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserAPIKeys bad context errors", func() {
+			uacKey := reqCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), uacKey, "bad context")
+
+			err := boltdbWrapper.DeleteUserAPIKeys(ctx)
 			So(err, ShouldNotBeNil)
 		})
 

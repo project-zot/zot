@@ -1200,12 +1200,18 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Revokes one current user API key based on given key ID
+      description: |-
+        Revokes one current user API key based on given key ID.
+        Given a username instead of a key ID, revokes all API keys of that user.
+        Revoking the API keys of a user requires accessControl.adminPolicy.
       parameters:
       - description: api token id (UUID)
         in: query
         name: id
-        required: true
+        type: string
+      - description: user whose api keys are all revoked (admin only)
+        in: query
+        name: username
         type: string
       produces:
       - application/json
@@ -1222,11 +1228,15 @@ paths:
           description: unauthorized
           schema:
             type: string
+        "403":
+          description: forbidden
+          schema:
+            type: string
         "500":
           description: internal server error
           schema:
             type: string
-      summary: Revokes one current user API key
+      summary: Revokes one current user API key, or all API keys of a user
     get:
       consumes:
       - application/json

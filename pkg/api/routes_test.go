@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -2276,6 +2277,67 @@ func TestRoutes(t *testing.T) {
 				}
 
 				rthdlr.RevokeAPIKey(response, request)
+
+				resp := response.Result()
+				defer resp.Body.Close()
+
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			})
+
+			Convey("Revoke the api keys of a user", func() {
+				userAc := reqCtx.NewUserAccessControl()
+				userAc.SetUsername("admin")
+				ctx := userAc.DeriveContext(context.Background())
+
+				revoke := func(query url.Values) int {
+					request, _ := http.NewRequestWithContext(ctx, http.MethodDelete, baseURL, bytes.NewReader([]byte{}))
+					request.URL.RawQuery = query.Encode()
+					response := httptest.NewRecorder()
+
+					rthdlr.RevokeUserAPIKeys(response, request)
+
+					resp := response.Result()
+					defer resp.Body.Close()
+
+					return resp.StatusCode
+				}
+
+				var revokedFor string
+
+				ctlr.MetaDB = mocks.MetaDBMock{
+					DeleteUserAPIKeysFn: func(ctx context.Context) error {
+						userAc, err := reqCtx.UserAcFromContext(ctx)
+						So(err, ShouldBeNil)
+
+						revokedFor = userAc.GetUsername()
+
+						return nil
+					},
+				}
+
+				So(revoke(url.Values{"username": {"test"}}), ShouldEqual, http.StatusOK)
+				So(revokedFor, ShouldEqual, "test")
+
+				So(revoke(url.Values{"username": {""}}), ShouldEqual, http.StatusBadRequest)
+				So(revoke(url.Values{"username": {"test", "other"}}), ShouldEqual, http.StatusBadRequest)
+				So(revoke(url.Values{"username": {"test"}, "id": {"apikeyid"}}), ShouldEqual, http.StatusBadRequest)
+
+				ctlr.MetaDB = mocks.MetaDBMock{
+					DeleteUserAPIKeysFn: func(ctx context.Context) error {
+						return ErrUnexpectedError
+					},
+				}
+
+				So(revoke(url.Values{"username": {"test"}}), ShouldEqual, http.StatusInternalServerError)
+			})
+
+			Convey("Revoke the api keys of a user with a bad context", func() {
+				ctx := context.WithValue(context.Background(), reqCtx.GetContextKey(), "bad context")
+
+				request, _ := http.NewRequestWithContext(ctx, http.MethodDelete, baseURL+"?username=test", nil)
+				response := httptest.NewRecorder()
+
+				rthdlr.RevokeUserAPIKeys(response, request)
 
 				resp := response.Result()
 				defer resp.Body.Close()

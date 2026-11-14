@@ -950,6 +950,26 @@ How to revoke an API key for the current user
 curl -u user:password -X DELETE http://localhost:8080/zot/auth/apikey?id=46a45ce7-5d92-498a-a9cb-9654b1da3da1
 ```
 
+##### How to revoke all API keys of a user
+
+API keys keep working until they expire or are revoked, also after the user lost access in the identity provider.
+An admin can revoke all API keys of a user. The keys stop working right away.
+The user can still log in, if the identity provider allows it, and create new keys.
+
+Only users matching `accessControl.adminPolicy`, including its conditions, can do this. Other users get `403`.
+Without `adminPolicy` nobody can.
+
+**Usage**: DELETE /zot/auth/apikey?username=$username
+
+**Example cURL**
+
+```bash
+curl -u admin:password -X DELETE http://localhost:8080/zot/auth/apikey?username=alice
+```
+
+`username` is the identity the user authenticates with, the same one used in `accessControl`, e.g. the email for OpenID.
+The request succeeds also when the user has no API keys.
+
 #### Authentication Failures
 
 Should authentication fail, to prevent automated attacks, a delayed response can be configured with:
