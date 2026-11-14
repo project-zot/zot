@@ -3652,6 +3652,19 @@ func TestGCTaskGeneratorTimeWindow(t *testing.T) {
 			So(gen.IsReady(), ShouldBeTrue)
 		})
 
+		Convey("a new sweep waits until the tasks of the last sweep are done", func() {
+			gen := &GCTaskGenerator{}
+
+			// the last sweep handed out its tasks, one of them hasn't run yet
+			gen.sweep.start()
+			gen.sweep.taskStarted()
+			gen.sweep.generationDone()
+			So(gen.IsReady(), ShouldBeFalse)
+
+			gen.sweep.taskDone(nil)
+			So(gen.IsReady(), ShouldBeTrue)
+		})
+
 		Convey("deferral outside the window is only logged once", func() {
 			outsideWindow := decodeGCTimeWindow(t, windowAfter(now.Hour(), now.Minute()))
 
