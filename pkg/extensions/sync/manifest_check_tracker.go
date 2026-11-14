@@ -3,9 +3,39 @@
 package sync
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
+
+	zerr "zotregistry.dev/zot/v2/errors"
+	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
+	"zotregistry.dev/zot/v2/pkg/log"
 )
+
+const manifestCheckStoreDynamoDB = "dynamodb"
+
+// manifestCheckStore records when an upstream manifest check last succeeded for a repo:reference.
+type manifestCheckStore interface {
+	ShouldCheckUpstream(ctx context.Context, repo, reference string) bool
+	MarkChecked(ctx context.Context, repo, reference string)
+}
+
+// newManifestCheckStore returns the in-process tracker unless config.ManifestCheckStore selects a
+// shared backend.
+func newManifestCheckStore(config syncconf.RegistryConfig, log log.Logger) (manifestCheckStore, error) {
+	storeConfig := config.ManifestCheckStore
+	if storeConfig == nil {
+		return newManifestCheckTracker(config.ManifestCheckInterval), nil
+	}
+
+	switch storeConfig.Name {
+	case manifestCheckStoreDynamoDB:
+		return newDynamoManifestCheckTracker(config, log)
+	default:
+		return nil, fmt.Errorf("%w: unsupported manifestCheckStore name %q", zerr.ErrBadConfig, storeConfig.Name)
+	}
+}
 
 // minEvictPeriod bounds how often the tracker sweeps expired entries, so that a short
 // manifestCheckInterval does not turn every MarkChecked call into a full map walk.
@@ -42,7 +72,7 @@ func trackerKey(repo, reference string) string {
 // ShouldCheckUpstream reports whether an upstream check is due for repo:reference.
 // An expired entry is dropped on the way out, which is the common path for references
 // that are requested once per interval.
-func (t *manifestCheckTracker) ShouldCheckUpstream(repo, reference string) bool {
+func (t *manifestCheckTracker) ShouldCheckUpstream(_ context.Context, repo, reference string) bool {
 	key := trackerKey(repo, reference)
 
 	t.mu.Lock()
@@ -63,7 +93,7 @@ func (t *manifestCheckTracker) ShouldCheckUpstream(repo, reference string) bool 
 }
 
 // MarkChecked records that an upstream check just succeeded for repo:reference.
-func (t *manifestCheckTracker) MarkChecked(repo, reference string) {
+func (t *manifestCheckTracker) MarkChecked(_ context.Context, repo, reference string) {
 	now := time.Now()
 
 	t.mu.Lock()
