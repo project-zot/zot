@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"path"
@@ -18,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	goSync "sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -6111,6 +6114,103 @@ func TestOnDemandNegativeManifestCheckInterval(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(godigest.FromBytes(resp.Body()), ShouldNotEqual, storedDigest)
+		})
+	})
+}
+
+func TestOnDemandManifestCheckTimeout(t *testing.T) {
+	Convey("manifestCheckTimeout serves a stored tag when upstream stops answering", t, func() {
+		sctlr, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		srcBaseURL := scm.StartAndWait()
+
+		defer scm.StopServer()
+
+		srcURL, err := url.Parse(srcBaseURL)
+		So(err, ShouldBeNil)
+
+		// A proxy to the upstream that, once hang is set, never answers a manifest request,
+		// like an upstream that drops packets.
+		var hang atomic.Bool
+
+		released := make(chan struct{})
+		upstreamProxy := httputil.NewSingleHostReverseProxy(srcURL)
+		proxy := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if hang.Load() && strings.Contains(request.URL.Path, "/manifests/") {
+				select {
+				case <-request.Context().Done():
+				case <-released:
+				}
+
+				return
+			}
+
+			upstreamProxy.ServeHTTP(response, request)
+		}))
+
+		defer proxy.Close()
+		defer close(released)
+
+		// requestTimeout stands in for a client that gives up on a slow registry.
+		const requestTimeout = 10 * time.Second
+
+		syncTagThenHang := func(manifestCheckTimeout time.Duration) (string, *resty.Client, godigest.Digest) {
+			var tlsVerify bool
+
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable: &defaultVal,
+				Registries: []syncconf.RegistryConfig{{
+					URLs:                 []string{proxy.URL},
+					OnDemand:             true,
+					TLSVerify:            &tlsVerify,
+					ManifestCheckTimeout: manifestCheckTimeout,
+				}},
+			}
+
+			dctlr, _, destClient := makeDownstreamServer(t, false, syncConfig)
+
+			dcm := test.NewControllerManager(dctlr)
+			destBaseURL := dcm.StartAndWait()
+
+			t.Cleanup(dcm.StopServer)
+
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			hang.Store(true)
+
+			destClient.SetTimeout(requestTimeout)
+
+			return destBaseURL, destClient, godigest.FromBytes(resp.Body())
+		}
+
+		Convey("The stored manifest is served once the timeout expires", func() {
+			destBaseURL, destClient, storedDigest := syncTagThenHang(time.Second)
+
+			start := time.Now()
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(godigest.FromBytes(resp.Body()), ShouldEqual, storedDigest)
+			So(time.Since(start), ShouldBeLessThan, requestTimeout)
+
+			Convey("A tag that is not stored fails instead of hanging", func() {
+				start := time.Now()
+				resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/not-stored")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusServiceUnavailable)
+				So(time.Since(start), ShouldBeLessThan, requestTimeout)
+			})
+		})
+
+		Convey("Without the timeout the client gives up first", func() {
+			destBaseURL, destClient, _ := syncTagThenHang(0)
+
+			_, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
