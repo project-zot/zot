@@ -99,6 +99,12 @@ type MetaDB interface { //nolint:interfacebloat
 	GetRepoSizeWithCandidate(ctx context.Context, repo string, references []string, imageMeta ImageMeta) (
 		current int64, projected int64, err error)
 
+	// GetRepoSizeWithBlobCandidate returns the current Size and the projected Size if digest
+	// of the given size were newly associated with the repo. Digests already in RepoBlobs are
+	// reuse (projected equals current). Missing repo yields current 0. Does not persist.
+	GetRepoSizeWithBlobCandidate(ctx context.Context, repo string, digest godigest.Digest, size int64) (
+		current int64, projected int64, err error)
+
 	// GetFullImageMeta returns the full information about an image
 	GetFullImageMeta(ctx context.Context, repo string, tag string) (FullImageMeta, error)
 
