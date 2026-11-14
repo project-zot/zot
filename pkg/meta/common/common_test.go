@@ -838,3 +838,53 @@ func TestProjectRepoSizeReconcilesExistingBlobSizes(t *testing.T) {
 		So(repoBlobs.Blobs[layerDigest.String()].Size, ShouldEqual, 30)
 	})
 }
+
+func TestCheckRepoByteQuota(t *testing.T) {
+	Convey("CheckRepoByteQuota rejects a growth that exceeds the limit", t, func() {
+		oldDigest := godigest.FromString("old-manifest")
+		newDigest := godigest.FromString("new-manifest")
+		configDigest := godigest.FromString("config")
+		oldLayerDigest := godigest.FromString("old-layer")
+		newLayerDigest := godigest.FromString("new-layer")
+
+		repoMeta := &proto_go.RepoMeta{
+			Name: "repo",
+			Tags: map[string]*proto_go.TagDescriptor{
+				"latest": {Digest: oldDigest.String(), MediaType: ispec.MediaTypeImageManifest},
+			},
+			Size: 60,
+		}
+		repoBlobs := &proto_go.RepoBlobs{
+			Name: "repo",
+			Blobs: map[string]*proto_go.BlobInfo{
+				oldDigest.String():      {Size: 10, SubBlobs: []string{configDigest.String(), oldLayerDigest.String()}},
+				configDigest.String():   {Size: 20},
+				oldLayerDigest.String(): {Size: 30},
+			},
+		}
+		candidate := mTypes.ImageMeta{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    newDigest,
+			Size:      15,
+			Manifests: []mTypes.ManifestMeta{{
+				Digest: newDigest,
+				Size:   15,
+				Manifest: ispec.Manifest{
+					Config: ispec.Descriptor{Digest: configDigest, Size: 20},
+					Layers: []ispec.Descriptor{
+						{Digest: oldLayerDigest, Size: 30},
+						{Digest: newLayerDigest, Size: 40},
+					},
+				},
+			}},
+		}
+
+		err := common.CheckRepoByteQuota(repoMeta, repoBlobs, []string{"latest"}, candidate, 100)
+		So(errors.Is(err, zerr.ErrRepoByteQuotaExceeded), ShouldBeTrue)
+		So(zerr.GetDetails(err), ShouldResemble, map[string]string{
+			"current":   "60",
+			"projected": "105",
+			"limit":     "100",
+		})
+	})
+}

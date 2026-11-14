@@ -23,6 +23,20 @@ import (
 	tskip "zotregistry.dev/zot/v2/pkg/test/skip"
 )
 
+func TestIsDynamoConditionalTransactionFailure(t *testing.T) {
+	Convey("transaction cancellation is recognized as a quota commit conflict", t, func() {
+		So(isDynamoConditionalTransactionFailure(&types.TransactionCanceledException{
+			CancellationReasons: []types.CancellationReason{{Code: aws.String("ConditionalCheckFailed")}},
+		}), ShouldBeTrue)
+		So(isDynamoConditionalTransactionFailure(&types.TransactionCanceledException{
+			CancellationReasons: []types.CancellationReason{{Code: aws.String("TransactionConflict")}},
+		}), ShouldBeTrue)
+		So(isDynamoConditionalTransactionFailure(&types.TransactionConflictException{}), ShouldBeTrue)
+		So(isDynamoConditionalTransactionFailure(&types.TransactionCanceledException{}), ShouldBeTrue)
+		So(isDynamoConditionalTransactionFailure(errors.New("other failure")), ShouldBeFalse)
+	})
+}
+
 func TestWrapperErrors(t *testing.T) {
 	tskip.SkipDynamo(t)
 

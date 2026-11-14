@@ -221,6 +221,32 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 			return err
 		}
 
+		repoBlobsBytes := repoBlobsBuck.Get([]byte(repo))
+		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+		if err != nil {
+			return err
+		}
+
+		if options.RepoByteQuotaLimit > 0 {
+			quotaRepoMeta, ok := proto.Clone(protoRepoMeta).(*proto_go.RepoMeta)
+			if !ok {
+				return zerr.ErrRepoQuotaMetadataClone
+			}
+			quotaRepoBlobs, ok := proto.Clone(repoBlobs).(*proto_go.RepoBlobs)
+			if !ok {
+				return zerr.ErrRepoQuotaMetadataClone
+			}
+			references := []string(nil)
+			if !common.ReferenceIsDigest(reference) {
+				references = []string{reference}
+			}
+
+			if err := common.CheckRepoByteQuota(quotaRepoMeta, quotaRepoBlobs, references, imageMeta,
+				options.RepoByteQuotaLimit); err != nil {
+				return err
+			}
+		}
+
 		// 2. Referrers
 		if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
 			refInfo := &proto_go.ReferrersInfo{}
@@ -310,13 +336,6 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 		}
 
 		// 4. Blobs
-		repoBlobsBytes := repoBlobsBuck.Get([]byte(repo))
-
-		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
-		if err != nil {
-			return err
-		}
-
 		protoRepoMeta, repoBlobs = common.AddImageMetaToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta)
 
 		err = setRepoLastUpdated(repo, time.Now(), repoLastUpdatedBuck)

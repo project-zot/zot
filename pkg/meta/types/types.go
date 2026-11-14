@@ -263,6 +263,9 @@ type SetRepoReferenceOptions struct {
 	// entry is created (e.g. the manifest blob storage mod time on a storage re-parse). Zero means
 	// unknown and the metaDB falls back to the current time.
 	PushTimestamp time.Time
+	// RepoByteQuotaLimit enables an atomic repository byte quota check in the MetaDB
+	// commit. Zero disables the check.
+	RepoByteQuotaLimit int64
 }
 
 // SetRepoReferenceOption sets an optional hint on SetRepoReferenceOptions.
@@ -273,6 +276,14 @@ type SetRepoReferenceOption func(*SetRepoReferenceOptions)
 func WithPushTimestamp(pushTimestamp time.Time) SetRepoReferenceOption {
 	return func(opts *SetRepoReferenceOptions) {
 		opts.PushTimestamp = pushTimestamp
+	}
+}
+
+// WithRepoByteQuota enables an atomic repository byte quota check for the
+// SetRepoReference commit.
+func WithRepoByteQuota(limit int64) SetRepoReferenceOption {
+	return func(opts *SetRepoReferenceOptions) {
+		opts.RepoByteQuotaLimit = limit
 	}
 }
 

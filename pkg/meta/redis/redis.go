@@ -58,6 +58,34 @@ type RedisDB struct {
 	LocksKey            string
 }
 
+var errRedisRepoReferenceConflict = errors.New("redis repository reference changed during quota commit")
+
+const redisRepoQuotaCommitAttempts = 3
+
+//nolint:gochecknoglobals // immutable Redis CAS script
+var redisRepoReferenceCASScript = redis.NewScript(`
+local function matches(key, field, exists, expected)
+    local current = redis.call("HGET", key, field)
+    if exists == "1" then
+        return current ~= false and current == expected
+    end
+
+    return current == false
+end
+
+if not matches(KEYS[1], ARGV[1], ARGV[2], ARGV[3]) or
+   not matches(KEYS[2], ARGV[1], ARGV[4], ARGV[5]) or
+   not matches(KEYS[3], ARGV[1], ARGV[6], ARGV[7]) then
+    return 0
+end
+
+redis.call("HSET", KEYS[1], ARGV[1], ARGV[8])
+redis.call("HSET", KEYS[2], ARGV[1], ARGV[9])
+redis.call("HSET", KEYS[3], ARGV[1], ARGV[10])
+
+return 1
+`)
+
 type DBDriverParameters struct {
 	KeyPrefix string
 }
@@ -728,8 +756,6 @@ func (rc *RedisDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 }
 
 // SetRepoReference sets the given image data to the repo metadata.
-//
-//nolint:gocyclo // Complex function handling multiple metadata updates (referrers, tags, statistics, signatures, blobs)
 func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 	reference string, imageMeta mTypes.ImageMeta, opts ...mTypes.SetRepoReferenceOption,
 ) error {
@@ -738,7 +764,27 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 	}
 
 	options := mTypes.ApplySetRepoReferenceOptions(opts...)
+	if options.RepoByteQuotaLimit <= 0 {
+		return rc.setRepoReference(ctx, repo, reference, imageMeta, options)
+	}
 
+	for range redisRepoQuotaCommitAttempts {
+		err := rc.setRepoReference(ctx, repo, reference, imageMeta, options)
+		if !errors.Is(err, errRedisRepoReferenceConflict) {
+			return err
+		}
+	}
+
+	return zerr.ErrRepoQuotaConflict
+}
+
+// Complex function handling multiple metadata updates
+// (referrers, tags, statistics, signatures, blobs)
+//
+//nolint:gocyclo,cyclop
+func (rc *RedisDB) setRepoReference(ctx context.Context, repo string, reference string,
+	imageMeta mTypes.ImageMeta, options mTypes.SetRepoReferenceOptions,
+) error {
 	var userid string
 
 	userAc, err := reqCtx.UserAcFromContext(ctx)
@@ -770,9 +816,73 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 	}
 
 	err = rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
+		var (
+			expectedRepoMetaBytes     []byte
+			expectedRepoMetaExists    bool
+			expectedRepoBlobsBytes    []byte
+			expectedRepoBlobsExists   bool
+			expectedLastUpdatedBytes  []byte
+			expectedLastUpdatedExists bool
+		)
+
+		if options.RepoByteQuotaLimit > 0 {
+			var snapshotErr error
+			expectedRepoMetaBytes, expectedRepoMetaExists, snapshotErr = getRedisHashField(ctx, rc.Client,
+				rc.RepoMetaKey, repo)
+			if snapshotErr != nil {
+				return fmt.Errorf("failed to get repo meta snapshot for repo %s: %w", repo, snapshotErr)
+			}
+		}
+
 		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
 		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 			return err
+		}
+
+		var (
+			repoBlobs      *proto_go.RepoBlobs
+			repoBlobsBytes []byte
+		)
+
+		if options.RepoByteQuotaLimit > 0 {
+			// Load the repository blobs before mutating repository metadata so the
+			// quota check compares the candidate with the pre-commit state.
+			var snapshotErr error
+			repoBlobsBytes, expectedRepoBlobsExists, snapshotErr = getRedisHashField(ctx, rc.Client,
+				rc.RepoBlobsKey, repo)
+			if snapshotErr != nil {
+				return fmt.Errorf("failed to get repo blobs snapshot for repo %s: %w", repo, snapshotErr)
+			}
+			expectedRepoBlobsBytes = slices.Clone(repoBlobsBytes)
+
+			expectedLastUpdatedBytes, expectedLastUpdatedExists, snapshotErr = getRedisHashField(ctx, rc.Client,
+				rc.RepoLastUpdatedKey, repo)
+			if snapshotErr != nil {
+				return fmt.Errorf("failed to get repo last updated snapshot for repo %s: %w", repo, snapshotErr)
+			}
+
+			repoBlobs, err = unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+			if err != nil {
+				return err
+			}
+
+			quotaRepoMeta, ok := proto.Clone(protoRepoMeta).(*proto_go.RepoMeta)
+			if !ok {
+				return zerr.ErrRepoQuotaMetadataClone
+			}
+			quotaRepoBlobs, ok := proto.Clone(repoBlobs).(*proto_go.RepoBlobs)
+			if !ok {
+				return zerr.ErrRepoQuotaMetadataClone
+			}
+			references := []string(nil)
+			if !common.ReferenceIsDigest(reference) {
+				references = []string{reference}
+			}
+
+			if err := common.CheckRepoByteQuota(quotaRepoMeta, quotaRepoBlobs, references, imageMeta,
+				options.RepoByteQuotaLimit); err != nil {
+				return err
+			}
 		}
 
 		// 2. Referrers
@@ -864,17 +974,19 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 		}
 
 		// 4. Blobs
-		repoBlobsBytes, err := rc.Client.HGet(ctx, rc.RepoBlobsKey, repo).Bytes()
-		if err != nil && !errors.Is(err, redis.Nil) {
-			rc.Log.Error().Err(err).Str("hget", rc.RepoBlobsKey).Str("repo", repo).
-				Msg("failed to get repo blobs record")
+		if options.RepoByteQuotaLimit <= 0 {
+			repoBlobsBytes, err = rc.Client.HGet(ctx, rc.RepoBlobsKey, repo).Bytes()
+			if err != nil && !errors.Is(err, redis.Nil) {
+				rc.Log.Error().Err(err).Str("hget", rc.RepoBlobsKey).Str("repo", repo).
+					Msg("failed to get repo blobs record")
 
-			return fmt.Errorf("failed to get repo blobs record for repo %s: %w", repo, err)
-		}
+				return fmt.Errorf("failed to get repo blobs record for repo %s: %w", repo, err)
+			}
 
-		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
-		if err != nil {
-			return err
+			repoBlobs, err = unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+			if err != nil {
+				return err
+			}
 		}
 
 		protoRepoMeta, repoBlobs = common.AddImageMetaToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta)
@@ -893,6 +1005,12 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 		repoMetaBlob, err := proto.Marshal(protoRepoMeta)
 		if err != nil {
 			return err
+		}
+
+		if options.RepoByteQuotaLimit > 0 {
+			return rc.commitRepoReferenceWithCAS(ctx, repo, expectedRepoMetaBytes, expectedRepoMetaExists,
+				expectedRepoBlobsBytes, expectedRepoBlobsExists, expectedLastUpdatedBytes,
+				expectedLastUpdatedExists, protoTimeBlob, repoBlobsBytes, repoMetaBlob)
 		}
 
 		_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
@@ -924,6 +1042,55 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 	})
 
 	return err
+}
+
+func getRedisHashField(ctx context.Context, client redis.Cmdable, key, field string) ([]byte, bool, error) {
+	value, err := client.HGet(ctx, key, field).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+
+	return value, true, nil
+}
+
+func (rc *RedisDB) commitRepoReferenceWithCAS(ctx context.Context, repo string,
+	expectedRepoMeta []byte, repoMetaExists bool, expectedRepoBlobs []byte, repoBlobsExists bool,
+	expectedLastUpdated []byte, lastUpdatedExists bool, lastUpdated, repoBlobs, repoMeta []byte,
+) error {
+	value := func(data []byte) []byte {
+		if data == nil {
+			return []byte{}
+		}
+
+		return data
+	}
+
+	exists := func(found bool) string {
+		if found {
+			return "1"
+		}
+
+		return "0"
+	}
+
+	result, err := redisRepoReferenceCASScript.Run(ctx, rc.Client,
+		[]string{rc.RepoMetaKey, rc.RepoBlobsKey, rc.RepoLastUpdatedKey},
+		repo, exists(repoMetaExists), value(expectedRepoMeta),
+		exists(repoBlobsExists), value(expectedRepoBlobs),
+		exists(lastUpdatedExists), value(expectedLastUpdated),
+		repoMeta, repoBlobs, lastUpdated).Result()
+	if err != nil {
+		return err
+	}
+
+	if result != int64(1) {
+		return errRedisRepoReferenceConflict
+	}
+
+	return nil
 }
 
 // SearchRepos searches for repos given a search string.

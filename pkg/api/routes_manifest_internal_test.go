@@ -274,6 +274,32 @@ type delayedManifestMetaDB struct {
 	release chan struct{}
 }
 
+type delayedQuotaProjectionMetaDB struct {
+	mTypes.MetaDB
+
+	entered chan struct{}
+	release chan struct{}
+	mu      sync.Mutex
+	calls   int
+}
+
+func (db *delayedQuotaProjectionMetaDB) GetRepoSizeWithCandidate(ctx context.Context, repo string,
+	references []string, imageMeta mTypes.ImageMeta,
+) (int64, int64, error) {
+	current, projected, err := db.MetaDB.GetRepoSizeWithCandidate(ctx, repo, references, imageMeta)
+
+	db.mu.Lock()
+	db.calls++
+	if db.calls == 2 {
+		close(db.entered)
+	}
+	db.mu.Unlock()
+
+	<-db.release
+
+	return current, projected, err
+}
+
 func (db *delayedManifestMetaDB) SetRepoReference(ctx context.Context, repo, reference string,
 	imageMeta mTypes.ImageMeta, opts ...mTypes.SetRepoReferenceOption,
 ) error {
@@ -449,4 +475,106 @@ func TestManifestMutationsKeepMetaDBConsistent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIndependentControllersEnforceRepoByteQuotaAtMetaDBCommit(t *testing.T) {
+	rootDir := t.TempDir()
+	logger := log.NewTestLogger()
+	store := local.NewImageStore(rootDir, false, false, logger,
+		monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+	driver, err := boltdb.GetBoltDriver(boltdb.DBParameters{RootDir: t.TempDir()})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, driver.Close()) })
+	realMetaDB, err := boltdb.New(driver, logger)
+	require.NoError(t, err)
+
+	sharedMetaDB := &delayedQuotaProjectionMetaDB{
+		MetaDB:  realMetaDB,
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+
+	conf1 := config.New()
+	conf2 := config.New()
+	controller1 := &Controller{
+		Config:          conf1,
+		Log:             logger,
+		MetaDB:          sharedMetaDB,
+		StoreController: storage.StoreController{DefaultStore: store},
+	}
+	controller2 := &Controller{
+		Config:          conf2,
+		Log:             logger,
+		MetaDB:          sharedMetaDB,
+		StoreController: storage.StoreController{DefaultStore: store},
+	}
+	handler1 := &RouteHandler{c: controller1}
+	handler2 := &RouteHandler{c: controller2}
+
+	first := image.CreateRandomImage()
+	require.NoError(t, image.WriteImageToFileSystem(first, "repo", "base", controller1.StoreController))
+	firstBody, err := json.Marshal(first.Manifest)
+	require.NoError(t, err)
+
+	seedRequest := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/base", bytes.NewReader(firstBody))
+	seedRequest = mux.SetURLVars(seedRequest, map[string]string{"name": "repo", "reference": "base"})
+	seedRequest.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
+	seedResponse := httptest.NewRecorder()
+	handler1.UpdateManifest(seedResponse, seedRequest)
+	require.Equal(t, http.StatusCreated, seedResponse.Code, seedResponse.Body.String())
+
+	seedMeta, err := realMetaDB.GetRepoMeta(t.Context(), "repo")
+	require.NoError(t, err)
+
+	candidateBodies := make([][]byte, 2)
+	for index, value := range []string{"a", "b"} {
+		candidate := first.Manifest
+		candidate.Annotations = map[string]string{"quota-test": strings.Repeat(value, 64)}
+		candidateBodies[index], err = json.Marshal(candidate)
+		require.NoError(t, err)
+	}
+
+	limit := seedMeta.Size + int64(len(candidateBodies[0]))
+	conf1.Storage.MaxRepoBytes = limit
+	conf2.Storage.MaxRepoBytes = limit
+
+	run := func(handler *RouteHandler, reference string, body []byte) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPut, "/v2/repo/manifests/"+reference, bytes.NewReader(body))
+		request = mux.SetURLVars(request, map[string]string{"name": "repo", "reference": reference})
+		request.Header.Set("Content-Type", ispec.MediaTypeImageManifest)
+		response := httptest.NewRecorder()
+		handler.UpdateManifest(response, request)
+
+		return response
+	}
+
+	responses := make(chan *httptest.ResponseRecorder, 2)
+	go func() { responses <- run(handler1, "candidate-a", candidateBodies[0]) }()
+	go func() { responses <- run(handler2, "candidate-b", candidateBodies[1]) }()
+
+	select {
+	case <-sharedMetaDB.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("independent controllers did not reach quota projection together")
+	}
+	close(sharedMetaDB.release)
+
+	statuses := []int{(<-responses).Code, (<-responses).Code}
+	created := 0
+	rejected := 0
+	for _, status := range statuses {
+		switch status {
+		case http.StatusCreated:
+			created++
+		case http.StatusRequestEntityTooLarge:
+			rejected++
+		}
+	}
+
+	require.Equal(t, 1, created)
+	require.Equal(t, 1, rejected)
+
+	finalMeta, err := realMetaDB.GetRepoMeta(t.Context(), "repo")
+	require.NoError(t, err)
+	require.LessOrEqual(t, finalMeta.Size, limit)
 }

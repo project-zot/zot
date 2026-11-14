@@ -42,6 +42,10 @@ type DynamoDB struct {
 	Log                log.Logger
 }
 
+var errDynamoRepoReferenceConflict = errors.New("dynamo repository reference changed during quota commit")
+
+const dynamoRepoQuotaCommitAttempts = 3
+
 func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger,
 ) (*DynamoDB, error) {
 	dynamoWrapper := DynamoDB{
@@ -409,6 +413,97 @@ func (dwr *DynamoDB) getProtoRepoMetaWithConsistency(ctx context.Context, repo s
 	return protoRepoMeta, nil
 }
 
+func (dwr *DynamoDB) getRepoMetaRecord(ctx context.Context, repo string, consistentRead bool,
+) (*proto_go.RepoMeta, []byte, bool, error) {
+	input := &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoMetaTablename),
+		Key: map[string]types.AttributeValue{
+			"TableKey": &types.AttributeValueMemberS{Value: repo},
+		},
+	}
+	if consistentRead {
+		input.ConsistentRead = aws.Bool(true)
+	}
+
+	resp, err := dwr.Client.GetItem(ctx, input)
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	protoRepoMeta := &proto_go.RepoMeta{Name: repo}
+
+	var blob []byte
+	if resp.Item != nil {
+		if err := attributevalue.Unmarshal(resp.Item["RepoMeta"], &blob); err != nil {
+			return nil, nil, false, err
+		}
+		if len(blob) > 0 {
+			if err := proto.Unmarshal(blob, protoRepoMeta); err != nil {
+				return nil, nil, false, err
+			}
+			common.StripSignatureLayerContent(protoRepoMeta)
+		}
+	}
+
+	if protoRepoMeta.Tags == nil {
+		protoRepoMeta.Tags = map[string]*proto_go.TagDescriptor{"": {}}
+	}
+	if protoRepoMeta.Statistics == nil {
+		protoRepoMeta.Statistics = map[string]*proto_go.DescriptorStatistics{"": {}}
+	}
+	if protoRepoMeta.Signatures == nil {
+		protoRepoMeta.Signatures = map[string]*proto_go.ManifestSignatures{"": {}}
+	}
+	if protoRepoMeta.Referrers == nil {
+		protoRepoMeta.Referrers = map[string]*proto_go.ReferrersInfo{"": {}}
+	}
+	if len(blob) == 0 || resp.Item == nil {
+		return protoRepoMeta, nil, false, nil
+	}
+
+	return protoRepoMeta, blob, true, nil
+}
+
+func (dwr *DynamoDB) getRepoBlobsRecord(ctx context.Context, repo string, consistentRead bool,
+) (*proto_go.RepoBlobs, []byte, bool, error) {
+	input := &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoBlobsTablename),
+		Key: map[string]types.AttributeValue{
+			"TableKey": &types.AttributeValueMemberS{Value: repo},
+		},
+	}
+	if consistentRead {
+		input.ConsistentRead = aws.Bool(true)
+	}
+
+	resp, err := dwr.Client.GetItem(ctx, input)
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	repoBlobs := &proto_go.RepoBlobs{Name: repo}
+
+	var blob []byte
+	if resp.Item != nil {
+		if err := attributevalue.Unmarshal(resp.Item["RepoBlobsInfo"], &blob); err != nil {
+			return nil, nil, false, err
+		}
+		if len(blob) > 0 {
+			if err := proto.Unmarshal(blob, repoBlobs); err != nil {
+				return nil, nil, false, err
+			}
+		}
+	}
+	if repoBlobs.Blobs == nil {
+		repoBlobs.Blobs = map[string]*proto_go.BlobInfo{"": {}}
+	}
+	if len(blob) == 0 || resp.Item == nil {
+		return repoBlobs, nil, false, nil
+	}
+
+	return repoBlobs, blob, true, nil
+}
+
 func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, reference string,
 	imageMeta mTypes.ImageMeta, opts ...mTypes.SetRepoReferenceOption,
 ) error {
@@ -417,7 +512,23 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 	}
 
 	options := mTypes.ApplySetRepoReferenceOptions(opts...)
+	if options.RepoByteQuotaLimit <= 0 {
+		return dwr.setRepoReference(ctx, repo, reference, imageMeta, options)
+	}
 
+	for range dynamoRepoQuotaCommitAttempts {
+		err := dwr.setRepoReference(ctx, repo, reference, imageMeta, options)
+		if !errors.Is(err, errDynamoRepoReferenceConflict) {
+			return err
+		}
+	}
+
+	return zerr.ErrRepoQuotaConflict
+}
+
+func (dwr *DynamoDB) setRepoReference(ctx context.Context, repo string, reference string,
+	imageMeta mTypes.ImageMeta, options mTypes.SetRepoReferenceOptions,
+) error {
 	var userid string
 
 	userAc, err := reqCtx.UserAcFromContext(ctx)
@@ -433,9 +544,56 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 		return err
 	}
 
-	repoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
-	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		return err
+	quotaEnabled := options.RepoByteQuotaLimit > 0
+
+	var repoMeta *proto_go.RepoMeta
+
+	var (
+		expectedRepoMeta                []byte
+		expectedRepoBlobs               []byte
+		repoMetaExists, repoBlobsExists bool
+		repoBlobs                       *proto_go.RepoBlobs
+	)
+	if quotaEnabled {
+		repoMeta, expectedRepoMeta, repoMetaExists, err = dwr.getRepoMetaRecord(ctx, repo, true)
+		if err != nil {
+			return err
+		}
+
+		repoBlobs, expectedRepoBlobs, repoBlobsExists, err = dwr.getRepoBlobsRecord(ctx, repo, true)
+		if err != nil {
+			return err
+		}
+	} else {
+		repoMeta, err = dwr.getProtoRepoMeta(ctx, repo)
+		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			return err
+		}
+
+		repoBlobs, err = dwr.getProtoRepoBlobs(ctx, repo)
+		if err != nil {
+			return err
+		}
+	}
+
+	if quotaEnabled {
+		quotaRepoMeta, ok := proto.Clone(repoMeta).(*proto_go.RepoMeta)
+		if !ok {
+			return zerr.ErrRepoQuotaMetadataClone
+		}
+		quotaRepoBlobs, ok := proto.Clone(repoBlobs).(*proto_go.RepoBlobs)
+		if !ok {
+			return zerr.ErrRepoQuotaMetadataClone
+		}
+		references := []string(nil)
+		if !common.ReferenceIsDigest(reference) {
+			references = []string{reference}
+		}
+
+		if err := common.CheckRepoByteQuota(quotaRepoMeta, quotaRepoBlobs, references, imageMeta,
+			options.RepoByteQuotaLimit); err != nil {
+			return err
+		}
 	}
 
 	// 2. Referrers
@@ -527,12 +685,12 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 	}
 
 	// 4. Blobs
-	repoBlobs, err := dwr.getProtoRepoBlobs(ctx, repo)
-	if err != nil {
-		return err
-	}
-
 	repoMeta, repoBlobs = common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, reference, imageMeta)
+
+	if quotaEnabled {
+		return dwr.setRepoReferenceAtomic(ctx, repo, expectedRepoMeta, repoMetaExists, expectedRepoBlobs,
+			repoBlobsExists, repoMeta, repoBlobs)
+	}
 
 	err = dwr.setRepoBlobsInfo(repo, repoBlobs) //nolint: contextcheck
 	if err != nil {
@@ -540,6 +698,122 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 	}
 
 	return dwr.setProtoRepoMeta(repo, repoMeta) //nolint: contextcheck
+}
+
+func (dwr *DynamoDB) setRepoReferenceAtomic(ctx context.Context, repo string,
+	expectedRepoMeta []byte, repoMetaExists bool, expectedRepoBlobs []byte, repoBlobsExists bool,
+	repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs,
+) error {
+	repoMetaBlob, err := proto.Marshal(repoMeta)
+	if err != nil {
+		return err
+	}
+	repoMetaAttribute, err := attributevalue.Marshal(repoMetaBlob)
+	if err != nil {
+		return err
+	}
+
+	repoBlobsBlob, err := proto.Marshal(repoBlobs)
+	if err != nil {
+		return err
+	}
+	repoBlobsAttribute, err := attributevalue.Marshal(repoBlobsBlob)
+	if err != nil {
+		return err
+	}
+
+	lastUpdatedBlob, err := proto.Marshal(timestamppb.Now())
+	if err != nil {
+		return err
+	}
+	lastUpdatedAttribute, err := attributevalue.Marshal(lastUpdatedBlob)
+	if err != nil {
+		return err
+	}
+
+	metaNames := map[string]string{"#RM": "RepoMeta"}
+	metaValues := map[string]types.AttributeValue{":RepoMeta": repoMetaAttribute}
+	metaCondition := "attribute_not_exists(#RM)"
+	if repoMetaExists {
+		expectedAttribute, marshalErr := attributevalue.Marshal(expectedRepoMeta)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		metaValues[":ExpectedRepoMeta"] = expectedAttribute
+		metaCondition = "#RM = :ExpectedRepoMeta"
+	}
+
+	blobsNames := map[string]string{"#RBI": "RepoBlobsInfo", "#RLU": "RepoLastUpdated"}
+	blobsValues := map[string]types.AttributeValue{
+		":RepoBlobsInfo":   repoBlobsAttribute,
+		":RepoLastUpdated": lastUpdatedAttribute,
+	}
+	blobsCondition := "attribute_not_exists(#RBI)"
+	if repoBlobsExists {
+		expectedAttribute, marshalErr := attributevalue.Marshal(expectedRepoBlobs)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		blobsValues[":ExpectedRepoBlobs"] = expectedAttribute
+		blobsCondition = "#RBI = :ExpectedRepoBlobs"
+	}
+
+	_, err = dwr.Client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: []types.TransactWriteItem{
+			{
+				Update: &types.Update{
+					ExpressionAttributeNames:  metaNames,
+					ExpressionAttributeValues: metaValues,
+					Key: map[string]types.AttributeValue{
+						"TableKey": &types.AttributeValueMemberS{Value: repo},
+					},
+					TableName:           aws.String(dwr.RepoMetaTablename),
+					UpdateExpression:    aws.String("SET #RM = :RepoMeta"),
+					ConditionExpression: aws.String(metaCondition),
+				},
+			},
+			{
+				Update: &types.Update{
+					ExpressionAttributeNames:  blobsNames,
+					ExpressionAttributeValues: blobsValues,
+					Key: map[string]types.AttributeValue{
+						"TableKey": &types.AttributeValueMemberS{Value: repo},
+					},
+					TableName:           aws.String(dwr.RepoBlobsTablename),
+					UpdateExpression:    aws.String("SET #RBI = :RepoBlobsInfo, #RLU = :RepoLastUpdated"),
+					ConditionExpression: aws.String(blobsCondition),
+				},
+			},
+		},
+	})
+	if err != nil && isDynamoConditionalTransactionFailure(err) {
+		return errDynamoRepoReferenceConflict
+	}
+
+	return err
+}
+
+func isDynamoConditionalTransactionFailure(err error) bool {
+	if _, ok := errors.AsType[*types.TransactionConflictException](err); ok {
+		return true
+	}
+
+	transactionErr, ok := errors.AsType[*types.TransactionCanceledException](err)
+	if !ok {
+		return false
+	}
+
+	if len(transactionErr.CancellationReasons) == 0 {
+		return true
+	}
+
+	for _, reason := range transactionErr.CancellationReasons {
+		if reason.Code != nil && (*reason.Code == "ConditionalCheckFailed" || *reason.Code == "TransactionConflict") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (dwr *DynamoDB) updateRepoLastUpdated(ctx context.Context, repo string, time time.Time) error {

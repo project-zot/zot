@@ -87,7 +87,7 @@ func priorTagManifestsFromMetaDB(ctx context.Context, metaDB mTypes.MetaDB, repo
 func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedMetaTags []string, mediaType string,
 	digest godigest.Digest,
 	body []byte, storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
-	priorTagManifests map[string]priorTagManifest,
+	priorTagManifests map[string]priorTagManifest, setOpts ...mTypes.SetRepoReferenceOption,
 ) {
 	imgStore := storeController.GetImageStore(repo)
 
@@ -137,7 +137,7 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 		}
 
 		if metaErr := OnUpdateManifest(ctx, repo, refTag, prior.mediaType, prior.digest, restoreBody,
-			storeController, metaDB, log); metaErr != nil {
+			storeController, metaDB, log, setOpts...); metaErr != nil {
 			log.Error().Err(metaErr).Str("repository", repo).Str("tag", refTag).
 				Msg("multi-tag digest push: rollback restore prior metadb failed")
 		}
@@ -157,8 +157,10 @@ func rollbackDigestManifestTags(ctx context.Context, repo string, tags, appliedM
 // when SetRepoReference does not commit) and restored with RetagManifest.
 func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, digest godigest.Digest, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
+	setOpts ...mTypes.SetRepoReferenceOption,
 ) error {
-	return onUpdateManifest(ctx, repo, reference, mediaType, digest, body, storeController, metaDB, log, nil)
+	return onUpdateManifest(ctx, repo, reference, mediaType, digest, body, storeController, metaDB, log, nil,
+		setOpts...)
 }
 
 // onUpdateManifest updates MetaDB for one tag/digest reference. When priorDigest is nil, the prior
@@ -167,6 +169,7 @@ func OnUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 // entries from its bulk priorTagManifestsFromMetaDB snapshot.
 func onUpdateManifest(ctx context.Context, repo, reference, mediaType string, digest godigest.Digest, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger, priorDigest *godigest.Digest,
+	setOpts ...mTypes.SetRepoReferenceOption,
 ) error {
 	if zcommon.IsReferrersTag(reference) {
 		return nil
@@ -191,7 +194,7 @@ func onUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 	}
 
 	err := SetImageMetaFromInput(ctx, repo, reference, mediaType, digest, body,
-		imgStore, metaDB, log)
+		imgStore, metaDB, log, setOpts...)
 	if err != nil {
 		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploading image meta was unsuccessful for tag in repo")
 
@@ -227,6 +230,7 @@ func onUpdateManifest(ctx context.Context, repo, reference, mediaType string, di
 func OnUpdateManifestDigestTags(ctx context.Context, repo string, tags []string, mediaType string,
 	digest godigest.Digest, body []byte,
 	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
+	setOpts ...mTypes.SetRepoReferenceOption,
 ) error {
 	if len(tags) == 0 {
 		return nil
@@ -249,12 +253,12 @@ func OnUpdateManifestDigestTags(ctx context.Context, repo string, tags []string,
 		}
 
 		if err := onUpdateManifest(ctx, repo, tag, mediaType, digest, body, storeController, metaDB, log,
-			&prior); err != nil {
+			&prior, setOpts...); err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 				Msg("multi-tag digest push: meta update failed; rolling back tag query additions")
 
 			rollbackDigestManifestTags(ctx, repo, tags, applied, mediaType, digest, body, storeController, metaDB, log,
-				priorTagManifests)
+				priorTagManifests, setOpts...)
 
 			return err
 		}
