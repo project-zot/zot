@@ -9,7 +9,6 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -487,7 +486,7 @@ func (b *BearerAuth) TokenExchangeHandler(ctlr *Controller) http.HandlerFunc {
 		locallyOwned = locallyOwned || requestHasLocalCredential(request)
 
 		if locallyOwned {
-			oidcTokenExchangeUnauthorized(response, authConfig)
+			oidcTokenExchangeUnauthorized(response, request, authConfig)
 
 			return
 		}
@@ -501,7 +500,7 @@ func (b *BearerAuth) TokenExchangeHandler(ctlr *Controller) http.HandlerFunc {
 			return
 		}
 
-		oidcTokenExchangeUnauthorized(response, authConfig)
+		oidcTokenExchangeUnauthorized(response, request, authConfig)
 	}
 }
 
@@ -648,13 +647,16 @@ func tokenProxyHeaderShouldBeSkipped(header string) bool {
 	}
 }
 
-func oidcTokenExchangeUnauthorized(response http.ResponseWriter, authConfig *config.AuthConfig) {
+func oidcTokenExchangeUnauthorized(response http.ResponseWriter, request *http.Request, authConfig *config.AuthConfig) {
 	realm := "zot"
 	if authConfig != nil && authConfig.Bearer != nil && authConfig.Bearer.Realm != "" {
 		realm = authConfig.Bearer.Realm
 	}
 
-	response.Header().Set("WWW-Authenticate", "Basic realm="+strconv.Quote(realm))
+	if !suppressBasicAuthChallenge(request) {
+		setBasicAuthChallenge(response, realm)
+	}
+
 	zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 }
 

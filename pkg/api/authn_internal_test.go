@@ -750,6 +750,65 @@ func TestAuthChallengeHelpers(t *testing.T) {
 	assert.Equal(t, `Basic realm="zot"`, response.Header().Get("WWW-Authenticate"))
 }
 
+func TestBrowserBasicAuthChallenges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		headers   map[string]string
+		challenge bool
+	}{
+		{name: "registry client", challenge: true},
+		{name: "docker client", headers: map[string]string{"User-Agent": "Docker-Client/28.0"}, challenge: true},
+		{name: "wildcard accept", headers: map[string]string{"Accept": "*/*"}, challenge: true},
+		{name: "json accept", headers: map[string]string{"Accept": "application/json"}, challenge: true},
+		{name: "ui client", headers: map[string]string{
+			constants.SessionClientHeaderName: constants.SessionClientHeaderValue,
+		}},
+		{name: "browser navigation", headers: map[string]string{"Sec-Fetch-Mode": "navigate"}},
+		{name: "browser fetch before ui header", headers: map[string]string{"Sec-Fetch-Mode": "cors"}},
+		{name: "browser without fetch metadata", headers: map[string]string{
+			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			conf := config.New()
+			conf.HTTP.Auth = &config.AuthConfig{HTPasswd: config.AuthHTPasswd{Path: "/tmp/htpasswd"}}
+			conf.HTTP.Realm = "zot"
+
+			request := httptest.NewRequest(http.MethodGet, "/v2/", nil)
+			for name, value := range test.headers {
+				request.Header.Set(name, value)
+			}
+
+			failure := httptest.NewRecorder()
+			authFail(failure, request, "zot", 0)
+			assert.Equal(t, http.StatusUnauthorized, failure.Code)
+			assert.Equal(t, "application/json", failure.Header().Get("Content-Type"))
+
+			version := httptest.NewRecorder()
+			(&RouteHandler{c: &Controller{Config: conf}}).CheckVersionSupport(version, request)
+			assert.Equal(t, http.StatusOK, version.Code)
+
+			token := httptest.NewRecorder()
+			oidcTokenExchangeUnauthorized(token, request, conf.HTTP.Auth)
+			assert.Equal(t, http.StatusUnauthorized, token.Code)
+
+			for _, response := range []*httptest.ResponseRecorder{failure, version, token} {
+				if test.challenge {
+					assert.Equal(t, `Basic realm="zot"`, response.Header().Get("WWW-Authenticate"))
+				} else {
+					assert.Empty(t, response.Header().Get("WWW-Authenticate"))
+				}
+			}
+		})
+	}
+}
+
 func TestCheckVersionSupportChallengeHeaders(t *testing.T) {
 	t.Parallel()
 

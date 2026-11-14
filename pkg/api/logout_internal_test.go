@@ -253,6 +253,9 @@ func TestLogoutHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 		assert.Equal(t, "application/json", res.Header.Get("Content-Type"))
+		assert.Equal(t, `"cookies"`, res.Header.Get("Clear-Site-Data"))
+		assert.Equal(t, "no-store", res.Header.Get("Cache-Control"))
+		assert.Empty(t, res.Header.Get("WWW-Authenticate"))
 		assert.JSONEq(t, `{}`, rec.Body.String(),
 			"non-OIDC logout should still return the LogoutResponse shape (endSessionUrl omitted)")
 	})
@@ -270,6 +273,39 @@ func TestLogoutHandler(t *testing.T) {
 		// recorder default (200) and body is empty.
 		assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
 		assert.Empty(t, rec.Body.Bytes())
+		assert.Empty(t, rec.Header().Get("Clear-Site-Data"))
+	})
+
+	t.Run("basic session logout clears session and requests HTTP auth cache removal", func(t *testing.T) {
+		t.Parallel()
+
+		rh := newTestRouteHandler(t)
+		loginReq := httptest.NewRequest(http.MethodGet, "/v2/", nil)
+		loginRec := httptest.NewRecorder()
+		require.NoError(t, saveUserLoggedSession(rh.c.CookieStore, loginRec, loginReq,
+			"read", "", true, rh.c.Log))
+
+		req := httptest.NewRequest(http.MethodPost, "https://zot.example.com/zot/auth/logout", nil)
+		req.SetBasicAuth("read", "password")
+		for _, cookie := range loginRec.Result().Cookies() {
+			req.AddCookie(cookie)
+		}
+
+		identity, ok := GetAuthUserFromRequestSession(rh.c.CookieStore, req, rh.c.Log)
+		require.True(t, ok)
+		assert.Equal(t, "read", identity)
+
+		rec := httptest.NewRecorder()
+		rh.Logout(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, `"cookies"`, rec.Header().Get("Clear-Site-Data"))
+		assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+		assert.Empty(t, rec.Header().Get("WWW-Authenticate"))
+		cookies := rec.Result().Cookies()
+		require.Len(t, cookies, 1)
+		assert.Equal(t, "session", cookies[0].Name)
+		assert.Equal(t, -1, cookies[0].MaxAge)
 	})
 
 	t.Run("session has provider but no matching RelyingParty → JSON with no endSessionUrl", func(t *testing.T) {
