@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path"
 	"strings"
 	"testing"
@@ -50,53 +51,83 @@ var (
 var errUpstreamUnreachable = errors.New("upstream unreachable")
 
 type mockSyncOnDemand struct {
-	syncImageFn                   func(ctx context.Context, repo, reference string) error
-	syncReferrersFn               func(ctx context.Context, repo, subjectDigestStr string, referenceTypes []string) error
-	shouldCheckUpstreamManifestFn func(repo, reference string) bool
+	syncImageFn func(ctx context.Context, repo, reference, ns string) error
+	// syncImageDigest is the digest SyncImage reports as committed.
+	syncImageDigest godigest.Digest
+	syncReferrersFn func(ctx context.Context, repo, subjectDigestStr string,
+		referenceTypes []string, ns string) error
+	shouldCheckUpstreamManifestFn func(repo, reference, ns string) bool
 	fetchManifestForStreamFn      func(ctx context.Context, repo, reference string) (manifest.Manifest, error)
 	isStreamingEnabledForRepoFn   func(repo string) bool
-	shouldQueueOnDemandSyncFn     func(repo string) bool
+	shouldQueueOnDemandSyncFn     func(repo, ns string) bool
+	// queueImageFn records a queued background sync; queueImageCalls counts them.
+	queueImageFn    func(ctx context.Context, repo, reference, ns string)
+	queueImageCalls int
+	// isTagFromNamespaceFn reports whether the local tag was committed by a sync scoped to ns.
+	isTagFromNamespaceFn func(repo, reference, ns string) bool
 	// onStreamSynced records the callback the last FetchManifestForStream call was given.
 	onStreamSynced func(manifest.Manifest)
 	streamManager  sync.StreamManager
 }
 
-func (m *mockSyncOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
+func (m *mockSyncOnDemand) SyncImage(ctx context.Context, repo, reference, ns string) (godigest.Digest,
+	error,
+) {
 	if m.syncImageFn != nil {
-		return m.syncImageFn(ctx, repo, reference)
+		return m.syncImageDigest, m.syncImageFn(ctx, repo, reference, ns)
 	}
 
-	return nil
+	return "", nil
 }
 
-func (m *mockSyncOnDemand) SyncReferrers(ctx context.Context, repo, subjectDigestStr string, referenceTypes []string,
+func (m *mockSyncOnDemand) SyncReferrers(ctx context.Context, repo, subjectDigestStr string,
+	referenceTypes []string, ns string,
 ) error {
 	if m.syncReferrersFn != nil {
-		return m.syncReferrersFn(ctx, repo, subjectDigestStr, referenceTypes)
+		return m.syncReferrersFn(ctx, repo, subjectDigestStr, referenceTypes, ns)
 	}
 
 	return nil
 }
 
-func (m *mockSyncOnDemand) ShouldCheckUpstreamManifest(repo, reference string) bool {
+func (m *mockSyncOnDemand) ShouldCheckUpstreamManifest(repo, reference, ns string) bool {
 	if m.shouldCheckUpstreamManifestFn != nil {
-		return m.shouldCheckUpstreamManifestFn(repo, reference)
+		return m.shouldCheckUpstreamManifestFn(repo, reference, ns)
 	}
 
 	return true
 }
 
-func (m *mockSyncOnDemand) ShouldQueueOnDemandSync(repo string) bool {
+func (m *mockSyncOnDemand) ShouldQueueOnDemandSync(repo, ns string) bool {
 	if m.shouldQueueOnDemandSyncFn != nil {
-		return m.shouldQueueOnDemandSyncFn(repo)
+		return m.shouldQueueOnDemandSyncFn(repo, ns)
 	}
 
 	return false
 }
 
-func (m *mockSyncOnDemand) QueueImage(context.Context, string, string) {}
+func (m *mockSyncOnDemand) QueueImage(ctx context.Context, repo, reference, ns string) {
+	m.queueImageCalls++
+
+	if m.queueImageFn != nil {
+		m.queueImageFn(ctx, repo, reference, ns)
+	}
+}
+
+func (m *mockSyncOnDemand) IsTagFromNamespace(repo, reference, nsParam string) bool {
+	if nsParam == "" {
+		return true
+	}
+
+	if m.isTagFromNamespaceFn != nil {
+		return m.isTagFromNamespaceFn(repo, reference, nsParam)
+	}
+
+	return false
+}
+
 func (m *mockSyncOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
-	onSynced func(manifest.Manifest),
+	_ string, onSynced func(manifest.Manifest),
 ) (manifest.Manifest, error) {
 	m.onStreamSynced = onSynced
 
@@ -364,8 +395,8 @@ func TestGetManifestCheckInterval(t *testing.T) {
 			syncCalls := 0
 
 			syncOnDemand := &mockSyncOnDemand{
-				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return false },
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				shouldCheckUpstreamManifestFn: func(_, _, _ string) bool { return false },
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -393,8 +424,8 @@ func TestGetManifestCheckInterval(t *testing.T) {
 			syncCalls := 0
 
 			syncOnDemand := &mockSyncOnDemand{
-				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return false },
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				shouldCheckUpstreamManifestFn: func(_, _, _ string) bool { return false },
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -420,8 +451,8 @@ func TestGetManifestCheckInterval(t *testing.T) {
 			syncCalls := 0
 
 			syncOnDemand := &mockSyncOnDemand{
-				shouldCheckUpstreamManifestFn: func(_, _ string) bool { return true },
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				shouldCheckUpstreamManifestFn: func(_, _, _ string) bool { return true },
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -467,7 +498,7 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 					return localManifest, localDigest, ispec.MediaTypeImageManifest, nil
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncInternal
 				},
 			})
@@ -490,7 +521,7 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 					return nil, "", "", zerr.ErrManifestNotFound
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncImageFilteredOut
 				},
 			})
@@ -510,7 +541,7 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 					return nil, "", "", zerr.ErrStoragePermanent
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncInternal
 				},
 			})
@@ -530,7 +561,7 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 					return nil, "", "", zerr.ErrManifestNotFound
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncInternal
 				},
 			})
@@ -545,6 +576,241 @@ func TestGetManifestOnDemandSyncErrors(t *testing.T) {
 			So(readErr, ShouldBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
 			So(string(body), ShouldContainSubstring, zerr.ErrSyncInternal.Error())
+		})
+	})
+}
+
+func TestGetManifestNamespaceScopedCache(t *testing.T) {
+	Convey("GetManifest scopes the shared local tag to the requested namespace", t, func() {
+		const reference = "v1.0"
+
+		const nsA = "registry-a.example:5000"
+
+		const nsB = "registry-b.example:5000"
+
+		newReq := func(ns string) *http.Request {
+			reqURL := "http://example.com/v2/test/manifests/" + reference
+			if ns != "" {
+				reqURL += "?ns=" + url.QueryEscape(ns)
+			}
+
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				reqURL,
+				http.NoBody,
+			)
+
+			return mux.SetURLVars(req, map[string]string{
+				"name":      "test",
+				"reference": reference,
+			})
+		}
+
+		cachedManifest := []byte(`{"schemaVersion":2}`)
+		cachedDigest := godigest.FromBytes(cachedManifest)
+
+		cachedStore := mocks.MockedImageStore{
+			GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+				return cachedManifest, cachedDigest, ispec.MediaTypeImageManifest, nil
+			},
+		}
+
+		missStore := mocks.MockedImageStore{
+			GetImageManifestFn: func(_ string, _ string) ([]byte, godigest.Digest, string, error) {
+				return nil, "", "", zerr.ErrManifestNotFound
+			},
+		}
+
+		Convey("a background-queue namespace does not serve a tag from another registry", func() {
+			// The local tag holds namespace A's manifest, last committed by A's sync.
+			syncOnDemand := &mockSyncOnDemand{
+				shouldQueueOnDemandSyncFn: func(_, ns string) bool { return ns != "" },
+				isTagFromNamespaceFn: func(_, _, ns string) bool {
+					return ns == nsA
+				},
+			}
+			handler := newSyncTestRouteHandler(t, cachedStore, syncOnDemand)
+
+			Convey("a request scoped to A is served from cache without queueing", func() {
+				rec := httptest.NewRecorder()
+				handler.GetManifest(rec, newReq(nsA))
+
+				resp := rec.Result()
+				defer resp.Body.Close()
+
+				So(resp.StatusCode, ShouldEqual, http.StatusOK)
+				So(resp.Header.Get(constants.DistContentDigestKey), ShouldEqual, cachedDigest.String())
+				So(syncOnDemand.queueImageCalls, ShouldEqual, 0)
+			})
+
+			Convey("a request scoped to B queues B's sync and stays a scoped miss", func() {
+				var queuedNS string
+
+				syncOnDemand.queueImageFn = func(_ context.Context, _, _, ns string) {
+					queuedNS = ns
+				}
+
+				rec := httptest.NewRecorder()
+				handler.GetManifest(rec, newReq(nsB))
+
+				resp := rec.Result()
+				defer resp.Body.Close()
+
+				So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+				So(queuedNS, ShouldEqual, nsB)
+			})
+
+			Convey("an unscoped request serves the shared tag regardless of its origin", func() {
+				rec := httptest.NewRecorder()
+				handler.GetManifest(rec, newReq(""))
+
+				resp := rec.Result()
+				defer resp.Body.Close()
+
+				So(resp.StatusCode, ShouldEqual, http.StatusOK)
+				So(syncOnDemand.queueImageCalls, ShouldEqual, 0)
+			})
+		})
+
+		Convey("a failed namespaced sync is not masked by the shared local tag", func() {
+			syncErr := make(chan error, 1)
+
+			syncOnDemand := &mockSyncOnDemand{
+				shouldQueueOnDemandSyncFn: func(_, _ string) bool { return false },
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
+					return <-syncErr
+				},
+			}
+
+			run := func(ns string) *httptest.ResponseRecorder {
+				handler := newSyncTestRouteHandler(t, cachedStore, syncOnDemand)
+
+				rec := httptest.NewRecorder()
+				handler.GetManifest(rec, newReq(ns))
+
+				return rec
+			}
+
+			Convey("an opaque sync failure surfaces as 503 instead of the cached manifest", func() {
+				syncErr <- zerr.ErrSyncInternal
+
+				So(run(nsB).Code, ShouldEqual, http.StatusServiceUnavailable)
+			})
+
+			Convey("a not-found sync miss surfaces as 404", func() {
+				syncErr <- zerr.ErrManifestNotFound
+
+				So(run(nsB).Code, ShouldEqual, http.StatusNotFound)
+			})
+
+			Convey("a content-filter miss stays a 404, not an unexpected error", func() {
+				syncErr <- zerr.ErrSyncImageFilteredOut
+
+				So(run(nsB).Code, ShouldEqual, http.StatusNotFound)
+			})
+
+			Convey("an unscoped request keeps the cache fallback for the same failures", func() {
+				syncErr <- zerr.ErrSyncInternal
+
+				So(run("").Code, ShouldEqual, http.StatusOK)
+			})
+		})
+
+		Convey("a digest reference keeps the cache fallback under a namespace", func() {
+			digestRef := cachedDigest.String()
+
+			digestReq := func(ns string) *http.Request {
+				req := httptest.NewRequestWithContext(
+					context.Background(),
+					http.MethodGet,
+					"http://example.com/v2/manifests/"+digestRef+"?ns="+url.QueryEscape(ns),
+					http.NoBody,
+				)
+
+				return mux.SetURLVars(req, map[string]string{
+					"name":      "test",
+					"reference": digestRef,
+				})
+			}
+
+			syncOnDemand := &mockSyncOnDemand{
+				shouldQueueOnDemandSyncFn: func(_, _ string) bool { return false },
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
+					return zerr.ErrSyncInternal
+				},
+			}
+			handler := newSyncTestRouteHandler(t, cachedStore, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, digestReq(nsB))
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(resp.Header.Get(constants.DistContentDigestKey), ShouldEqual, cachedDigest.String())
+		})
+
+		Convey("a namespaced miss without a background queue syncs and keeps the scoped failure", func() {
+			syncOnDemand := &mockSyncOnDemand{
+				shouldQueueOnDemandSyncFn: func(_, _ string) bool { return false },
+				isTagFromNamespaceFn:      func(_, _, _ string) bool { return false },
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
+					return zerr.ErrSyncInternal
+				},
+			}
+			handler := newSyncTestRouteHandler(t, missStore, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq(nsB))
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusServiceUnavailable)
+		})
+
+		Convey("a successful sync serves the manifest it resolved, not the shared tag", func() {
+			// The sync committed digest A and recorded it; a concurrent namespace-B sync then
+			// re-committed the shared tag. A tag read would serve B's content, so the route
+			// must read the synced digest instead.
+			digestA := godigest.FromString("namespace-a manifest")
+			manifestA := []byte(`{"schemaVersion":2,"a":true}`)
+			manifestB := []byte(`{"schemaVersion":2,"b":true}`)
+
+			racedStore := mocks.MockedImageStore{
+				GetImageManifestFn: func(_ string, reference string) ([]byte, godigest.Digest, string, error) {
+					if reference == digestA.String() {
+						return manifestA, digestA, ispec.MediaTypeImageManifest, nil
+					}
+
+					// The tag now points at B's re-commit (or holds no provenance at all).
+					return manifestB, godigest.FromBytes(manifestB), ispec.MediaTypeImageManifest, nil
+				},
+			}
+
+			syncOnDemand := &mockSyncOnDemand{
+				shouldQueueOnDemandSyncFn: func(_, _ string) bool { return false },
+				syncImageDigest:           digestA,
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
+					return nil
+				},
+			}
+			handler := newSyncTestRouteHandler(t, racedStore, syncOnDemand)
+
+			rec := httptest.NewRecorder()
+			handler.GetManifest(rec, newReq(nsA))
+
+			resp := rec.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+			So(resp.Header.Get(constants.DistContentDigestKey), ShouldEqual, digestA.String())
+
+			body, readErr := io.ReadAll(resp.Body)
+			So(readErr, ShouldBeNil)
+			So(body, ShouldResemble, manifestA)
 		})
 	})
 }
@@ -573,7 +839,7 @@ func TestCheckManifestOnDemandSyncErrors(t *testing.T) {
 					return nil, "", "", zerr.ErrManifestNotFound
 				},
 			}, &mockSyncOnDemand{
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncInternal
 				},
 			})
@@ -1163,7 +1429,7 @@ func TestGetManifestStreaming(t *testing.T) {
 				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
 					return man, nil
 				},
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -1238,7 +1504,7 @@ func TestGetManifestStreaming(t *testing.T) {
 				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
 					return nil, zerr.ErrStreamManagerNotInitialized
 				},
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -1276,7 +1542,7 @@ func TestGetManifestStreaming(t *testing.T) {
 				fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
 					return nil, zerr.ErrSyncNotStreamed
 				},
-				syncImageFn: func(_ context.Context, _, _ string) error {
+				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					syncCalls++
 
 					return nil
@@ -1314,7 +1580,7 @@ func TestGetManifestStreaming(t *testing.T) {
 					fetchManifestForStreamFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
 						return nil, fmt.Errorf("%w: %w", zerr.ErrSyncNotStreamed, testCase.syncErr)
 					},
-					syncImageFn: func(_ context.Context, _, _ string) error {
+					syncImageFn: func(_ context.Context, _, _, _ string) error {
 						syncCalls++
 
 						return nil
@@ -1359,7 +1625,7 @@ func TestGetReferrers(t *testing.T) {
 			var syncedRepo, syncedDigest string
 
 			syncOnDemand := &mockSyncOnDemand{
-				syncReferrersFn: func(_ context.Context, repo, subjectDigest string, _ []string) error {
+				syncReferrersFn: func(_ context.Context, repo, subjectDigest string, _ []string, _ string) error {
 					syncedRepo = repo
 					syncedDigest = subjectDigest
 
@@ -1385,7 +1651,7 @@ func TestGetReferrers(t *testing.T) {
 
 		Convey("still serves the local store's referrers when the on-demand sync fails", func() {
 			syncOnDemand := &mockSyncOnDemand{
-				syncReferrersFn: func(_ context.Context, _, _ string, _ []string) error {
+				syncReferrersFn: func(_ context.Context, _, _ string, _ []string, _ string) error {
 					return errUpstreamUnreachable
 				},
 			}

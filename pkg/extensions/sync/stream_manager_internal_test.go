@@ -74,7 +74,7 @@ func TestChunkingStreamManagerStoreAndRemove(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 	assert.Same(t, streamable, staged, "a fresh stage must return the caller's own manifest")
 
@@ -123,7 +123,7 @@ func TestChunkingStreamManagerStoreDockerManifest(t *testing.T) {
 	require.Equal(t, manifest.MediaTypeDocker2Manifest, manifest.GetMediaType(streamable.referenceManifest),
 		"test setup: must actually produce a Docker schema2 manifest, not OCI")
 
-	staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 	assert.Same(t, streamable, staged)
 
@@ -153,9 +153,9 @@ func TestChunkingStreamManagerRemoveDoesNotBlockOtherBlobs(t *testing.T) {
 	streamableB, closeB := newTestStreamableManifest(t, regClient, root, "repo-b", predictTestTag)
 	defer closeB()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamableA)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamableA, nil)
 	require.NoError(t, err)
-	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, streamableB)
+	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, streamableB, nil)
 	require.NoError(t, err)
 
 	digestA := streamConfigDesc(t, streamableA).Digest.String()
@@ -223,7 +223,7 @@ func TestChunkingStreamManagerDrainSharesOneDeadline(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	// A stalled client that never unsubscribes, on every blob of the image.
@@ -271,7 +271,7 @@ func TestChunkingStreamManagerMaxConcurrentStreams(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.Error(t, err)
 	// The cap error must stay distinct so callers can fall back to a plain sync.
 	assert.ErrorIs(t, err, zerr.ErrTooManyConcurrentStreams)
@@ -327,9 +327,9 @@ func TestChunkingStreamManagerSharedBlobAcrossRepos(t *testing.T) {
 	streamableB, closeB := newTestStreamableManifest(t, regClient, root, "repo-b", predictTestTag)
 	defer closeB()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamableA)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamableA, nil)
 	require.NoError(t, err)
-	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, streamableB)
+	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, streamableB, nil)
 	require.NoError(t, err)
 
 	configDigest := streamConfigDesc(t, streamableA).Digest.String()
@@ -392,7 +392,7 @@ func TestChunkingStreamManagerConnectClientCrossRepoDenied(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	configDigest := streamConfigDesc(t, streamable).Digest.String()
@@ -420,7 +420,7 @@ func TestChunkingStreamManagerCachedBlobInfo(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	desc := streamConfigDesc(t, streamable)
@@ -461,7 +461,7 @@ func TestChunkingStreamManagerRemoveStreamingImageDeletesTempFile(t *testing.T) 
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	configDigest := streamConfigDesc(t, streamable).Digest.String()
@@ -508,7 +508,7 @@ func TestChunkingStreamManagerDownloadStreamedBlobs(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	imager, ok := streamable.referenceManifest.(manifest.Imager)
@@ -571,9 +571,9 @@ func TestChunkingStreamManagerDownloadSharedAcrossSyncs(t *testing.T) {
 	base, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", "tag-1", NewStreamableManifest(base.referenceManifest))
+	_, err := sm.StoreImageForStreaming("repo-a", "tag-1", NewStreamableManifest(base.referenceManifest), nil)
 	require.NoError(t, err)
-	_, err = sm.StoreImageForStreaming("repo-a", "tag-2", NewStreamableManifest(base.referenceManifest))
+	_, err = sm.StoreImageForStreaming("repo-a", "tag-2", NewStreamableManifest(base.referenceManifest), nil)
 	require.NoError(t, err)
 
 	fetcher := newStoreBlobFetcher(storeCtrl, "repo-a")
@@ -614,9 +614,9 @@ func TestChunkingStreamManagerDownloadFailedFetch(t *testing.T) {
 	base, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", "tag-1", NewStreamableManifest(base.referenceManifest))
+	_, err := sm.StoreImageForStreaming("repo-a", "tag-1", NewStreamableManifest(base.referenceManifest), nil)
 	require.NoError(t, err)
-	_, err = sm.StoreImageForStreaming("repo-a", "tag-2", NewStreamableManifest(base.referenceManifest))
+	_, err = sm.StoreImageForStreaming("repo-a", "tag-2", NewStreamableManifest(base.referenceManifest), nil)
 	require.NoError(t, err)
 
 	imager, ok := base.referenceManifest.(manifest.Imager)
@@ -671,9 +671,9 @@ func TestChunkingStreamManagerStreamsNamespacedBySource(t *testing.T) {
 	fromB := NewStreamableManifest(base.referenceManifest)
 	fromB.source = "1"
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, fromA)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, fromA, nil)
 	require.NoError(t, err)
-	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, fromB)
+	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, fromB, nil)
 	require.NoError(t, err)
 
 	desc := streamConfigDesc(t, base)
@@ -742,7 +742,7 @@ func TestChunkingStreamManagerConnectClientRejectsFailedStream(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	desc := streamConfigDesc(t, streamable)
@@ -779,7 +779,7 @@ func TestChunkingStreamManagerRejectsIndex(t *testing.T) {
 
 	require.True(t, streamable.referenceManifest.IsList(), "test setup: must be an index")
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.ErrorIs(t, err, zerr.ErrSyncInvalidManifestMediaType)
 
 	_, ok := sm.StreamingImageManifest("repo-a", predictTestTag)
@@ -803,7 +803,7 @@ func TestChunkingStreamManagerDeleteStreamFilePermissionError(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	configDigest := streamConfigDesc(t, streamable).Digest.String()
@@ -846,9 +846,9 @@ func TestChunkingStreamManagerAmbiguousSourceNotStreamed(t *testing.T) {
 	fromB := NewStreamableManifest(base.referenceManifest)
 	fromB.source = "1"
 
-	_, err := sm.StoreImageForStreaming("repo-a", "tag-a", fromA)
+	_, err := sm.StoreImageForStreaming("repo-a", "tag-a", fromA, nil)
 	require.NoError(t, err)
-	_, err = sm.StoreImageForStreaming("repo-a", "tag-b", fromB)
+	_, err = sm.StoreImageForStreaming("repo-a", "tag-b", fromB, nil)
 	require.NoError(t, err)
 
 	digest := streamConfigDesc(t, base).Digest.String()
@@ -891,7 +891,7 @@ func TestChunkingStreamManagerCachedBlobInfoHidesFailedStream(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	desc := streamConfigDesc(t, streamable)
@@ -945,16 +945,16 @@ func TestChunkingStreamManagerOnSyncedCallbacks(t *testing.T) {
 		stager := NewStreamableManifest(base.referenceManifest)
 		stager.onSynced = []func(manifest.Manifest){record("stager")}
 
-		_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, stager)
+		_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, stager, nil)
 		require.NoError(t, err)
 
-		_, ok := sm.JoinStreamingImage("repo-a", predictTestTag, record("joiner"))
+		_, ok := sm.JoinStreamingImage("repo-a", predictTestTag, nil, record("joiner"))
 		require.True(t, ok)
 
 		loser := NewStreamableManifest(base.referenceManifest)
 		loser.onSynced = []func(manifest.Manifest){record("loser")}
 
-		staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, loser)
+		staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, loser, nil)
 		require.NoError(t, err)
 		require.Same(t, stager, staged)
 
@@ -967,9 +967,112 @@ func TestChunkingStreamManagerOnSyncedCallbacks(t *testing.T) {
 		}
 
 		// Nothing left to join once unstaged.
-		_, ok = sm.JoinStreamingImage("repo-a", predictTestTag, record("late"))
+		_, ok = sm.JoinStreamingImage("repo-a", predictTestTag, nil, record("late"))
 		assert.False(t, ok)
 	}
+}
+
+// TestChunkingStreamManagerRejectedJoinTakesNoCallback: accept and callback registration are
+// atomic, so a rejected join (e.g. for another namespace) never gets its callback recorded on the
+// existing stream.
+func TestChunkingStreamManagerRejectedJoinTakesNoCallback(t *testing.T) {
+	t.Parallel()
+
+	root, storeCtrl := newTestStore(t)
+	regClient := regclient.New()
+
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
+
+	sm := newTestStreamManager(t, storeCtrl, 0)
+
+	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
+	defer closeManifest()
+
+	streamable.registryHosts = []string{"registry.k8s.io"}
+
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
+	require.NoError(t, err)
+
+	calls := 0
+	record := func(manifest.Manifest) { calls++ }
+
+	acceptK8s := func(m *StreamableManifest) bool { return m.MatchesNamespace("registry.k8s.io") }
+	acceptDocker := func(m *StreamableManifest) bool { return m.MatchesNamespace("docker.io") }
+
+	_, ok := sm.JoinStreamingImage("repo-a", predictTestTag, acceptDocker, record)
+	assert.False(t, ok)
+
+	sm.streamLock.Lock()
+	assert.Empty(t, streamable.onSynced, "a rejected join must not register its callback")
+	sm.streamLock.Unlock()
+
+	_, ok = sm.JoinStreamingImage("repo-a", predictTestTag, acceptK8s, record)
+	require.True(t, ok)
+
+	sm.RemoveStreamingImage("repo-a", predictTestTag, true)
+	assert.Equal(t, 1, calls)
+}
+
+// TestChunkingStreamManagerRejectedCollisionTakesNoCallback: like JoinStreamingImage,
+// StoreImageForStreaming's collision path validates the existing manifest under streamLock, so a
+// staged manifest from another registry is neither adopted nor given callbacks.
+func TestChunkingStreamManagerRejectedCollisionTakesNoCallback(t *testing.T) {
+	t.Parallel()
+
+	root, storeCtrl := newTestStore(t)
+	regClient := regclient.New()
+
+	writeOCISingleManifest(t, storeCtrl, "repo-a")
+
+	sm := newTestStreamManager(t, storeCtrl, 0)
+
+	stagedManifest, closeStaged := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
+	defer closeStaged()
+
+	stagedManifest.registryHosts = []string{"registry.k8s.io"}
+
+	first, err := sm.StoreImageForStreaming("repo-a", predictTestTag, stagedManifest, nil)
+	require.NoError(t, err)
+	require.Same(t, stagedManifest, first)
+
+	calls := 0
+	record := func(manifest.Manifest) { calls++ }
+
+	// A manifest staged before any registryHosts was known: matches no namespace.
+	orphan, closeOrphan := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
+	defer closeOrphan()
+
+	orphan.onSynced = []func(manifest.Manifest){record}
+
+	sm.streamLock.Lock()
+	callbacksBefore := len(stagedManifest.onSynced)
+	sm.streamLock.Unlock()
+
+	_, err = sm.StoreImageForStreaming("repo-a", predictTestTag, orphan,
+		func(existing *StreamableManifest) bool { return existing.MatchesNamespace("docker.io") })
+	assert.ErrorIs(t, err, zerr.ErrSyncStagedNamespaceMismatch)
+
+	sm.streamLock.Lock()
+	assert.Len(t, stagedManifest.onSynced, callbacksBefore,
+		"a rejected collision must not register its callback on the existing stream")
+	stillStaged := sm.streamingRefs["repo-a:"+predictTestTag]
+	sm.streamLock.Unlock()
+	assert.Same(t, stagedManifest, stillStaged, "a rejected collision must leave the staged entry")
+
+	// The staged entry remains usable for its own namespace.
+	accepted, closeAccepted := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
+	defer closeAccepted()
+
+	accepted.onSynced = []func(manifest.Manifest){record}
+
+	got, err := sm.StoreImageForStreaming("repo-a", predictTestTag, accepted,
+		func(existing *StreamableManifest) bool { return existing.MatchesNamespace("registry.k8s.io") })
+	require.NoError(t, err)
+	require.Same(t, stagedManifest, got)
+
+	sm.RemoveStreamingImage("repo-a", predictTestTag, true)
+	assert.Equal(t, 1, calls,
+		"only the accepted joiner's callback rides the staged sync; the rejected one never runs")
 }
 
 // TestChunkingStreamManagerSkipsLocalBlobs: blobs the repo already stores get no stream, so they
@@ -994,7 +1097,7 @@ func TestChunkingStreamManagerSkipsLocalBlobs(t *testing.T) {
 		defer closeManifest()
 
 		// Config and layers are all in repo-a: before, this needed one slot each.
-		staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+		staged, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 		require.NoError(t, err)
 		require.Same(t, streamable, staged)
 
@@ -1028,9 +1131,9 @@ func TestChunkingStreamManagerSkipsLocalBlobs(t *testing.T) {
 		forA, closeA := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 		defer closeA()
 
-		_, err := sm.StoreImageForStreaming("repo-b", predictTestTag, forB)
+		_, err := sm.StoreImageForStreaming("repo-b", predictTestTag, forB, nil)
 		require.NoError(t, err)
-		_, err = sm.StoreImageForStreaming("repo-a", predictTestTag, forA)
+		_, err = sm.StoreImageForStreaming("repo-a", predictTestTag, forA, nil)
 		require.NoError(t, err)
 
 		sm.streamLock.Lock()
@@ -1131,7 +1234,7 @@ func TestBaseServiceDownloadStreamedBlobsLinksIntoLayout(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-x", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-x", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	service := &BaseService{rc: regClient, streamManager: sm, log: log.NewTestLogger()}
@@ -1223,7 +1326,7 @@ func TestChunkingStreamManagerRejectsInvalidDigest(t *testing.T) {
 		man, err := manifest.New(manifest.WithRaw(raw))
 		require.NoError(t, err, "%s: regclient accepts the descriptor as-is", name)
 
-		_, err = sm.StoreImageForStreaming("repo-a", predictTestTag, NewStreamableManifest(man))
+		_, err = sm.StoreImageForStreaming("repo-a", predictTestTag, NewStreamableManifest(man), nil)
 		require.ErrorIs(t, err, zerr.ErrSyncFailedToPrepareManifest, name)
 
 		_, staged := sm.StreamingImageManifest("repo-a", predictTestTag)
@@ -1259,7 +1362,7 @@ func TestChunkingStreamManagerHasStreamsForRepo(t *testing.T) {
 
 	assert.False(t, sm.HasStreamsForRepo("repo-a"))
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	assert.True(t, sm.HasStreamsForRepo("repo-a"))
@@ -1276,7 +1379,7 @@ func TestChunkingStreamManagerHasStreamsForRepo(t *testing.T) {
 		// The real store: every blob is already in repo-a, so staging creates no stream.
 		local := NewChunkingStreamManager(concrete, 0, log.NewTestLogger())
 
-		_, err := local.StoreImageForStreaming("repo-a", predictTestTag, NewStreamableManifest(streamable.referenceManifest))
+		_, err := local.StoreImageForStreaming("repo-a", predictTestTag, NewStreamableManifest(streamable.referenceManifest), nil)
 		require.NoError(t, err)
 
 		_, staged := local.StreamingImageManifest("repo-a", predictTestTag)
@@ -1303,7 +1406,7 @@ func TestChunkingStreamManagerCapCountsDrainingStreams(t *testing.T) {
 
 	// Exactly one image's worth of streams.
 	sizing := newTestStreamManager(t, storeCtrl, 0)
-	_, err := sizing.StoreImageForStreaming("repo-a", predictTestTag, NewStreamableManifest(streamable.referenceManifest))
+	_, err := sizing.StoreImageForStreaming("repo-a", predictTestTag, NewStreamableManifest(streamable.referenceManifest), nil)
 	require.NoError(t, err)
 
 	streamCount := len(sizing.activeStreams)
@@ -1313,7 +1416,7 @@ func TestChunkingStreamManagerCapCountsDrainingStreams(t *testing.T) {
 	sm := newTestStreamManager(t, storeCtrl, streamCount)
 	sm.drainTimeout = time.Minute
 
-	_, err = sm.StoreImageForStreaming("repo-a", predictTestTag, NewStreamableManifest(streamable.referenceManifest))
+	_, err = sm.StoreImageForStreaming("repo-a", predictTestTag, NewStreamableManifest(streamable.referenceManifest), nil)
 	require.NoError(t, err)
 
 	// A client of the config's stream that won't finish on its own.
@@ -1342,7 +1445,7 @@ func TestChunkingStreamManagerCapCountsDrainingStreams(t *testing.T) {
 		return sm.draining == 1
 	}, 5*time.Second, 10*time.Millisecond, "only the stalled stream should still be draining")
 
-	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, NewStreamableManifest(streamable.referenceManifest))
+	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, NewStreamableManifest(streamable.referenceManifest), nil)
 	require.ErrorIs(t, err, zerr.ErrTooManyConcurrentStreams, "a draining stream must still hold its cap slot")
 
 	_, statErr := os.Stat(stalled.OnDiskPath())
@@ -1360,7 +1463,7 @@ func TestChunkingStreamManagerCapCountsDrainingStreams(t *testing.T) {
 	assert.Zero(t, sm.draining)
 	sm.streamLock.Unlock()
 
-	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, NewStreamableManifest(streamable.referenceManifest))
+	_, err = sm.StoreImageForStreaming("repo-b", predictTestTag, NewStreamableManifest(streamable.referenceManifest), nil)
 	require.NoError(t, err, "the slot frees once the file is deleted")
 
 	sm.RemoveStreamingImage("repo-b", predictTestTag, false)

@@ -873,6 +873,12 @@ const docTemplate = `{
                         "name": "reference",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "upstream registry namespace (e.g. docker.io, registry.k8s.io)",
+                        "name": "ns",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1085,6 +1091,12 @@ const docTemplate = `{
                         "name": "reference",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "upstream registry namespace (e.g. docker.io, ghcr.io)",
+                        "name": "ns",
+                        "in": "query"
                     }
                 ],
                 "responses": {

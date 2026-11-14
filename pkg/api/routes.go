@@ -446,6 +446,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Produce json
 // @Param   name          path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
+// @Param   ns            query   string     false       "upstream registry namespace (e.g. docker.io, ghcr.io)"
 // @Success 200 {string} string "ok"
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
@@ -476,7 +477,8 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 	}
 
 	// HEAD is not a download: pass no onStreamSynced, so it's never counted.
-	content, digest, mediaType, _, err := getImageManifest(request.Context(), rh, imgStore, name, reference, nil)
+	ns := request.URL.Query().Get("ns")
+	content, digest, mediaType, _, err := getImageManifest(request.Context(), rh, imgStore, name, reference, ns, nil)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		details["reference"] = reference
@@ -526,6 +528,7 @@ type ExtensionList struct {
 // @Produce application/vnd.oci.image.manifest.v1+json
 // @Param   name         path    string     true        "repository name"
 // @Param   reference    path    string     true        "image reference or digest"
+// @Param   ns           query   string     false        "upstream registry namespace (e.g. docker.io, registry.k8s.io)"
 // @Success 200 {object} api.ImageManifest
 // @Header  200 {string} Docker-Content-Digest "Manifest digest of the content"
 // @Failure 404 {string} string "not found"
@@ -585,7 +588,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	}
 
 	content, digest, mediaType, streamed, err := getImageManifest(request.Context(), rh, imgStore, name, reference,
-		onStreamSynced)
+		request.URL.Query().Get("ns"), onStreamSynced)
 	if err != nil {
 		details := zerr.GetDetails(err)
 		if writeStorageClassError(response, err) {
@@ -661,13 +664,14 @@ type ImageIndex struct {
 
 func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 	imgStore storageTypes.ImageStore, name string, digest godigest.Digest,
-	artifactTypes []string,
+	artifactTypes []string, nsParam string,
 ) (ispec.Index, error) {
 	if isSyncOnDemandEnabled(routeHandler.c) {
 		routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
 			Msg("trying to get updated referrers by syncing on demand")
 
-		if errSync := routeHandler.c.SyncOnDemand.SyncReferrers(ctx, name, digest.String(), artifactTypes); errSync != nil {
+		if errSync := routeHandler.c.SyncOnDemand.SyncReferrers(ctx, name, digest.String(), artifactTypes,
+			nsParam); errSync != nil {
 			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).
 				Msg("failed to sync image referrers")
 		}
@@ -721,7 +725,8 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	imgStore := rh.getImageStore(name)
 
-	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes)
+	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes,
+		request.URL.Query().Get("ns"))
 	if err != nil {
 		if writeStorageClassError(response, err) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).
@@ -3249,12 +3254,74 @@ func (rh *RouteHandler) getImageStore(name string) storageTypes.ImageStore {
 //
 // streamed means the manifest is upstream's and not committed yet, so local metadata for reference
 // may still describe an older digest.
+
+// serveOrQueueBackgroundSync serves repo:reference's local tag when a background sync can serve
+// the request, or queues the matching upstream's sync and reports the miss. The shared local tag
+// records no namespace provenance in storage itself; the sync layer tracks which namespace last
+// committed it. A namespaced request may therefore serve a hit only when that namespace is the
+// requested one: otherwise the tag is another registry's manifest, and the request is a scoped
+// miss that queues the matching upstream's sync (404 until the background sync lands, like
+// containerd mirrors). Unscoped requests serve the shared tag regardless of its origin
+// (IsTagFromNamespace only constrains namespaced requests, hence the nsParam check).
+func serveOrQueueBackgroundSync(ctx context.Context, routeHandler *RouteHandler,
+	imgStore storageTypes.ImageStore, name, reference, nsParam string,
+) ([]byte, godigest.Digest, string, bool, error) {
+	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
+	if err == nil && (nsParam == "" ||
+		routeHandler.c.SyncOnDemand.IsTagFromNamespace(name, reference, nsParam)) {
+		return content, digest, mediaType, false, nil
+	}
+
+	if err == nil {
+		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+			Str("ns", nsParam).
+			Msg("cached tag belongs to another registry, queuing namespaced on-demand sync")
+		routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference, nsParam)
+
+		return nil, "", "", false, zerr.ErrManifestNotFound
+	}
+
+	if isManifestNotFound(err) {
+		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+			Msg("manifest not found locally, queuing on-demand-in-background sync")
+		routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference, nsParam)
+	}
+
+	return content, digest, mediaType, false, err
+}
+
+// scopedSyncFailureError maps a failed namespace-scoped sync's error for a tag reference. The
+// shared local tag records no namespace provenance: after a failed namespaced sync it may hold
+// another registry's manifest, and serving it would mask the scoped failure. Digest references
+// (immutable, content-identical) and unscoped requests keep the cache fallback. Hard failures
+// surface as ErrSyncInternal (503) and not-found as ErrManifestNotFound (404); other soft
+// misses (filter, unsigned, unsupported media) carry no manifest for this namespace either, so
+// they normalize to not-found like the unscoped path. The second return reports whether the
+// caller must return the error instead of falling through to the local tag read.
+func scopedSyncFailureError(syncErr error, nsParam string, isDigest bool) (error, bool) {
+	if nsParam == "" || isDigest {
+		return nil, false
+	}
+
+	if errors.Is(syncErr, zerr.ErrSyncInternal) ||
+		errors.Is(syncErr, zerr.ErrManifestNotFound) ||
+		errors.Is(syncErr, zerr.ErrRepoNotFound) {
+		return syncErr, true
+	}
+
+	return fmt.Errorf("%w: %w", zerr.ErrManifestNotFound, syncErr), true
+}
+
 func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storageTypes.ImageStore, name,
-	reference string, onStreamSynced func(manifest.Manifest),
+	reference, nsParam string, onStreamSynced func(manifest.Manifest),
 ) ([]byte, godigest.Digest, string, bool, error) {
 	syncEnabled := isSyncOnDemandEnabled(routeHandler.c)
 
 	_, digestErr := godigest.Parse(reference)
+	// Digest references are immutable: their cached content is identical regardless of which
+	// registry supplied it, so they keep the cache fallback even for namespaced requests.
+	isDigest := digestErr == nil
+
 	if digestErr == nil {
 		// if it's a digest then return local cached image, if not found and sync enabled, then try to sync
 		content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
@@ -3263,10 +3330,10 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		}
 
 		// A digest still being streamed falls through to join that stream (see inFlightStream).
-		if routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name) &&
+		if routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name, nsParam) &&
 			!isStreamingReference(routeHandler.c, name, reference) {
 			if isManifestNotFound(err) {
-				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference)
+				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference, nsParam)
 			}
 
 			return content, digest, mediaType, false, err
@@ -3282,7 +3349,13 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		// When manifestCheckInterval is configured and a recent upstream check already
 		// validated this reference, serve the local manifest instead of contacting upstream.
 		// A local miss (for instance after garbage collection) falls through to a normal sync.
-		if !routeHandler.c.SyncOnDemand.ShouldCheckUpstreamManifest(name, reference) {
+		//
+		// The check tracker is keyed by repo:reference only: it does not record which namespaced
+		// upstream last validated the local tag. Requesting the same tag from namespace A, then B,
+		// then A can return B's manifest on the final A request, since B overwrote the shared local
+		// tag while A's check stayed fresh. Namespaced requests therefore always check upstream.
+		if nsParam == "" &&
+			!routeHandler.c.SyncOnDemand.ShouldCheckUpstreamManifest(name, reference, nsParam) {
 			content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 			if err == nil {
 				routeHandler.c.Log.Debug().Str("repository", name).Str("reference", reference).
@@ -3298,19 +3371,8 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		// older sync (pinned to the digest it served) could commit last and roll the tag back.
 		inFlightStream := isStreamingReference(routeHandler.c, name, reference)
 
-		if !inFlightStream && routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name) {
-			content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
-			if err == nil {
-				return content, digest, mediaType, false, nil
-			}
-
-			if isManifestNotFound(err) {
-				routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
-					Msg("manifest not found locally, queuing on-demand-in-background sync")
-				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference)
-			}
-
-			return content, digest, mediaType, false, err
+		if !inFlightStream && routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name, nsParam) {
+			return serveOrQueueBackgroundSync(ctx, routeHandler, imgStore, name, reference, nsParam)
 		}
 
 		// Streaming: return the upstream manifest now and sync the image in the background,
@@ -3320,8 +3382,8 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 				Bool("inFlightStream", inFlightStream).
 				Msg("streaming enabled for repo, fetching manifest directly from upstream")
 
-			fetchedManifest, errFetch := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx, name, reference,
-				onStreamSynced)
+			fetchedManifest, errFetch := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx,
+				name, reference, nsParam, onStreamSynced)
 			if errFetch == nil {
 				content, err := fetchedManifest.RawBody()
 				if err != nil {
@@ -3356,16 +3418,40 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			}
 		}
 
+		// The digest the sync committed. When known, serve it by digest below: the shared local
+		// tag can be re-committed by another namespace's concurrent sync between this sync's
+		// commit and the local read, and a digest read is immune to that.
+		var syncedDigest godigest.Digest
+
 		if !synced {
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 				Msg("trying to get updated image by syncing on demand")
 
-			syncErr = routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference)
+			syncedDigest, syncErr = routeHandler.c.SyncOnDemand.SyncImage(ctx, name, reference, nsParam)
 		}
 
 		if syncErr != nil {
 			routeHandler.c.Log.Err(syncErr).Str("repository", name).Str("reference", reference).
 				Msg("failed to sync image")
+
+			// A failed namespaced sync must not be masked by the shared local tag: it may hold
+			// another registry's manifest, and serving it would hide the scoped failure.
+			if scopedErr, scoped := scopedSyncFailureError(syncErr, nsParam, isDigest); scoped {
+				return nil, "", "", false, scopedErr
+			}
+		}
+
+		// Serve the manifest the sync resolved, not the shared tag's current content.
+		if syncedDigest != "" {
+			content, digest, mediaType, localErr := imgStore.GetImageManifest(name, syncedDigest.String())
+			if localErr == nil {
+				return content, digest, mediaType, false, nil
+			}
+
+			// The digest read failed (e.g. garbage-collected): fall through to the tag read.
+			routeHandler.c.Log.Warn().Err(localErr).Str("repository", name).
+				Str("reference", syncedDigest.String()).
+				Msg("failed to read the synced manifest by digest, falling back to the local tag")
 		}
 	}
 
