@@ -408,6 +408,31 @@ func (is *ImageStore) catalogLastExists(lastRepo string) bool {
 	return false
 }
 
+// isUploadDir reports whether name is a directory holding a repository's blob uploads or
+// sync staging. Both names start with a dot, so no repository path component matches them.
+func isUploadDir(name string) bool {
+	return name == storageConstants.BlobUploadDir || name == syncConstants.SyncBlobUploadDir
+}
+
+// isRepoContentDir reports whether the directory at rel, relative to the store root, holds
+// the content of a repository instead of repositories: an upload directory, or the blobs
+// directory of one of repos. A blobs directory that is not inside a repository can be a
+// repository itself, such as "org/blobs", as can a name only ending in blobs or .sync.
+func isRepoContentDir(rel string, repos map[string]struct{}) bool {
+	name := path.Base(rel)
+	if isUploadDir(name) {
+		return true
+	}
+
+	if name != ispec.ImageBlobsDir {
+		return false
+	}
+
+	_, ok := repos[path.Dir(rel)]
+
+	return ok
+}
+
 func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filterFn storageTypes.FilterRepoFunc,
 ) ([]string, bool, error) {
 	var lockLatency time.Time
@@ -418,6 +443,7 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
+	repos := make(map[string]struct{})
 
 	moreEntries := false
 	entries := 0
@@ -430,19 +456,17 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 			return nil
 		}
 
-		// skip .sync and .uploads dirs no need to try to validate them
-		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
-			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
-			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
-			return driver.ErrSkipDir
-		}
-
 		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
 		if err != nil {
 			return nil //nolint:nilerr // ignore paths that are not under root dir
 		}
 
 		rel = filepath.ToSlash(rel)
+
+		// skip the uploads, sync staging and blobs of a repository, no need to validate them
+		if isRepoContentDir(rel, repos) {
+			return driver.ErrSkipDir
+		}
 
 		ok, err := is.ValidateRepo(rel)
 		if errors.Is(err, zerr.ErrInvalidRepositoryName) {
@@ -468,6 +492,8 @@ func (is *ImageStore) GetNextRepositories(lastRepo string, maxEntries int, filte
 			// so nested repos (path "org" → "org/team") are still discovered.
 			return nil
 		}
+
+		repos[rel] = struct{}{}
 
 		if lastRepo == rel {
 			found = true
@@ -539,17 +565,11 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
+	repos := make(map[string]struct{})
 
 	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
 		if !fileInfo.IsDir() {
 			return nil
-		}
-
-		// skip .sync and .uploads dirs no need to try to validate them
-		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
-			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
-			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
-			return driver.ErrSkipDir
 		}
 
 		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
@@ -558,6 +578,11 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 		}
 
 		rel = filepath.ToSlash(rel)
+
+		// skip the uploads, sync staging and blobs of a repository, no need to validate them
+		if isRepoContentDir(rel, repos) {
+			return driver.ErrSkipDir
+		}
 
 		ok, err := is.ValidateRepo(rel)
 		if errors.Is(err, zerr.ErrInvalidRepositoryName) {
@@ -586,6 +611,7 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 		}
 
 		stores = append(stores, rel)
+		repos[rel] = struct{}{}
 
 		return nil
 	})
@@ -679,19 +705,19 @@ func (is *ImageStore) GetNextRepository(processedRepos map[string]struct{}) (str
 			return nil
 		}
 
-		// skip .sync and .uploads dirs no need to try to validate them
-		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
-			strings.HasSuffix(fileInfo.Path(), ispec.ImageBlobsDir) ||
-			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
-			return driver.ErrSkipDir
-		}
-
 		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
 		if err != nil {
 			return nil //nolint:nilerr // ignore paths not relative to root dir
 		}
 
 		rel = filepath.ToSlash(rel)
+
+		// skip the uploads, sync staging and blobs of a repository, no need to validate them.
+		// The walk stops at the first repository not processed yet, so a repository whose
+		// content it reaches is always processed.
+		if isRepoContentDir(rel, processedRepos) {
+			return driver.ErrSkipDir
+		}
 
 		if _, ok := processedRepos[rel]; ok {
 			return nil // repo already processed
@@ -3340,8 +3366,7 @@ func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []g
 
 	err := is.storeDriver.Walk(dir, func(fileInfo driver.FileInfo) error {
 		// skip blobs under .sync and .uploads
-		if strings.HasSuffix(fileInfo.Path(), syncConstants.SyncBlobUploadDir) ||
-			strings.HasSuffix(fileInfo.Path(), storageConstants.BlobUploadDir) {
+		if isUploadDir(path.Base(fileInfo.Path())) {
 			return driver.ErrSkipDir
 		}
 
