@@ -294,7 +294,9 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	if !hasSessionHeader(request) && needsAuthChallenge {
 		if authConfig.ShouldAdvertiseBearerChallenge() {
 			setBearerAuthChallenge(response, authConfig, nil)
-		} else if authConfig.CanAuthenticateWithBasicCredentials() {
+		} else if authConfig.CanAuthenticateWithBasicCredentials() && !suppressBasicAuthChallenge(request) {
+			// Browsers opening /v2/ directly must not get a Basic challenge (see
+			// suppressBasicAuthChallenge); registry clients still do.
 			setBasicAuthChallenge(response, rh.c.Config.GetRealm())
 		}
 	}
@@ -3018,9 +3020,65 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 		return
 	}
 
+	// Basic auth has no logout of its own: browsers keep re-sending cached credentials,
+	// which would re-authenticate the previous user right after the session is expired.
+	// Per the Clear-Site-Data spec the "cookies" directive also clears cached HTTP auth
+	// credentials. Browsers honor it only in secure contexts (HTTPS), and it clears
+	// cookies for the whole registrable domain. Set only after the session was expired
+	// successfully, so a failed logout does not clear unrelated site data, and only for
+	// requests from a trusted origin (see isTrustedLogoutOrigin).
+	if rh.isTrustedLogoutOrigin(request) {
+		response.Header().Set("Clear-Site-Data", `"cookies"`)
+	}
+
+	// Keep the logout response out of any cache so the headers above always reach the browser.
+	response.Header().Set("Cache-Control", "no-store")
+
 	zcommon.WriteJSON(response, http.StatusOK, LogoutResponse{
 		EndSessionURL: rh.buildEndSessionURL(provider),
 	})
+}
+
+// isTrustedLogoutOrigin reports whether a logout request may trigger Clear-Site-Data.
+// The logout endpoint needs no credentials, and CORS does not stop cross-site form
+// POSTs, so without this check any site could wipe cookies for zot and every sibling
+// application on the registrable domain. Clear-Site-Data only works in secure contexts,
+// where browsers always send Sec-Fetch-Site, so requiring it loses no legitimate case.
+// A UI served from another origin is trusted when its scheme, host and port match an
+// http.allowOrigin entry or http.externalUrl; the wildcard "*" is never trusted here.
+// The session itself is expired regardless; this only gates the domain-wide data wipe.
+func (rh *RouteHandler) isTrustedLogoutOrigin(request *http.Request) bool {
+	switch request.Header.Get("Sec-Fetch-Site") {
+	case "same-origin":
+		return true
+	case "same-site", "cross-site":
+		// Cross-origin UI deployments; checked against the configured origins below.
+	default:
+		// Missing (non-browser or insecure context) or "none" (user-initiated, which a
+		// POST cannot be): Clear-Site-Data would be ignored or is not wanted.
+		return false
+	}
+
+	// Canonicalize both sides (lowercase, explicit default port) so that e.g. an externalUrl of
+	// https://ui.example.com:443/zot matches Origin: https://ui.example.com. "null", "*", empty
+	// and malformed values fail to canonicalize and are never trusted.
+	requestOrigin, ok := canonicalOriginString(request.Header.Get("Origin"))
+	if !ok {
+		return false
+	}
+
+	trusted := strings.Split(rh.c.Config.GetAllowOrigin(), ",")
+	if rh.c.Config.HTTP.ExternalURL != "" {
+		trusted = append(trusted, rh.c.Config.HTTP.ExternalURL)
+	}
+
+	for _, candidate := range trusted {
+		if candidateOrigin, ok := canonicalOriginString(candidate); ok && candidateOrigin == requestOrigin {
+			return true
+		}
+	}
+
+	return false
 }
 
 // buildEndSessionURL returns the OIDC provider's RP-Initiated Logout URL for the given

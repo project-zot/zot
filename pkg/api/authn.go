@@ -1099,8 +1099,9 @@ func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
 		time.Sleep(time.Duration(delay) * time.Second)
 	}
 
-	// don't send auth headers if request is coming from UI
-	if !hasSessionHeader(r) {
+	// Registry clients need the challenge to know they must send credentials; browsers must
+	// not get it, or their native prompt caches credentials that outlive UI logout.
+	if !suppressBasicAuthChallenge(r) {
 		setBasicAuthChallenge(w, realm)
 	}
 
@@ -1173,6 +1174,14 @@ func hasSessionHeader(request *http.Request) bool {
 	clientHeader := request.Header.Get(constants.SessionClientHeaderName)
 
 	return clientHeader == constants.SessionClientHeaderValue
+}
+
+// suppressBasicAuthChallenge reports whether a 401 should omit "WWW-Authenticate: Basic".
+// The rule is shared with the authorization failure writers in pkg/common, see
+// zcommon.IsBrowserRequest for the rationale. Authentication is still enforced; only
+// the challenge is dropped.
+func suppressBasicAuthChallenge(request *http.Request) bool {
+	return zcommon.IsBrowserRequest(request)
 }
 
 func getUsernamePasswordBasicAuth(request *http.Request) (string, string, error) {
