@@ -2065,7 +2065,7 @@ func (dwr DynamoDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 }
 
 func (dwr DynamoDB) DeleteUserAPIKeys(ctx context.Context) error {
-	userData, err := dwr.GetUserData(ctx)
+	userData, err := dwr.getUserDataWithConsistency(ctx, true)
 	if errors.Is(err, zerr.ErrUserDataNotFound) {
 		// a user who never logged in has no api keys
 		return nil
@@ -2124,6 +2124,10 @@ func (dwr DynamoDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 }
 
 func (dwr DynamoDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
+	return dwr.getUserDataWithConsistency(ctx, false)
+}
+
+func (dwr DynamoDB) getUserDataWithConsistency(ctx context.Context, consistentRead bool) (mTypes.UserData, error) {
 	var userData mTypes.UserData
 
 	userAc, err := reqCtx.UserAcFromContext(ctx)
@@ -2137,12 +2141,17 @@ func (dwr DynamoDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
 
 	userid := userAc.GetUsername()
 
-	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
+	input := &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.UserDataTablename),
 		Key: map[string]types.AttributeValue{
 			"TableKey": &types.AttributeValueMemberS{Value: userid},
 		},
-	})
+	}
+	if consistentRead {
+		input.ConsistentRead = aws.Bool(true)
+	}
+
+	resp, err := dwr.Client.GetItem(ctx, input)
 	if err != nil {
 		return mTypes.UserData{}, err
 	}
