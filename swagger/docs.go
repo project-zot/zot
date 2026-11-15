@@ -225,13 +225,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "store not found, or gc never requested for the repository",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "409": {
-                        "description": "gc disabled for the store",
+                        "description": "store not found or gc disabled for it, or gc never requested for the repository",
                         "schema": {
                             "type": "string"
                         }
@@ -288,13 +282,13 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "store or repository not found",
+                        "description": "store or repository not found, or gc disabled for the store",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "409": {
-                        "description": "gc disabled for the store, or already running",
+                        "description": "gc already running",
                         "schema": {
                             "type": "string"
                         }

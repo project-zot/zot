@@ -75,8 +75,8 @@ curl -u admin:password -X POST "http://localhost:8080/v2/_zot/ext/mgmt/gc?store=
 | 400 | missing `store`, or invalid `repo` name |
 | 401 | not authenticated |
 | 403 | not an admin |
-| 404 | unknown store or repository |
-| 409 | GC is disabled for the store, or GC of the store (or repository) is already running |
+| 404 | unknown store or repository, or GC is disabled for the store |
+| 409 | GC of the store (or repository) is already running |
 | 500 | storage error while looking up the repository |
 | 503 | GC could not be scheduled, retry later |
 

@@ -31,8 +31,8 @@ type GCHandler struct {
 // @Failure 400 {string}   string   "bad request"
 // @Failure 401 {string}   string   "unauthorized"
 // @Failure 403 {string}   string   "forbidden"
-// @Failure 404 {string}   string   "store or repository not found"
-// @Failure 409 {string}   string   "gc disabled for the store, or already running"
+// @Failure 404 {string}   string   "store or repository not found, or gc disabled for the store"
+// @Failure 409 {string}   string   "gc already running"
 // @Failure 500 {string}   string   "internal server error"
 // @Failure 503 {string}   string   "gc could not be scheduled, retry later"
 //
@@ -83,8 +83,7 @@ func (h *GCHandler) RunGC(response http.ResponseWriter, request *http.Request) {
 // @Failure 400 {string}   string   "bad request"
 // @Failure 401 {string}   string   "unauthorized"
 // @Failure 403 {string}   string   "forbidden"
-// @Failure 404 {string}   string   "store not found, or gc never requested for the repository"
-// @Failure 409 {string}   string   "gc disabled for the store"
+// @Failure 404 {string}   string   "store not found or gc disabled for it, or gc never requested for the repository"
 // @Failure 500 {string}   string   "internal server error"
 //
 // The status is kept in memory, so a restart or a config reload clears it.
@@ -139,7 +138,7 @@ func (h *GCHandler) parseRequest(response http.ResponseWriter, request *http.Req
 
 	if onDemand == nil {
 		// GC is disabled for this store
-		response.WriteHeader(http.StatusConflict)
+		response.WriteHeader(http.StatusNotFound)
 
 		return nil, "", "", false
 	}

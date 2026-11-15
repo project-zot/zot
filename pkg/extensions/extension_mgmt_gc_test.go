@@ -130,10 +130,14 @@ func TestMgmtGC(t *testing.T) {
 			}
 		})
 
-		Convey("stores with GC disabled are rejected", func() {
+		Convey("stores with GC disabled are not found", func() {
 			resp, err := admin.SetQueryParam("store", "/nogc").Post(gcURL)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusConflict)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = admin.SetQueryParam("store", "/nogc").Get(gcURL)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
 
 		Convey("a store sweep can be requested and its status read", func() {
