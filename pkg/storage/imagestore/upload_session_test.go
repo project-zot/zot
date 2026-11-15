@@ -872,6 +872,9 @@ func TestRemoveIdleRepositoryKeepsParentWhileChildUploadIsUnlisted(t *testing.T)
 	if !removed {
 		t.Fatal("idle child upload kept the parent after the write finished")
 	}
+	if _, statErr := os.Stat(path.Join(root, child)); statErr != nil {
+		t.Fatal(statErr)
+	}
 }
 
 func TestRemoveIdleRepositoryKeepsRepoWhenUploadRecheckFails(t *testing.T) {

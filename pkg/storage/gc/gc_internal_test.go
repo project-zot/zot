@@ -2197,7 +2197,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(deleted, ShouldEqual, 0)
 		})
 
-		Convey("Invalid digest from GetAllBlobs in deleteUnreferencedBlobs", func() {
+		Convey("Invalid digest from GetAllBlobs in deleteUnreferencedBlobs is skipped", func() {
 			returnedIndex := ispec.Index{}
 			returnedIndexBuf, err := json.Marshal(returnedIndex)
 			So(err, ShouldBeNil)
@@ -2214,7 +2214,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			gc := NewGarbageCollect(imgStore, mocks.MetaDBMock{}, gcOptions, audit, log, metrics)
 
 			deleted, err := gc.deleteUnreferencedBlobs(context.Background(), repoName, time.Hour, log)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 			So(deleted, ShouldEqual, 0)
 		})
 

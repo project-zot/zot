@@ -965,6 +965,11 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 		Convey("Test DeleteBlob", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &mocks.StorageDriverMock{
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return &mocks.FileInfoMock{
+						IsDirFn: func() bool { return false },
+					}, nil
+				},
 				DeleteFn: func(ctx context.Context, path string) error {
 					return errS3
 				},
@@ -4650,7 +4655,9 @@ func TestS3DedupeErr(t *testing.T) {
 						driver.PathNotFoundError{Path: path, DriverName: "s3"})
 				}
 
-				return &mocks.FileInfoMock{}, nil
+				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
+				}, nil
 			},
 		})
 
