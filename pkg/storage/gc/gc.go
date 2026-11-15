@@ -19,6 +19,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/cluster"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/compat"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -58,6 +59,12 @@ type Options struct {
 	// StagingRoot is the local filesystem root whose <repo>/.sync/<uuid> trees block
 	// idle-repository removal during GC for this image store. Populated by RunGCTasks.
 	StagingRoot string
+
+	// Cluster is the scale-out configuration. When set, a periodic GC sweep only runs on
+	// the repositories the local member owns by the cluster hash, the same member that
+	// serves and writes them, so members sharing storage don't collect a repository at
+	// the same time. Populated by RunGCTasks.
+	Cluster *config.ClusterConfig
 }
 
 type GarbageCollect struct {
@@ -1557,14 +1564,17 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 
 	gen.nextRun = time.Now().Add(delay)
 
+	// the lookup below marks repositories of other members as processed, so check this first
+	startingSweep := len(gen.processedRepos) == 0
+
 	repo, err := gen.nextRepo, gen.nextRepoErr
 	if !gen.nextRepoKnown {
-		repo, err = gen.imgStore.GetNextRepository(gen.processedRepos)
+		repo, err = gen.getNextOwnedRepository()
 	}
 
 	gen.nextRepoKnown = false
 
-	if len(gen.processedRepos) == 0 {
+	if startingSweep {
 		gen.sweep.start()
 	}
 
@@ -1588,7 +1598,7 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 
 	// Look up the next repository now, so that after the last one the call which ends the sweep
 	// doesn't wait for the delay. The next call returns the result, error included.
-	gen.nextRepo, gen.nextRepoErr = gen.imgStore.GetNextRepository(gen.processedRepos)
+	gen.nextRepo, gen.nextRepoErr = gen.getNextOwnedRepository()
 	gen.nextRepoKnown = true
 
 	if gen.nextRepo == "" && gen.nextRepoErr == nil {
@@ -1601,6 +1611,46 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 	task.onDone = gen.sweep.taskDone
 
 	return task, nil
+}
+
+// getNextOwnedRepository returns the next repository the local member owns by the cluster hash,
+// or an empty name when there is none left. Repositories owned by other members are marked
+// as processed, so the sweep still ends once every repository has been seen.
+func (gen *GCTaskGenerator) getNextOwnedRepository() (string, error) {
+	for {
+		repo, err := gen.imgStore.GetNextRepository(gen.processedRepos)
+		if err != nil || repo == "" {
+			return repo, err
+		}
+
+		if gen.gc.isRepoOwnedLocally(repo) {
+			return repo, nil
+		}
+
+		gen.processedRepos[repo] = struct{}{}
+	}
+}
+
+// isRepoOwnedLocally reports whether the local member owns repo by the cluster hash.
+// Outside of a scale-out cluster every repository is owned locally.
+func (gc GarbageCollect) isRepoOwnedLocally(repo string) bool {
+	clusterConfig := gc.opts.Cluster
+
+	// Proxy holds the local member's index; it is only set up by a running controller.
+	if !clusterConfig.IsClustered() || clusterConfig.Proxy == nil {
+		return true
+	}
+
+	targetIdx, targetMember := cluster.ComputeTargetMember(clusterConfig.HashKey, clusterConfig.Members, repo)
+	if targetIdx == clusterConfig.Proxy.LocalMemberClusterSocketIndex {
+		return true
+	}
+
+	gc.log.Debug().Str("module", "gc").Str("repository", repo).
+		Str("targetMemberIndex", strconv.FormatUint(targetIdx, 10)).Str("targetMember", targetMember).
+		Msg("skipping gc of repo not managed by local instance")
+
+	return false
 }
 
 func (gen *GCTaskGenerator) IsDone() bool {
