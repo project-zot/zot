@@ -38,6 +38,8 @@ type onDemandInBackgroundMock struct {
 	fetchForStreamCalls  int
 	// fetchForStreamNS is the ns of the most recent FetchManifestForStream call.
 	fetchForStreamNS string
+	// isTagFromNamespaceFn overrides provenance; the default accepts only unscoped requests.
+	isTagFromNamespaceFn func(repo, reference, ns string, digest godigest.Digest) bool
 	// streamManager is what StreamManager returns (nil by default).
 	streamManager sync.StreamManager
 }
@@ -84,7 +86,13 @@ func (mock *onDemandInBackgroundMock) QueueImage(ctx context.Context, repo, refe
 	}
 }
 
-func (mock *onDemandInBackgroundMock) IsTagFromNamespace(_, _, ns string, _ godigest.Digest) bool {
+func (mock *onDemandInBackgroundMock) IsTagFromNamespace(repo, reference, ns string,
+	digest godigest.Digest,
+) bool {
+	if mock.isTagFromNamespaceFn != nil {
+		return mock.isTagFromNamespaceFn(repo, reference, ns, digest)
+	}
+
 	return ns == ""
 }
 
@@ -783,6 +791,215 @@ func TestGetImageManifestJoinsInFlightStream(t *testing.T) {
 			if !queued || onDemand.fetchForStreamCalls != 0 {
 				t.Fatalf("queued %t, FetchManifestForStream() called %d times: want a queued sync only",
 					queued, onDemand.fetchForStreamCalls)
+			}
+		})
+	}
+}
+
+// TestGetImageManifestScopedCachedTagDigestProvenance: the provenance check must see the digest
+// from the same storage read, so a tag another namespace overwrote after A's sync is exposed.
+func TestGetImageManifestScopedCachedTagDigestProvenance(t *testing.T) {
+	t.Parallel()
+
+	const (
+		repo      = "library/test"
+		reference = "latest"
+		nsA       = "registry-a.example:5000"
+		nsB       = "registry-b.example:5000"
+	)
+
+	enabled := true
+	appConfig := config.New()
+	appConfig.Extensions = &extconf.ExtensionConfig{
+		Sync: &syncconf.Config{Enable: &enabled},
+	}
+
+	// The shared tag now holds namespace A's manifest, at this digest.
+	manifestA := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}`)
+	digestA := godigest.FromBytes(manifestA)
+
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(_, _ string) ([]byte, godigest.Digest, string, error) {
+			return manifestA, digestA, ispec.MediaTypeImageManifest, nil
+		},
+	}
+
+	var queuedNS string
+
+	onDemand := &onDemandInBackgroundMock{
+		shouldQueueOnDemandSyncFn: func(_, ns string) bool { return ns != "" },
+		queueImageFn: func(_ context.Context, _, _, ns string) {
+			queuedNS = ns
+		},
+	}
+	// A's sync committed digestA; any other digest has no provenance.
+	onDemand.isTagFromNamespaceFn = func(_, ref, ns string, digest godigest.Digest) bool {
+		return ns == nsA && ref == reference && digest == digestA
+	}
+
+	handler := &RouteHandler{c: &Controller{
+		Config:       appConfig,
+		SyncOnDemand: onDemand,
+		Log:          log.NewTestLogger(),
+	}}
+
+	// Scoped to A: provenance matches, so the cached tag is served.
+	content, digest, _, _, err := getImageManifest(context.Background(), handler, store, repo,
+		reference, nsA, nil)
+	if err != nil || digest != digestA || string(content) != string(manifestA) {
+		t.Fatalf("getImageManifest(ns=A) = %q/%s/%v, want A's manifest", content, digest, err)
+	}
+
+	if queuedNS != "" {
+		t.Fatalf("QueueImage() called for ns %q, want no queue for a proven cache hit", queuedNS)
+	}
+
+	// Scoped to B: the tag is another registry's, so the request is a scoped miss and queues B.
+	_, _, _, _, err = getImageManifest(context.Background(), handler, store, repo, reference, nsB, nil)
+	if !errors.Is(err, zerr.ErrManifestNotFound) {
+		t.Fatalf("getImageManifest(ns=B) error = %v, want %v", err, zerr.ErrManifestNotFound)
+	}
+
+	if queuedNS != nsB {
+		t.Fatalf("QueueImage() ns = %q, want %q", queuedNS, nsB)
+	}
+}
+
+// TestGetImageManifestScopedNonStreamedFallbackServesCommittedDigest: when FetchManifestForStream
+// could not stream, the route serves the digest that sync committed, not the shared tag, which a
+// concurrent sync for another namespace can overwrite.
+func TestGetImageManifestScopedNonStreamedFallbackServesCommittedDigest(t *testing.T) {
+	t.Parallel()
+
+	const (
+		repo      = "library/test"
+		reference = "latest"
+		namespace = "registry-a.example:5000"
+	)
+
+	enabled := true
+	appConfig := config.New()
+	appConfig.Extensions = &extconf.ExtensionConfig{
+		Sync: &syncconf.Config{Enable: &enabled},
+	}
+
+	manifestA := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}`)
+	digestA := godigest.FromBytes(manifestA)
+
+	// The shared tag holds another namespace's manifest.
+	manifestB := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","annotations":{"ns":"B"}}`)
+	digestB := godigest.FromBytes(manifestB)
+
+	synced := false
+
+	onDemand := &onDemandInBackgroundMock{
+		streaming:                 true,
+		shouldQueueOnDemandSyncFn: func(_, _ string) bool { return false },
+		fetchForStreamFn:          func(context.Context) (manifest.Manifest, error) { return nil, zerr.ErrSyncNotStreamed },
+		fetchForStreamDigest:      digestA,
+		syncImageFn: func(context.Context, string, string) error {
+			synced = true
+
+			return nil
+		},
+	}
+	// Only the tag read serves B; the digest-addressed read serves A.
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(_, ref string) ([]byte, godigest.Digest, string, error) {
+			if ref == digestA.String() {
+				return manifestA, digestA, ispec.MediaTypeImageManifest, nil
+			}
+
+			return manifestB, digestB, ispec.MediaTypeImageManifest, nil
+		},
+	}
+
+	handler := &RouteHandler{c: &Controller{
+		Config:       appConfig,
+		SyncOnDemand: onDemand,
+		Log:          log.NewTestLogger(),
+	}}
+
+	content, digest, _, streamed, err := getImageManifest(context.Background(), handler, store, repo,
+		reference, namespace, nil)
+	if err != nil {
+		t.Fatalf("getImageManifest() error = %v, want nil", err)
+	}
+
+	if streamed {
+		t.Fatal("getImageManifest() streamed = true, want the committed fallback manifest")
+	}
+
+	if digest != digestA || string(content) != string(manifestA) {
+		t.Fatalf("getImageManifest() = %s, want the committed digest %s", digest, digestA)
+	}
+
+	if synced {
+		t.Fatal("SyncImage() called after FetchManifestForStream already synced")
+	}
+}
+
+// TestGetImageManifestScopedDigestReadFailure: a scoped request must not fall back to the shared tag
+// when the synced digest cannot be read, and a real storage failure must never be masked.
+func TestGetImageManifestScopedDigestReadFailure(t *testing.T) {
+	t.Parallel()
+
+	const (
+		repo      = "library/test"
+		reference = "latest"
+		namespace = "registry-a.example:5000"
+	)
+
+	enabled := true
+	appConfig := config.New()
+	appConfig.Extensions = &extconf.ExtensionConfig{
+		Sync: &syncconf.Config{Enable: &enabled},
+	}
+
+	manifestB := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}`)
+	digestB := godigest.FromBytes(manifestB)
+	committed := godigest.FromString("committed by A")
+
+	for _, testCase := range []struct {
+		name      string
+		digestErr error
+		wantErr   error
+	}{
+		{name: "garbage-collected digest", digestErr: zerr.ErrManifestNotFound, wantErr: zerr.ErrManifestNotFound},
+		{name: "storage failure", digestErr: zerr.ErrStorageTransient, wantErr: zerr.ErrStorageTransient},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			onDemand := &onDemandInBackgroundMock{
+				streaming:                 true,
+				shouldQueueOnDemandSyncFn: func(_, _ string) bool { return false },
+				fetchForStreamFn:          func(context.Context) (manifest.Manifest, error) { return nil, zerr.ErrSyncNotStreamed },
+				fetchForStreamDigest:      committed,
+			}
+			store := mocks.MockedImageStore{
+				GetImageManifestFn: func(_, ref string) ([]byte, godigest.Digest, string, error) {
+					if ref == committed.String() {
+						return nil, "", "", testCase.digestErr
+					}
+
+					return manifestB, digestB, ispec.MediaTypeImageManifest, nil
+				},
+			}
+			handler := &RouteHandler{c: &Controller{
+				Config:       appConfig,
+				SyncOnDemand: onDemand,
+				Log:          log.NewTestLogger(),
+			}}
+
+			content, _, _, _, err := getImageManifest(context.Background(), handler, store, repo,
+				reference, namespace, nil)
+			if !errors.Is(err, testCase.wantErr) {
+				t.Fatalf("getImageManifest() error = %v, want %v", err, testCase.wantErr)
+			}
+
+			if content != nil {
+				t.Fatalf("getImageManifest() served %q, want no other namespace's manifest", content)
 			}
 		})
 	}
