@@ -21,12 +21,16 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/gcs"
 	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
+	. "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
@@ -2142,6 +2146,83 @@ func TestRetagManifest(t *testing.T) {
 			v1, ok := indexByTag(store, "repo", "v1")
 			So(ok, ShouldBeTrue)
 			So(v1.Digest, ShouldEqual, shared)
+		})
+	})
+}
+
+func TestRepositoryWalkReservedDirNames(t *testing.T) {
+	Convey("Repositories whose names end in blobs, .uploads or .sync are found by every walk", t, func() {
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+
+		repos := []string{
+			"blobs",
+			"demo/my.sync",
+			"demo/my.uploads",
+			"demo/myblobs",
+			"demo/netlify/blobs",
+			"demo/plain",
+			"demo/plain/team",
+		}
+
+		image := CreateRandomImage()
+
+		for _, repo := range repos {
+			So(WriteImageToFileSystem(image, repo, "v1", storeController), ShouldBeNil)
+		}
+
+		// the content of a repository is still not taken for repositories: an interrupted
+		// upload, and sync staging, which holds an OCI layout of its own
+		So(os.MkdirAll(path.Join(rootDir, "demo/plain", storageConstants.BlobUploadDir, "uuid"), 0o755), ShouldBeNil)
+		writeMinimalLocalOCILayout(t, rootDir, path.Join("demo/plain", syncConstants.SyncBlobUploadDir, "uuid"))
+
+		Convey("GetRepositories", func() {
+			found, err := imgStore.GetRepositories()
+			So(err, ShouldBeNil)
+			So(found, ShouldResemble, repos)
+		})
+
+		Convey("GetNextRepositories", func() {
+			found, more, err := imgStore.GetNextRepositories("", 100, func(string) (bool, error) { return true, nil })
+			So(err, ShouldBeNil)
+			So(more, ShouldBeFalse)
+			So(found, ShouldResemble, repos)
+		})
+
+		Convey("GetNextRepository", func() {
+			processedRepos := map[string]struct{}{}
+			found := []string{}
+
+			for {
+				repo, err := imgStore.GetNextRepository(processedRepos)
+				So(err, ShouldBeNil)
+
+				if repo == "" {
+					break
+				}
+
+				processedRepos[repo] = struct{}{}
+				found = append(found, repo)
+			}
+
+			So(found, ShouldResemble, repos)
+		})
+
+		Convey("GetNextDigestWithBlobPaths", func() {
+			digest, blobPaths, err := imgStore.GetNextDigestWithBlobPaths(repos, []godigest.Digest{})
+			So(err, ShouldBeNil)
+			So(digest, ShouldNotBeEmpty)
+
+			expected := make([]string, 0, len(repos))
+			for _, repo := range repos {
+				expected = append(expected, imgStore.BlobPath(repo, digest))
+			}
+
+			sort.Strings(blobPaths)
+			sort.Strings(expected)
+			So(blobPaths, ShouldResemble, expected)
 		})
 	})
 }
