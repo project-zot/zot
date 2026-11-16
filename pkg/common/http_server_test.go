@@ -208,6 +208,7 @@ func TestAuthzFailBrowserChallenges(t *testing.T) {
 		}{
 			{name: "registry client", challenge: true},
 			{name: "docker client", headers: map[string]string{"User-Agent": "Docker-Client/28.0"}, challenge: true},
+			// curl's default Accept: not treated as a browser, so the challenge is kept
 			{name: "wildcard accept", headers: map[string]string{"Accept": "*/*"}, challenge: true},
 			{name: "ui client", headers: map[string]string{
 				constants.SessionClientHeaderName: constants.SessionClientHeaderValue,

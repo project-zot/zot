@@ -149,6 +149,10 @@ func adminAuthChallenge(authConfig *config.AuthConfig, realm string) string {
 // Authorization header takes precedence over the session cookie, cached credentials would
 // silently override any later UI login (see issue #4699). Bearer challenges are not
 // affected: browsers do not act on them.
+//
+// All inputs are client-controlled, which is fine: this only decides whether a challenge
+// header is sent, never whether a request is authenticated or authorized. A client that
+// spoofs browser headers just loses the hint telling it to send credentials.
 func IsBrowserRequest(request *http.Request) bool {
 	// UI requests that already carry the session header.
 	if request.Header.Get(constants.SessionClientHeaderName) == constants.SessionClientHeaderValue {

@@ -760,12 +760,15 @@ func TestBrowserBasicAuthChallenges(t *testing.T) {
 	}{
 		{name: "registry client", challenge: true},
 		{name: "docker client", headers: map[string]string{"User-Agent": "Docker-Client/28.0"}, challenge: true},
+		// curl's default Accept; plain-HTTP script fetches look the same and are deliberately
+		// still challenged, since they cannot be told apart from registry clients
 		{name: "wildcard accept", headers: map[string]string{"Accept": "*/*"}, challenge: true},
 		{name: "json accept", headers: map[string]string{"Accept": "application/json"}, challenge: true},
 		{name: "ui client", headers: map[string]string{
 			constants.SessionClientHeaderName: constants.SessionClientHeaderValue,
 		}},
 		{name: "browser navigation", headers: map[string]string{"Sec-Fetch-Mode": "navigate"}},
+		// e.g. the UI's first fetches over HTTPS, sent before it attaches the session header
 		{name: "browser fetch before ui header", headers: map[string]string{"Sec-Fetch-Mode": "cors"}},
 		{name: "browser without fetch metadata", headers: map[string]string{
 			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -790,6 +793,7 @@ func TestBrowserBasicAuthChallenges(t *testing.T) {
 			assert.Equal(t, http.StatusUnauthorized, failure.Code)
 			assert.Equal(t, "application/json", failure.Header().Get("Content-Type"))
 
+			// /v2/ answers 200 but still advertises a challenge, so it needs the same gating
 			version := httptest.NewRecorder()
 			(&RouteHandler{c: &Controller{Config: conf}}).CheckVersionSupport(version, request)
 			assert.Equal(t, http.StatusOK, version.Code)

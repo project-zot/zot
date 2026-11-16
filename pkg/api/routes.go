@@ -293,6 +293,7 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	// don't send auth headers if request is coming from UI
 	if !hasSessionHeader(request) && needsAuthChallenge {
 		if authConfig.ShouldAdvertiseBearerChallenge() {
+			// Not gated on browsers: a Bearer challenge opens no native prompt and caches nothing.
 			setBearerAuthChallenge(response, authConfig, nil)
 		} else if authConfig.CanAuthenticateWithBasicCredentials() && !suppressBasicAuthChallenge(request) {
 			// Browsers opening /v2/ directly must not get a Basic challenge (see
@@ -3032,6 +3033,7 @@ func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Reque
 	}
 
 	// Keep the logout response out of any cache so the headers above always reach the browser.
+	// Set whether or not the origin is trusted: it does not wipe anything, so it needs no gate.
 	response.Header().Set("Cache-Control", "no-store")
 
 	zcommon.WriteJSON(response, http.StatusOK, LogoutResponse{

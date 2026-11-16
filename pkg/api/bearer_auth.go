@@ -571,7 +571,9 @@ func (b *BearerAuth) proxyOIDCBearerTokenExchange(response http.ResponseWriter, 
 
 	copyTokenProxyHeaders(response.Header(), proxyResp.Header)
 	// An upstream Basic challenge would otherwise reach the browser unchanged and seed
-	// its credential cache, defeating suppressBasicAuthChallenge.
+	// its credential cache, defeating suppressBasicAuthChallenge. Order matters: strip after
+	// copying the upstream headers and before WriteHeader, which freezes them. The upstream
+	// status (e.g. 401) and body are passed through unchanged.
 	if suppressBasicAuthChallenge(request) {
 		removeBasicAuthChallenges(response.Header())
 	}
