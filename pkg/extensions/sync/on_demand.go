@@ -101,17 +101,24 @@ type tagProvenanceEntry struct {
 
 // recordTagProvenance marks repo:reference's shared local tag as committed by a sync scoped to
 // ns, with digest as the manifest it committed. Called when a namespace-scoped sync succeeds, so
-// the tag's latest commit is the recorded namespace's manifest. An empty ns is never recorded: an
-// unscoped sync's origin is unknown.
+// the tag's latest commit is the recorded namespace's manifest.
+//
+// An unscoped sync (or one whose committed digest is unknown) has no attributable origin, so it
+// clears any earlier entry: the tag may now hold another registry's manifest, and a stale
+// attribution would let a scoped request serve it.
 func (onDemand *BaseOnDemand) recordTagProvenance(repo, reference, nsParam string, digest godigest.Digest) {
-	if nsParam == "" {
-		return
-	}
+	key := repo + "\x00" + reference
 
 	onDemand.provenanceMu.Lock()
 	defer onDemand.provenanceMu.Unlock()
 
-	onDemand.tagProvenance[repo+"\x00"+reference] = tagProvenanceEntry{
+	if nsParam == "" || digest == "" {
+		delete(onDemand.tagProvenance, key)
+
+		return
+	}
+
+	onDemand.tagProvenance[key] = tagProvenanceEntry{
 		namespace: nsParam,
 		digest:    digest,
 	}

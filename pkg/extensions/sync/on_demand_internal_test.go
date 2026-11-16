@@ -744,6 +744,25 @@ func TestTagProvenanceTracksNamespaceAndDigest(t *testing.T) {
 		// Unscoped requests never consult provenance.
 		So(onDemand.IsTagFromNamespace("repo", "latest", "", digestB), ShouldBeTrue)
 	})
+
+	Convey("an unscoped sync clears a previous namespace's attribution", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		digestA := godigest.FromString("registry-a manifest")
+		digestOther := godigest.FromString("other registry manifest")
+
+		onDemand.recordTagProvenance("repo", "latest", "registry-a", digestA)
+		So(onDemand.IsTagFromNamespace("repo", "latest", "registry-a", digestA), ShouldBeTrue)
+
+		// The unscoped sync re-committed the tag from an unattributable origin.
+		onDemand.recordTagProvenance("repo", "latest", "", digestOther)
+		So(onDemand.IsTagFromNamespace("repo", "latest", "registry-a", digestOther), ShouldBeFalse)
+
+		onDemand.recordTagProvenance("repo", "latest", "registry-a", digestA)
+		// A scoped sync whose committed digest is unknown is equally unattributable.
+		onDemand.recordTagProvenance("repo", "latest", "registry-a", "")
+		So(onDemand.IsTagFromNamespace("repo", "latest", "registry-a", digestA), ShouldBeFalse)
+	})
 }
 
 // TestStageForStreamRejectsForeignNamespaceCollision covers the race in stageForStream: another
