@@ -52,11 +52,10 @@ type BaseOnDemand struct {
 	staging       map[string]*stagingSlot
 	stagingMu     sync.Mutex
 	streamManager StreamManager
-	// tagProvenance records, per repo:reference, the namespace whose scoped sync last committed
-	// the shared local tag. A sync without a namespace leaves the tag unrecorded, so a
-	// namespaced request treats it as another registry's content (see IsTagFromNamespace).
-	// Guarded by provenanceMu.
-	tagProvenance map[string]string
+	// tagProvenance records, per repo:reference, the namespace and digest committed by its last
+	// scoped sync. A sync without a namespace leaves the tag unrecorded, so a namespaced request
+	// treats it as another registry's content (see IsTagFromNamespace). Guarded by provenanceMu.
+	tagProvenance map[string]tagProvenanceEntry
 	provenanceMu  sync.RWMutex
 	// generation is unique per BaseOnDemand (so per config reload); see streamSource.
 	generation uint64
@@ -88,14 +87,23 @@ type stagingSlot struct {
 func NewOnDemand(log log.Logger) *BaseOnDemand {
 	return &BaseOnDemand{
 		log: log, requestStore: &sync.Map{}, staging: map[string]*stagingSlot{},
-		tagProvenance: map[string]string{}, generation: onDemandGenerations.Add(1),
+		tagProvenance: map[string]tagProvenanceEntry{}, generation: onDemandGenerations.Add(1),
 	}
 }
 
+// tagProvenanceEntry records which namespace's scoped sync committed repo:reference's shared local
+// tag and the digest it committed. The digest matters: another namespace's sync can replace the tag
+// after a request read it, so a namespace match alone cannot vouch for the bytes a request holds.
+type tagProvenanceEntry struct {
+	namespace string
+	digest    godigest.Digest
+}
+
 // recordTagProvenance marks repo:reference's shared local tag as committed by a sync scoped to
-// ns. Called when a namespace-scoped sync succeeds, so the tag's latest commit is the recorded
-// namespace's manifest. An empty ns is never recorded: an unscoped sync's origin is unknown.
-func (onDemand *BaseOnDemand) recordTagProvenance(repo, reference, nsParam string) {
+// ns, with digest as the manifest it committed. Called when a namespace-scoped sync succeeds, so
+// the tag's latest commit is the recorded namespace's manifest. An empty ns is never recorded: an
+// unscoped sync's origin is unknown.
+func (onDemand *BaseOnDemand) recordTagProvenance(repo, reference, nsParam string, digest godigest.Digest) {
 	if nsParam == "" {
 		return
 	}
@@ -103,12 +111,18 @@ func (onDemand *BaseOnDemand) recordTagProvenance(repo, reference, nsParam strin
 	onDemand.provenanceMu.Lock()
 	defer onDemand.provenanceMu.Unlock()
 
-	onDemand.tagProvenance[repo+"\x00"+reference] = nsParam
+	onDemand.tagProvenance[repo+"\x00"+reference] = tagProvenanceEntry{
+		namespace: nsParam,
+		digest:    digest,
+	}
 }
 
-// IsTagFromNamespace reports whether repo:reference's local tag was last committed by a sync
-// scoped to ns. See OnDemand for the empty-ns and unrecorded-tag semantics.
-func (onDemand *BaseOnDemand) IsTagFromNamespace(repo, reference, nsParam string) bool {
+// IsTagFromNamespace reports whether digest, just read from repo:reference's local tag, is the
+// manifest a sync scoped to ns committed. See OnDemand for the empty-ns and unrecorded-tag
+// semantics.
+func (onDemand *BaseOnDemand) IsTagFromNamespace(repo, reference, nsParam string,
+	digest godigest.Digest,
+) bool {
 	if nsParam == "" {
 		return true
 	}
@@ -116,7 +130,9 @@ func (onDemand *BaseOnDemand) IsTagFromNamespace(repo, reference, nsParam string
 	onDemand.provenanceMu.RLock()
 	defer onDemand.provenanceMu.RUnlock()
 
-	return onDemand.tagProvenance[repo+"\x00"+reference] == nsParam
+	entry, ok := onDemand.tagProvenance[repo+"\x00"+reference]
+
+	return ok && entry.namespace == nsParam && entry.digest == digest
 }
 
 // streamSource names services[idx] as a stream source (see StreamableManifest.source). The
@@ -752,7 +768,7 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference, ns
 
 				// Every service in this sync matches ns, so a commit came from the namespace's
 				// registry (a pinned sync runs only its staging service).
-				onDemand.recordTagProvenance(repo, reference, nsParam)
+				onDemand.recordTagProvenance(repo, reference, nsParam, digest)
 			}
 
 			if scheduleBackground && err != nil && !isSkippableSyncImageErr(err) {
@@ -799,10 +815,10 @@ func (onDemand *BaseOnDemand) syncImageInBackground(ctx context.Context, repo, r
 	return onDemand.runOnDemandServices(ctx, repo, reference, "starting on-demand-in-background image sync",
 		services,
 		func(syncCtx context.Context, service Service) error {
-			_, err := service.SyncImage(syncCtx, repo, reference)
+			digest, err := service.SyncImage(syncCtx, repo, reference)
 			if err == nil {
 				// Every background service here matches ns.
-				onDemand.recordTagProvenance(repo, reference, nsParam)
+				onDemand.recordTagProvenance(repo, reference, nsParam, digest)
 			}
 
 			return err

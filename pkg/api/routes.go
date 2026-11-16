@@ -3357,7 +3357,7 @@ func serveOrQueueBackgroundSync(ctx context.Context, routeHandler *RouteHandler,
 ) ([]byte, godigest.Digest, string, bool, error) {
 	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err == nil && (nsParam == "" ||
-		routeHandler.c.SyncOnDemand.IsTagFromNamespace(name, reference, nsParam)) {
+		routeHandler.c.SyncOnDemand.IsTagFromNamespace(name, reference, nsParam, digest)) {
 		return content, digest, mediaType, false, nil
 	}
 

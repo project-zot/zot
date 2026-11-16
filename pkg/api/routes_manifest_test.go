@@ -63,8 +63,8 @@ type mockSyncOnDemand struct {
 	// queueImageFn records a queued background sync; queueImageCalls counts them.
 	queueImageFn    func(ctx context.Context, repo, reference, ns string)
 	queueImageCalls int
-	// isTagFromNamespaceFn reports whether the local tag was committed by a sync scoped to ns.
-	isTagFromNamespaceFn func(repo, reference, ns string) bool
+	// isTagFromNamespaceFn reports whether the local tag digest was committed by a sync scoped to ns.
+	isTagFromNamespaceFn func(repo, reference, ns string, digest godigest.Digest) bool
 	// onStreamSynced records the callback the last FetchManifestForStream call was given.
 	onStreamSynced func(manifest.Manifest)
 	streamManager  sync.StreamManager
@@ -114,13 +114,15 @@ func (m *mockSyncOnDemand) QueueImage(ctx context.Context, repo, reference, ns s
 	}
 }
 
-func (m *mockSyncOnDemand) IsTagFromNamespace(repo, reference, nsParam string) bool {
+func (m *mockSyncOnDemand) IsTagFromNamespace(repo, reference, nsParam string,
+	digest godigest.Digest,
+) bool {
 	if nsParam == "" {
 		return true
 	}
 
 	if m.isTagFromNamespaceFn != nil {
-		return m.isTagFromNamespaceFn(repo, reference, nsParam)
+		return m.isTagFromNamespaceFn(repo, reference, nsParam, digest)
 	}
 
 	return false
@@ -626,7 +628,7 @@ func TestGetManifestNamespaceScopedCache(t *testing.T) {
 			// The local tag holds namespace A's manifest, last committed by A's sync.
 			syncOnDemand := &mockSyncOnDemand{
 				shouldQueueOnDemandSyncFn: func(_, ns string) bool { return ns != "" },
-				isTagFromNamespaceFn: func(_, _, ns string) bool {
+				isTagFromNamespaceFn: func(_, _, ns string, _ godigest.Digest) bool {
 					return ns == nsA
 				},
 			}
@@ -755,7 +757,9 @@ func TestGetManifestNamespaceScopedCache(t *testing.T) {
 		Convey("a namespaced miss without a background queue syncs and keeps the scoped failure", func() {
 			syncOnDemand := &mockSyncOnDemand{
 				shouldQueueOnDemandSyncFn: func(_, _ string) bool { return false },
-				isTagFromNamespaceFn:      func(_, _, _ string) bool { return false },
+				isTagFromNamespaceFn: func(_, _, _ string, _ godigest.Digest) bool {
+					return false
+				},
 				syncImageFn: func(_ context.Context, _, _, _ string) error {
 					return zerr.ErrSyncInternal
 				},

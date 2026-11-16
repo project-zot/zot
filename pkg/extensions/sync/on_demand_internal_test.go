@@ -727,6 +727,25 @@ func TestJoinStagedNamespaceRestriction(t *testing.T) {
 	})
 }
 
+func TestTagProvenanceTracksNamespaceAndDigest(t *testing.T) {
+	Convey("tag provenance matches only the namespace and digest a scoped sync committed", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		digestA := godigest.FromString("registry-a manifest")
+		digestB := godigest.FromString("registry-b manifest")
+
+		onDemand.recordTagProvenance("repo", "latest", "registry-a", digestA)
+
+		So(onDemand.IsTagFromNamespace("repo", "latest", "registry-a", digestA), ShouldBeTrue)
+		// Another namespace's sync overwrote the tag after the recorded commit.
+		So(onDemand.IsTagFromNamespace("repo", "latest", "registry-a", digestB), ShouldBeFalse)
+		// The recorded digest is not a match for another namespace's request.
+		So(onDemand.IsTagFromNamespace("repo", "latest", "registry-b", digestA), ShouldBeFalse)
+		// Unscoped requests never consult provenance.
+		So(onDemand.IsTagFromNamespace("repo", "latest", "", digestB), ShouldBeTrue)
+	})
+}
+
 // TestStageForStreamRejectsForeignNamespaceCollision covers the race in stageForStream: another
 // registry's flight stages repo:reference between this request's joinStaged checks and its
 // StoreImageForStreaming call. The collision is rejected instead of adopted, so the request does

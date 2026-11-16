@@ -35,7 +35,7 @@ func (onDemand *BaseOnDemand) ShouldQueueOnDemandSync(_, _ string) bool {
 
 func (onDemand *BaseOnDemand) QueueImage(_ context.Context, _, _, _ string) {}
 
-func (onDemand *BaseOnDemand) IsTagFromNamespace(_, _, _ string) bool {
+func (onDemand *BaseOnDemand) IsTagFromNamespace(_, _, _ string, _ godigest.Digest) bool {
 	return false
 }
 

@@ -82,7 +82,7 @@ func (mock *onDemandInBackgroundMock) QueueImage(ctx context.Context, repo, refe
 	}
 }
 
-func (mock *onDemandInBackgroundMock) IsTagFromNamespace(_, _, ns string) bool {
+func (mock *onDemandInBackgroundMock) IsTagFromNamespace(_, _, ns string, _ godigest.Digest) bool {
 	return ns == ""
 }
 
