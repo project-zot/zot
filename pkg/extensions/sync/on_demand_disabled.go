@@ -43,8 +43,8 @@ func (onDemand *BaseOnDemand) IsTagFromNamespace(_, _, _ string, _ godigest.Dige
 
 func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
 	_ string, onSynced func(manifest.Manifest),
-) (manifest.Manifest, error) {
-	return nil, zerr.ErrSyncOnDemandDisabled
+) (manifest.Manifest, godigest.Digest, error) {
+	return nil, "", zerr.ErrSyncOnDemandDisabled
 }
 
 func (onDemand *BaseOnDemand) StreamManager() StreamManager {

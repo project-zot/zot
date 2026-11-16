@@ -792,7 +792,7 @@ func TestStageForStreamRejectsForeignNamespaceCollision(t *testing.T) {
 
 		outcome := make(chan manifest.Manifest, 1)
 
-		err := onDemand.streamOrSyncImage(context.Background(), "repo", "latest", "docker.io",
+		_, err := onDemand.streamOrSyncImage(context.Background(), "repo", "latest", "docker.io",
 			nil, outcome)
 		So(err, ShouldBeNil)
 

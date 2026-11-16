@@ -53,10 +53,15 @@ type OnDemand interface {
 	// count a download). If the image is not streamed (e.g. an index, or the stream cap), it waits
 	// for a plain sync and returns ErrSyncNotStreamed, wrapping that sync's error if it failed;
 	// the caller then serves from storage.
+	//
+	// The returned digest, when non-empty, is the manifest the sync committed. The caller serves
+	// that immutable result instead of re-reading the shared local tag, which another namespace's
+	// concurrent sync can re-commit. It is empty when the manifest was streamed.
+	//
 	// ns, when non-empty, restricts the sync to the upstream registry named by the
 	// containerd ?ns= namespace/query parameter.
 	FetchManifestForStream(ctx context.Context, repo, reference string, ns string,
-		onSynced func(manifest.Manifest)) (manifest.Manifest, error)
+		onSynced func(manifest.Manifest)) (manifest.Manifest, godigest.Digest, error)
 	// StreamManager returns the shared stream manager, or nil when no registry streams.
 	StreamManager() StreamManager
 	// IsStreamingEnabledForRepo reports whether any on-demand service streams blobs for repo.

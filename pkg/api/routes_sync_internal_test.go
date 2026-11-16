@@ -31,9 +31,11 @@ type onDemandInBackgroundMock struct {
 	syncImageCalls            int
 	// streaming makes IsStreamingEnabledForRepo true, as if a separate stream registry also matched
 	// the repo.
-	streaming           bool
-	fetchForStreamFn    func(ctx context.Context) (manifest.Manifest, error)
-	fetchForStreamCalls int
+	streaming        bool
+	fetchForStreamFn func(ctx context.Context) (manifest.Manifest, error)
+	// fetchForStreamDigest is the digest FetchManifestForStream reports as committed.
+	fetchForStreamDigest godigest.Digest
+	fetchForStreamCalls  int
 	// fetchForStreamNS is the ns of the most recent FetchManifestForStream call.
 	fetchForStreamNS string
 	// streamManager is what StreamManager returns (nil by default).
@@ -88,15 +90,17 @@ func (mock *onDemandInBackgroundMock) IsTagFromNamespace(_, _, ns string, _ godi
 
 func (mock *onDemandInBackgroundMock) FetchManifestForStream(ctx context.Context, _, _, ns string,
 	_ func(manifest.Manifest),
-) (manifest.Manifest, error) {
+) (manifest.Manifest, godigest.Digest, error) {
 	mock.fetchForStreamCalls++
 	mock.fetchForStreamNS = ns
 
 	if mock.fetchForStreamFn != nil {
-		return mock.fetchForStreamFn(ctx)
+		fetched, err := mock.fetchForStreamFn(ctx)
+
+		return fetched, mock.fetchForStreamDigest, err
 	}
 
-	return nil, zerr.ErrSyncOnDemandDisabled
+	return nil, "", zerr.ErrSyncOnDemandDisabled
 }
 
 func (mock *onDemandInBackgroundMock) StreamManager() sync.StreamManager {

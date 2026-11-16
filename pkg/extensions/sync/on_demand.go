@@ -248,19 +248,24 @@ func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(repo string) bool {
 // the sync and returns ErrSyncNotStreamed, wrapping the sync's error if it failed. The caller then
 // serves from storage, as after SyncImage.
 //
+// The returned digest, when non-empty, is the manifest the sync committed. The caller serves that
+// immutable result instead of re-reading the shared local tag, which another namespace's
+// concurrent sync can re-commit. It is empty for a streamed manifest (the caller already has the
+// upstream body) and when the sync committed nothing.
+//
 // ns, when non-empty, restricts the sync to the upstream registry named by the
 // containerd ?ns= namespace/query parameter.
 // onSynced, if non-nil, runs with the manifest once the sync serving it commits (streamed only).
 // If ctx ends first, the call returns ctx's error; the sync goes on.
 func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, reference,
 	nsParam string, onSynced func(manifest.Manifest),
-) (manifest.Manifest, error) {
+) (manifest.Manifest, godigest.Digest, error) {
 	if onDemand.streamManager == nil {
-		return nil, zerr.ErrStreamManagerNotInitialized
+		return nil, "", zerr.ErrStreamManagerNotInitialized
 	}
 
 	if staged, ok := onDemand.joinStaged(repo, reference, nsParam, onSynced); ok {
-		return staged, nil
+		return staged, "", nil
 	}
 
 	key := onDemandKey(onDemandKindImage, repo, reference, nsParam)
@@ -273,7 +278,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 	// Recheck: a leader may have staged and dropped its slot since the first check, and nothing
 	// would close ours. The staged entry lives until its flight ends, so it is still visible.
 	if staged, ok := onDemand.joinStaged(repo, reference, nsParam, onSynced); ok {
-		return staged, nil
+		return staged, "", nil
 	}
 
 	stagingDone := slot.done
@@ -281,21 +286,23 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 	// If this request leads, it gets exactly one outcome (the staged manifest, or nil if not
 	// streaming) before stagingDone closes and before result. A joiner gets only result.
 	outcome := make(chan manifest.Manifest, 1)
-	result := make(chan error, 1)
+	result := make(chan fetchResult, 1)
 
 	go func() {
 		// Detached: the sync goes on after the client that started it disconnects.
 		syncCtx := context.WithoutCancel(ctx)
 
-		result <- func() error {
-			_, err := onDemand.doOnDemandFlight(key, repo, reference,
+		result <- func() fetchResult {
+			res, err := onDemand.doOnDemandFlight(key, repo, reference,
 				"image already demanded, on-demand sync result was shared",
 				func() (any, error) {
-					return nil, onDemand.streamOrSyncImage(syncCtx, repo, reference, nsParam, onSynced,
+					return onDemand.streamOrSyncImage(syncCtx, repo, reference, nsParam, onSynced,
 						outcome)
 				})
 
-			return err
+			digest, _ := res.(godigest.Digest)
+
+			return fetchResult{digest: digest, err: err}
 		}()
 	}()
 
@@ -303,25 +310,27 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 		select {
 		case <-ctx.Done():
 			// Client gone: stop waiting. The flight goes on; the buffered channels never block it.
-			return nil, ctx.Err()
+			return nil, "", ctx.Err()
 		case staged := <-outcome:
 			if staged != nil {
-				return staged, nil
+				return staged, "", nil
 			}
 
-			return nil, notStreamedErr(<-result)
-		case err := <-result:
+			res := <-result
+
+			return nil, res.digest, notStreamedErr(res.err)
+		case res := <-result:
 			// A leader's outcome precedes its result. Prefer it: our onSynced rides on what we staged.
 			select {
 			case staged := <-outcome:
 				if staged != nil {
-					return staged, nil
+					return staged, "", nil
 				}
 			default:
 			}
 
 			// We joined a plain sync.
-			return nil, notStreamedErr(err)
+			return nil, res.digest, notStreamedErr(res.err)
 		case <-stagingDone:
 			// Fires once; a nil channel never selects again.
 			stagingDone = nil
@@ -330,19 +339,28 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 			select {
 			case staged := <-outcome:
 				if staged != nil {
-					return staged, nil
+					return staged, "", nil
 				}
 
-				return nil, notStreamedErr(<-result)
+				res := <-result
+
+				return nil, res.digest, notStreamedErr(res.err)
 			default:
 			}
 
 			// Another request led and staged: serve its manifest now.
 			if staged, ok := onDemand.joinStaged(repo, reference, nsParam, onSynced); ok {
-				return staged, nil
+				return staged, "", nil
 			}
 		}
 	}
+}
+
+// fetchResult is a flight's outcome for FetchManifestForStream: the digest the sync committed (if
+// it committed without streaming) and the sync's error.
+type fetchResult struct {
+	digest godigest.Digest
+	err    error
 }
 
 // joinStaged returns repo:reference's staged manifest if it was supplied by the upstream registry
@@ -377,9 +395,13 @@ func notStreamedErr(syncErr error) error {
 
 // streamOrSyncImage is the leader's flight body: stage and sync feeding the streams, or, if it
 // can't stage, run the plain on-demand sync. It sends outcome exactly once, as soon as it knows.
+//
+// It returns the digest the plain sync committed, so a caller reading storage can serve that
+// immutable result. Streamed paths return an empty digest: their callers already hold the upstream
+// manifest, and the sync is still running.
 func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, reference string,
 	nsParam string, onSynced func(manifest.Manifest), outcome chan<- manifest.Manifest,
-) error {
+) (godigest.Digest, error) {
 	key := onDemandKey(onDemandKindImage, repo, reference, nsParam)
 
 	// Only this flight closes the slot. It is released after outcome is sent, so this request
@@ -403,10 +425,10 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 		releaseStaging()
 
 		if !staged.waitSynced() {
-			return zerr.ErrSyncJoinedStreamFailed
+			return "", zerr.ErrSyncJoinedStreamFailed
 		}
 
-		return nil
+		return "", nil
 	}
 
 	if stageErr != nil {
@@ -435,10 +457,10 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 
 		releaseStaging()
 
-		_, err := onDemand.syncImage(ctx, repo, reference, nsParam, -1, "", true)
+		digest, err := onDemand.syncImage(ctx, repo, reference, nsParam, -1, "", true)
 		onDemand.logImageSyncErr(repo, reference, err)
 
-		return err
+		return digest, err
 	}
 
 	outcome <- staged.referenceManifest
@@ -457,7 +479,7 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 	// onSynced (ours and joiners'), atomically with removal so none is lost.
 	onDemand.streamManager.RemoveStreamingImage(repo, reference, err == nil)
 
-	return err
+	return "", err
 }
 
 // registryHostsProvider is implemented by services that can name their upstream registry

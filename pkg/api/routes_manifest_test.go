@@ -58,8 +58,10 @@ type mockSyncOnDemand struct {
 		referenceTypes []string, ns string) error
 	shouldCheckUpstreamManifestFn func(repo, reference, ns string) bool
 	fetchManifestForStreamFn      func(ctx context.Context, repo, reference string) (manifest.Manifest, error)
-	isStreamingEnabledForRepoFn   func(repo string) bool
-	shouldQueueOnDemandSyncFn     func(repo, ns string) bool
+	// fetchManifestForStreamDigest is the digest FetchManifestForStream reports as committed.
+	fetchManifestForStreamDigest godigest.Digest
+	isStreamingEnabledForRepoFn  func(repo string) bool
+	shouldQueueOnDemandSyncFn    func(repo, ns string) bool
 	// queueImageFn records a queued background sync; queueImageCalls counts them.
 	queueImageFn    func(ctx context.Context, repo, reference, ns string)
 	queueImageCalls int
@@ -130,14 +132,16 @@ func (m *mockSyncOnDemand) IsTagFromNamespace(repo, reference, nsParam string,
 
 func (m *mockSyncOnDemand) FetchManifestForStream(ctx context.Context, repo, reference string,
 	_ string, onSynced func(manifest.Manifest),
-) (manifest.Manifest, error) {
+) (manifest.Manifest, godigest.Digest, error) {
 	m.onStreamSynced = onSynced
 
 	if m.fetchManifestForStreamFn != nil {
-		return m.fetchManifestForStreamFn(ctx, repo, reference)
+		fetched, err := m.fetchManifestForStreamFn(ctx, repo, reference)
+
+		return fetched, m.fetchManifestForStreamDigest, err
 	}
 
-	return nil, zerr.ErrManifestNotFound
+	return nil, "", zerr.ErrManifestNotFound
 }
 
 func (m *mockSyncOnDemand) IsStreamingEnabledForRepo(repo string) bool {

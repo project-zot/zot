@@ -4142,7 +4142,7 @@ func TestStagingSlotOwnership(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+		result, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, man)
 		// Joined the staged image instead of entering a flight.
@@ -4171,7 +4171,7 @@ func TestStagingSlotOwnership(t *testing.T) {
 		done := make(chan error, 1)
 
 		go func() {
-			_, err := onDemand.FetchManifestForStream(ctx, "repo", "latest", "", nil)
+			_, _, err := onDemand.FetchManifestForStream(ctx, "repo", "latest", "", nil)
 			done <- err
 		}()
 
@@ -4243,7 +4243,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			},
 		})
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+		result, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, man)
 		So(called, ShouldBeFalse)
@@ -4269,7 +4269,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+		result, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, man)
 		So(fetched, ShouldBeFalse)
@@ -4291,7 +4291,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+		result, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldEqual, zerr.ErrSyncNotStreamed)
 		So(result, ShouldBeNil)
 		So(fetched, ShouldBeFalse)
@@ -4311,7 +4311,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+		result, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldEqual, zerr.ErrSyncNotStreamed)
 		So(result, ShouldBeNil)
 
@@ -4336,7 +4336,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			}
 			onDemand.Add(service)
 
-			result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+			result, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 			So(err, ShouldEqual, zerr.ErrSyncNotStreamed)
 			So(result, ShouldBeNil)
 
@@ -4361,7 +4361,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		}
 		onDemand.Add(service)
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+		result, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(errors.Is(err, zerr.ErrSyncNotStreamed), ShouldBeTrue)
 		So(result, ShouldBeNil)
 
@@ -4384,7 +4384,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			localDigest: godigest.FromString("an older manifest"),
 		})
 
-		result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+		result, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(err, ShouldBeNil)
 		So(result, ShouldEqual, man)
 	})
@@ -4424,7 +4424,7 @@ func TestFetchManifestForStream(t *testing.T) {
 		streamDone := make(chan error, 1)
 
 		go func() {
-			_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+			_, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 			streamDone <- err
 		}()
 
@@ -4457,7 +4457,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			syncImageErr: zerr.ErrStoragePermanent,
 		})
 
-		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+		_, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(errors.Is(err, zerr.ErrSyncNotStreamed), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncInternal), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeFalse)
@@ -4473,7 +4473,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			syncImageErr: zerr.ErrSyncImageNotSigned,
 		})
 
-		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+		_, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 		So(errors.Is(err, zerr.ErrSyncNotStreamed), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrSyncImageNotSigned), ShouldBeTrue)
 		So(errors.Is(err, zerr.ErrBlobNotFound), ShouldBeFalse)
@@ -4503,7 +4503,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			go func() {
 				defer wg.Done()
 
-				_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+				_, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 				conv.So(err, ShouldBeNil)
 			}()
 		}
@@ -4560,7 +4560,7 @@ func TestFetchManifestForStream(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 
-				result, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
+				result, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "", nil)
 				conv.So(err, ShouldBeNil)
 				results[i] = result
 			}(i)
@@ -4607,12 +4607,12 @@ func TestFetchManifestForStreamJoinerOnSynced(t *testing.T) {
 		stagerSynced := make(chan manifest.Manifest, 1)
 		joinerSynced := make(chan manifest.Manifest, 1)
 
-		_, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "",
+		_, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "",
 			func(m manifest.Manifest) { stagerSynced <- m })
 		So(err, ShouldBeNil)
 
 		// The background sync is blocked, so this call joins the staged entry.
-		_, err = onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "",
+		_, _, err = onDemand.FetchManifestForStream(context.Background(), "repo", "latest", "",
 			func(m manifest.Manifest) { joinerSynced <- m })
 		So(err, ShouldBeNil)
 
@@ -4726,8 +4726,9 @@ func TestStreamOrSyncImageJoinsPreReloadStream(t *testing.T) {
 			result := make(chan error, 1)
 
 			go func() {
-				result <- onDemand.streamOrSyncImage(context.Background(), "repo", "latest", "",
+				_, err := onDemand.streamOrSyncImage(context.Background(), "repo", "latest", "",
 					onSynced, outcome)
+				result <- err
 			}()
 
 			So(<-outcome, ShouldEqual, man)

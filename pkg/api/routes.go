@@ -3434,6 +3434,11 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	// synced: FetchManifestForStream already ran the sync, without streaming.
 	var synced bool
 
+	// The digest the sync committed. When known, serve it by digest below: the shared local tag
+	// can be re-committed by another namespace's concurrent sync between this sync's commit and
+	// the local read, and a digest read is immune to that.
+	var syncedDigest godigest.Digest
+
 	if syncEnabled {
 		// When manifestCheckInterval is configured and a recent upstream check already
 		// validated this reference, serve the local manifest instead of contacting upstream.
@@ -3471,8 +3476,8 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 				Bool("inFlightStream", inFlightStream).
 				Msg("streaming enabled for repo, fetching manifest directly from upstream")
 
-			fetchedManifest, errFetch := routeHandler.c.SyncOnDemand.FetchManifestForStream(ctx,
-				name, reference, nsParam, onStreamSynced)
+			fetchedManifest, fetchedDigest, errFetch := routeHandler.c.SyncOnDemand.FetchManifestForStream(
+				ctx, name, reference, nsParam, onStreamSynced)
 			if errFetch == nil {
 				content, err := fetchedManifest.RawBody()
 				if err != nil {
@@ -3494,6 +3499,9 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			if errors.Is(errFetch, zerr.ErrSyncNotStreamed) {
 				synced = true
 
+				// Serve the digest the fallback sync committed, for the same reason as below.
+				syncedDigest = fetchedDigest
+
 				// The bare sentinel means the sync succeeded; otherwise it wraps the sync's error.
 				if errFetch != zerr.ErrSyncNotStreamed { //nolint:errorlint,err113 // identity check, see above
 					syncErr = errFetch
@@ -3507,11 +3515,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 			}
 		}
 
-		// The digest the sync committed. When known, serve it by digest below: the shared local
-		// tag can be re-committed by another namespace's concurrent sync between this sync's
-		// commit and the local read, and a digest read is immune to that.
-		var syncedDigest godigest.Digest
-
+		// The digest the sync committed, already hoisted: serve it by digest below when known.
 		if !synced {
 			routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
 				Msg("trying to get updated image by syncing on demand")

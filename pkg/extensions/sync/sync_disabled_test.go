@@ -31,7 +31,7 @@ func TestOnDemandStub(t *testing.T) {
 			onDemand.QueueImage(context.Background(), "repo", "latest", "")
 		}, ShouldNotPanic)
 
-		manifest, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest",
+		manifest, _, err := onDemand.FetchManifestForStream(context.Background(), "repo", "latest",
 			"", nil)
 		So(manifest, ShouldBeNil)
 		So(err, ShouldEqual, zerr.ErrSyncOnDemandDisabled)
