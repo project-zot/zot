@@ -81,7 +81,7 @@ func priorityTestImage(t *testing.T, sm *ChunkingStreamManager, regClient *regcl
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	t.Cleanup(closeManifest)
 
-	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-a", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	imager, ok := streamable.referenceManifest.(manifest.Imager)
@@ -617,7 +617,7 @@ func TestBaseServiceDownloadStreamedBlobsWithPriorityClient(t *testing.T) {
 	streamable, closeManifest := newTestStreamableManifest(t, regClient, root, "repo-a", predictTestTag)
 	defer closeManifest()
 
-	_, err := sm.StoreImageForStreaming("repo-x", predictTestTag, streamable)
+	_, err := sm.StoreImageForStreaming("repo-x", predictTestTag, streamable, nil)
 	require.NoError(t, err)
 
 	imager, ok := streamable.referenceManifest.(manifest.Imager)
