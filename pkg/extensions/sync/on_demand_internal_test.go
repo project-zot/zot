@@ -544,6 +544,52 @@ func TestServicesMatchingNS(t *testing.T) {
 	})
 }
 
+func TestSyncImageReceivesRetryDigest(t *testing.T) {
+	Convey("SyncImage joining a background retry serves the digest that retry committed", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		service := &stubOnDemandService{canRetry: true, syncImageErr: errors.New("upstream unavailable")}
+		onDemand.Add(service)
+
+		committed := godigest.FromString("retried manifest")
+		started := make(chan struct{})
+		release := make(chan struct{})
+
+		onDemand.maybeRetryInBackground(context.Background(), onDemandKindImage, "repo", "tag", "",
+			"image already demanded, on-demand sync result was shared",
+			service, errors.New("upstream unavailable"),
+			func(context.Context) (godigest.Digest, error) {
+				close(started)
+				<-release
+
+				return committed, nil
+			})
+
+		<-started
+
+		type result struct {
+			digest godigest.Digest
+			err    error
+		}
+
+		resultCh := make(chan result, 1)
+
+		go func() {
+			digest, err := onDemand.SyncImage(context.Background(), "repo", "tag", "")
+
+			resultCh <- result{digest: digest, err: err}
+		}()
+
+		// Let SyncImage join the retry's flight before the retry finishes.
+		time.Sleep(50 * time.Millisecond)
+		close(release)
+
+		joined := <-resultCh
+		So(joined.err, ShouldBeNil)
+		So(joined.digest, ShouldEqual, committed)
+	})
+}
+
 func TestSyncImageInBackgroundEmptyServices(t *testing.T) {
 	Convey("syncImageInBackground is a no-op without matching registries", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())

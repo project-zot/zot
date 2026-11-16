@@ -753,8 +753,9 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 				onDemand.maybeRetryInBackground(ctx, onDemandKindReferrers, repo, subjectDigestStr, nsParam,
 					"referrers for image already demanded, on-demand sync result was shared",
 					service, err,
-					func(retryCtx context.Context) error {
-						return onDemand.syncReferrers(retryCtx, repo, subjectDigestStr, referenceTypes, nsParam, false)
+					func(retryCtx context.Context) (godigest.Digest, error) {
+						return "", onDemand.syncReferrers(retryCtx, repo, subjectDigestStr, referenceTypes,
+							nsParam, false)
 					})
 			}
 
@@ -804,12 +805,12 @@ func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference, ns
 				onDemand.maybeRetryInBackground(ctx, onDemandKindImage, repo, reference, nsParam,
 					"image already demanded, on-demand sync result was shared",
 					service, err,
-					func(retryCtx context.Context) error {
+					func(retryCtx context.Context) (godigest.Digest, error) {
 						// Unpinned: by the time a retry leads, the streams are gone, so it is a
 						// plain sync over every registry matching the requested namespace.
-						_, retryErr := onDemand.syncImage(retryCtx, repo, reference, nsParam, -1, "", false)
-
-						return retryErr
+						// Its digest is published to the flight: a foreground SyncImage joining
+						// this retry serves it instead of re-reading the shared tag.
+						return onDemand.syncImage(retryCtx, repo, reference, nsParam, -1, "", false)
 					})
 			}
 
@@ -981,7 +982,7 @@ func (onDemand *BaseOnDemand) runOnDemandServices(ctx context.Context, repo, ref
 // The retry re-enters the same singleflight so a later matching request waits on it.
 func (onDemand *BaseOnDemand) maybeRetryInBackground(
 	ctx context.Context, kind, repo, reference, nsParam, sharedMsg string,
-	service Service, retryErr error, backgroundFullSync func(context.Context) error,
+	service Service, retryErr error, backgroundFullSync func(context.Context) (godigest.Digest, error),
 ) {
 	if !service.CanRetryOnError() {
 		return
@@ -1020,7 +1021,11 @@ func (onDemand *BaseOnDemand) maybeRetryInBackground(
 			_, err := onDemand.doOnDemandFlight(key, repo, reference, sharedMsg, func() (any, error) {
 				leader = true
 
-				return nil, backgroundFullSync(context.WithoutCancel(ctx))
+				// Publish the digest the retry committed, so a foreground caller joining this
+				// flight serves that manifest instead of re-reading the shared tag.
+				digest, err := backgroundFullSync(context.WithoutCancel(ctx))
+
+				return digest, err
 			})
 			if leader {
 				if err != nil {
