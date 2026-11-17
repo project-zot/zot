@@ -7430,6 +7430,29 @@ func TestDisableAnonymousCatalog(t *testing.T) {
 		resp, err = resty.R().Get(baseURL + "/v2/_catalog")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		// registry clients are still told to authenticate
+		So(resp.Header().Get("WWW-Authenticate"), ShouldStartWith, "Basic ")
+
+		// browsers without the UI header still get the Basic challenge: the native prompt is
+		// how pages like the GraphQL playground and Swagger UI authenticate
+		for _, browserHeaders := range []map[string]string{
+			{"Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, // HTTPS
+			{"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"},      // plain HTTP, no Fetch Metadata
+		} {
+			resp, err = resty.R().SetHeaders(browserHeaders).Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.Header().Get("WWW-Authenticate"), ShouldStartWith, "Basic ")
+		}
+
+		// only the zot UI gets no challenge: it signs in through its own form, and a native
+		// prompt would cache credentials that survive UI logout (issue #4699)
+		resp, err = resty.R().
+			SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		So(resp.Header().Get("WWW-Authenticate"), ShouldBeEmpty)
 
 		// authenticated users can still list
 		resp, err = resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/_catalog")

@@ -9,7 +9,6 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -487,7 +486,7 @@ func (b *BearerAuth) TokenExchangeHandler(ctlr *Controller) http.HandlerFunc {
 		locallyOwned = locallyOwned || requestHasLocalCredential(request)
 
 		if locallyOwned {
-			oidcTokenExchangeUnauthorized(response, authConfig)
+			oidcTokenExchangeUnauthorized(response, request, authConfig)
 
 			return
 		}
@@ -501,7 +500,7 @@ func (b *BearerAuth) TokenExchangeHandler(ctlr *Controller) http.HandlerFunc {
 			return
 		}
 
-		oidcTokenExchangeUnauthorized(response, authConfig)
+		oidcTokenExchangeUnauthorized(response, request, authConfig)
 	}
 }
 
@@ -571,6 +570,14 @@ func (b *BearerAuth) proxyOIDCBearerTokenExchange(response http.ResponseWriter, 
 	defer proxyResp.Body.Close()
 
 	copyTokenProxyHeaders(response.Header(), proxyResp.Header)
+	// An upstream Basic challenge would otherwise reach the zot UI unchanged and seed the
+	// browser's credential cache, defeating suppressBasicAuthChallenge. Order matters: strip after
+	// copying the upstream headers and before WriteHeader, which freezes them. The upstream
+	// status (e.g. 401) and body are passed through unchanged.
+	if suppressBasicAuthChallenge(request) {
+		removeBasicAuthChallenges(response.Header())
+	}
+
 	response.WriteHeader(proxyResp.StatusCode)
 	_, err = io.Copy(response, proxyResp.Body)
 
@@ -648,13 +655,125 @@ func tokenProxyHeaderShouldBeSkipped(header string) bool {
 	}
 }
 
-func oidcTokenExchangeUnauthorized(response http.ResponseWriter, authConfig *config.AuthConfig) {
+// removeBasicAuthChallenges strips Basic challenges from every WWW-Authenticate value and
+// keeps all other challenges (e.g. Bearer) intact. A single value may carry several
+// comma-separated challenges (RFC 9110 §11.6.1), so each value is split into challenges and
+// only the Basic ones are removed; a value left with no challenges is dropped.
+func removeBasicAuthChallenges(header http.Header) {
+	values := header.Values("WWW-Authenticate")
+	if len(values) == 0 {
+		return
+	}
+
+	header.Del("WWW-Authenticate")
+
+	for _, value := range values {
+		challenges := splitAuthChallenges(value)
+		kept := make([]string, 0, len(challenges))
+
+		for _, challenge := range challenges {
+			if !strings.EqualFold(authChallengeScheme(challenge), "basic") {
+				kept = append(kept, challenge)
+			}
+		}
+
+		switch {
+		case len(kept) == len(challenges):
+			header.Add("WWW-Authenticate", value) // nothing removed: keep the upstream value verbatim
+		case len(kept) > 0:
+			header.Add("WWW-Authenticate", strings.Join(kept, ", "))
+		}
+	}
+}
+
+// splitAuthChallenges splits a WWW-Authenticate value into its challenges, returned trimmed
+// and otherwise verbatim. Commas separate both challenges and the auth-params within one
+// challenge, so a comma-separated element starts a new challenge only when it does not look
+// like an auth-param ("name=value"). Commas inside quoted-strings are not boundaries.
+func splitAuthChallenges(value string) []string {
+	challenges := []string{}
+
+	for _, element := range splitUnquotedCommas(value) {
+		element = strings.TrimSpace(element)
+
+		switch {
+		case element == "":
+			// empty list elements are allowed by the list syntax and carry nothing
+		case isAuthParam(element) && len(challenges) > 0:
+			// continuation of the current challenge, e.g. `service="x"` after `Bearer realm="y"`
+			challenges[len(challenges)-1] += ", " + element
+		default:
+			challenges = append(challenges, element)
+		}
+	}
+
+	return challenges
+}
+
+// splitUnquotedCommas splits on commas that are outside quoted-strings, honoring
+// backslash escapes inside quotes (quoted-pair).
+func splitUnquotedCommas(value string) []string {
+	var (
+		parts    []string
+		start    int
+		inQuotes bool
+		escaped  bool
+	)
+
+	for i := range len(value) {
+		switch char := value[i]; {
+		case escaped:
+			escaped = false
+		case inQuotes && char == '\\':
+			escaped = true
+		case char == '"':
+			inQuotes = !inQuotes
+		case char == ',' && !inQuotes:
+			parts = append(parts, value[start:i])
+			start = i + 1
+		}
+	}
+
+	return append(parts, value[start:])
+}
+
+// isAuthParam reports whether a list element is an auth-param (token BWS "=" ...), as opposed
+// to the start of a new challenge, which begins with an auth-scheme token followed by
+// whitespace or nothing (e.g. `Basic realm="x"`, `Negotiate`, `Basic dXNlcjpw==`).
+func isAuthParam(element string) bool {
+	name := strings.TrimLeft(element, tcharSet)
+	if len(name) == len(element) {
+		return false // does not start with a token
+	}
+
+	return strings.HasPrefix(strings.TrimLeft(name, " \t"), "=")
+}
+
+// authChallengeScheme returns the auth-scheme of a challenge: its leading token.
+func authChallengeScheme(challenge string) string {
+	if end := strings.IndexAny(challenge, " \t"); end >= 0 {
+		return challenge[:end]
+	}
+
+	return challenge
+}
+
+// tcharSet is the RFC 9110 tchar set, used by strings.TrimLeft to skip over a token.
+// (Named to avoid gosec G101, which flags constants whose name contains "token".)
+const tcharSet = "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+func oidcTokenExchangeUnauthorized(response http.ResponseWriter, request *http.Request, authConfig *config.AuthConfig) {
 	realm := "zot"
 	if authConfig != nil && authConfig.Bearer != nil && authConfig.Bearer.Realm != "" {
 		realm = authConfig.Bearer.Realm
 	}
 
-	response.Header().Set("WWW-Authenticate", "Basic realm="+strconv.Quote(realm))
+	// Same rule as authFail: no Basic challenge for the zot UI, so the token endpoint
+	// cannot seed the browser's credential cache either.
+	if !suppressBasicAuthChallenge(request) {
+		setBasicAuthChallenge(response, realm)
+	}
+
 	zcommon.WriteJSON(response, http.StatusUnauthorized, apiErr.NewError(apiErr.UNAUTHORIZED))
 }
 

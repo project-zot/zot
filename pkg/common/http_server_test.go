@@ -198,3 +198,80 @@ func TestAuthzFailDelaySkipsAnonymousRequests(t *testing.T) {
 		So(time.Since(start), ShouldBeGreaterThanOrEqualTo, time.Second)
 	})
 }
+
+func TestAuthzFailBrowserChallenges(t *testing.T) {
+	Convey("Authz challenges are withheld only from the zot UI, browsers keep Basic", t, func() {
+		tests := []struct {
+			name      string
+			headers   map[string]string
+			challenge bool
+		}{
+			{name: "registry client", challenge: true},
+			{name: "docker client", headers: map[string]string{"User-Agent": "Docker-Client/28.0"}, challenge: true},
+			{name: "wildcard accept", headers: map[string]string{"Accept": "*/*"}, challenge: true},
+			{name: "ui client", headers: map[string]string{
+				constants.SessionClientHeaderName: constants.SessionClientHeaderValue,
+			}},
+			// e.g. a bookmarked /v2/_catalog, the GraphQL playground or Swagger UI: no UI header,
+			// so the native Basic prompt is how they authenticate
+			{
+				name: "browser navigation over https", headers: map[string]string{"Sec-Fetch-Mode": "navigate"},
+				challenge: true,
+			},
+			{name: "browser navigation over plain http", headers: map[string]string{
+				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			}, challenge: true},
+		}
+
+		for _, test := range tests {
+			// anonymous request to /v2/_catalog with disableAnonymousCatalog
+			request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v2/_catalog", nil)
+			for name, value := range test.headers {
+				request.Header.Set(name, value)
+			}
+
+			response := httptest.NewRecorder()
+			common.AuthzFail(response, request, "", "zot", 0)
+			So(response.Code, ShouldEqual, http.StatusUnauthorized)
+
+			if test.challenge {
+				So(response.Header().Get("WWW-Authenticate"), ShouldEqual, `Basic realm="zot"`)
+			} else {
+				So(response.Header().Get("WWW-Authenticate"), ShouldBeEmpty)
+			}
+		}
+	})
+
+	Convey("Admin routes: browsers without the UI header keep their Basic or Bearer challenge", t, func() {
+		for _, bearer := range []bool{false, true} {
+			conf := config.New()
+			conf.HTTP.Realm = "zot"
+			conf.HTTP.Auth.HTPasswd = config.AuthHTPasswd{Path: "/tmp/htpasswd"}
+			if bearer {
+				conf.HTTP.Auth.HTPasswd = config.AuthHTPasswd{}
+				conf.HTTP.Auth.Bearer = &config.BearerConfig{
+					Realm: "https://auth.example.com/token", Service: "zot", Cert: "/tmp/cert.pem",
+				}
+			}
+
+			handler := common.AuthzOnlyAdminsMiddleware(conf)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				t.Fatal("next handler must not run for an anonymous request")
+			}))
+
+			request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/zot/admin", nil)
+			request.Header.Set("Sec-Fetch-Mode", "navigate")
+
+			reqCtx.NewUserAccessControl().SaveOnRequest(request) // anonymous
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			So(response.Code, ShouldEqual, http.StatusUnauthorized)
+
+			if bearer {
+				So(response.Header().Get("WWW-Authenticate"), ShouldStartWith, "Bearer ")
+			} else {
+				So(response.Header().Get("WWW-Authenticate"), ShouldStartWith, "Basic ")
+			}
+		}
+	})
+}

@@ -253,6 +253,10 @@ func TestLogoutHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 		assert.Equal(t, "application/json", res.Header.Get("Content-Type"))
+		// No Fetch Metadata: not a browser in a secure context, so no site-data wipe.
+		assert.Empty(t, res.Header.Get("Clear-Site-Data"))
+		assert.Equal(t, "no-store", res.Header.Get("Cache-Control"))
+		assert.Empty(t, res.Header.Get("WWW-Authenticate"))
 		assert.JSONEq(t, `{}`, rec.Body.String(),
 			"non-OIDC logout should still return the LogoutResponse shape (endSessionUrl omitted)")
 	})
@@ -270,6 +274,109 @@ func TestLogoutHandler(t *testing.T) {
 		// recorder default (200) and body is empty.
 		assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
 		assert.Empty(t, rec.Body.Bytes())
+		assert.Empty(t, rec.Header().Get("Clear-Site-Data"))
+	})
+
+	t.Run("basic session logout clears session and requests HTTP auth cache removal", func(t *testing.T) {
+		t.Parallel()
+
+		rh := newTestRouteHandler(t)
+		loginReq := httptest.NewRequest(http.MethodGet, "/v2/", nil)
+		loginRec := httptest.NewRecorder()
+		require.NoError(t, saveUserLoggedSession(rh.c.CookieStore, loginRec, loginReq,
+			"read", "", true, rh.c.Log))
+
+		req := httptest.NewRequest(http.MethodPost, "https://zot.example.com/zot/auth/logout", nil)
+		req.SetBasicAuth("read", "password")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		for _, cookie := range loginRec.Result().Cookies() {
+			req.AddCookie(cookie)
+		}
+
+		identity, ok := GetAuthUserFromRequestSession(rh.c.CookieStore, req, rh.c.Log)
+		require.True(t, ok)
+		assert.Equal(t, "read", identity)
+
+		rec := httptest.NewRecorder()
+		rh.Logout(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, `"cookies"`, rec.Header().Get("Clear-Site-Data"))
+		assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+		assert.Empty(t, rec.Header().Get("WWW-Authenticate"))
+		cookies := rec.Result().Cookies()
+		require.Len(t, cookies, 1)
+		assert.Equal(t, "session", cookies[0].Name)
+		assert.Equal(t, -1, cookies[0].MaxAge)
+	})
+
+	t.Run("Clear-Site-Data only for trusted origins", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name        string
+			allowOrigin string
+			externalURL string
+			headers     map[string]string
+			clear       bool
+		}{
+			{name: "same-origin UI", headers: map[string]string{"Sec-Fetch-Site": "same-origin"}, clear: true},
+			{name: "no fetch metadata", headers: map[string]string{"Origin": "https://zot.example.com"}},
+			{name: "user initiated", headers: map[string]string{"Sec-Fetch-Site": "none"}},
+			{name: "cookie-free cross-site form POST", headers: map[string]string{
+				"Sec-Fetch-Site": "cross-site", "Origin": "https://evil.example.net",
+				"Content-Type": "application/x-www-form-urlencoded",
+			}},
+			{name: "sibling subdomain not configured", headers: map[string]string{
+				"Sec-Fetch-Site": "same-site", "Origin": "https://other.example.com",
+			}},
+			{name: "wildcard allowOrigin is not trusted", allowOrigin: "*", headers: map[string]string{
+				"Sec-Fetch-Site": "cross-site", "Origin": "https://evil.example.net",
+			}},
+			{name: "opaque origin", allowOrigin: "*", headers: map[string]string{
+				"Sec-Fetch-Site": "cross-site", "Origin": "null",
+			}},
+			{name: "UI origin in allowOrigin list", allowOrigin: "https://a.example.org, https://ui.example.com",
+				headers: map[string]string{"Sec-Fetch-Site": "same-site", "Origin": "https://ui.example.com"}, clear: true},
+			{name: "UI origin is externalUrl", externalURL: "https://ui.example.com/zot",
+				headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://ui.example.com"}, clear: true},
+			{name: "externalUrl with explicit default port", externalURL: "https://ui.example.com:443/zot",
+				headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://ui.example.com"}, clear: true},
+			{name: "allowOrigin differs only in case", allowOrigin: "https://UI.example.com",
+				headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://ui.example.com"}, clear: true},
+			{name: "non-default port does not match", allowOrigin: "https://ui.example.com:8443",
+				headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://ui.example.com"}},
+			{name: "scheme mismatch does not match", allowOrigin: "http://ui.example.com",
+				headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://ui.example.com"}},
+			{name: "allowOrigin prefix does not match", allowOrigin: "https://ui.example.com",
+				headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://ui.example.com.evil.net"}},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				t.Parallel()
+
+				rh := newTestRouteHandler(t)
+				rh.c.Config.HTTP.AllowOrigin = test.allowOrigin
+				rh.c.Config.HTTP.ExternalURL = test.externalURL
+
+				req := httptest.NewRequest(http.MethodPost, "https://zot.example.com/zot/auth/logout", nil)
+				for name, value := range test.headers {
+					req.Header.Set(name, value)
+				}
+
+				rec := httptest.NewRecorder()
+				rh.Logout(rec, req)
+
+				assert.Equal(t, http.StatusOK, rec.Code)
+				assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+				if test.clear {
+					assert.Equal(t, `"cookies"`, rec.Header().Get("Clear-Site-Data"))
+				} else {
+					assert.Empty(t, rec.Header().Get("Clear-Site-Data"))
+				}
+			})
+		}
 	})
 
 	t.Run("session has provider but no matching RelyingParty → JSON with no endSessionUrl", func(t *testing.T) {
