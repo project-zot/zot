@@ -332,8 +332,12 @@ func (scheduler *Scheduler) generateTasks() {
 
 	var gen *generator
 
+	// get the state once: it can change between two checks, e.g. when a delay passes,
+	// and a generator popped as not ready must go to the waiting or done list.
+	state := scheduler.generators[0].getState()
+
 	// check if the generator with highest priority is ready to run
-	if scheduler.generators[0].getState() == Ready {
+	if state == Ready {
 		// we are not popping it as we will generate multiple tasks until it is done
 		// we are going to pop after all tasks are generated
 		gen = scheduler.generators[0]
@@ -343,9 +347,9 @@ func (scheduler *Scheduler) generateTasks() {
 		heap.Fix(&scheduler.generators, 0)
 	} else {
 		gen, _ = heap.Pop(&scheduler.generators).(*generator)
-		if gen.getState() == Waiting {
+		if state == Waiting {
 			scheduler.waitingGenerators = append(scheduler.waitingGenerators, gen)
-		} else if gen.getState() == Done {
+		} else {
 			scheduler.doneGenerators = append(scheduler.doneGenerators, gen)
 		}
 
@@ -395,25 +399,27 @@ func (scheduler *Scheduler) getTasksChannelByPriority(priority Priority) chan Ta
 	return nil
 }
 
-func (scheduler *Scheduler) SubmitTask(task Task, priority Priority) {
+// SubmitTask adds a task to the queue of the given priority.
+// It returns false if the task was not added, because the scheduler is shutting down or the queue is full.
+func (scheduler *Scheduler) SubmitTask(task Task, priority Priority) bool {
 	// get by priority the channel where the task should be added to
 	tasksQ := scheduler.getTasksChannelByPriority(priority)
 	if tasksQ == nil {
-		return
+		return false
 	}
 
 	// check if the scheduler is still running in order to add the task to the channel
 	if scheduler.inShutdown() {
-		return
+		return false
 	}
 
 	select {
 	case tasksQ <- task:
 		scheduler.log.Info().Msg("adding a new task")
+
+		return true
 	default:
-		if scheduler.inShutdown() {
-			return
-		}
+		return false
 	}
 }
 
@@ -525,6 +531,47 @@ func (gen *generator) getRanking() float64 {
 	// take into account the priority, but also how many tasks of
 	// a specific generator were executed in the current generator run
 	return math.Pow(10, float64(gen.priority)) / (1 + float64(gen.taskCount)) //nolint:mnd
+}
+
+// RunGeneratorNow makes a generator which is done ready to run again: a periodic generator which is
+// waiting for its interval to pass, without changing its interval, or a one-shot generator which already ran.
+// A generator which is already running is left as is.
+// It returns false if the generator was not submitted to this scheduler, or the scheduler is shutting down.
+func (scheduler *Scheduler) RunGeneratorNow(taskGenerator TaskGenerator) bool {
+	if scheduler.inShutdown() {
+		return false
+	}
+
+	scheduler.generatorsLock.Lock()
+	defer scheduler.generatorsLock.Unlock()
+
+	for _, gens := range [][]*generator{scheduler.generators, scheduler.waitingGenerators} {
+		for _, gen := range gens {
+			if gen.taskGenerator != taskGenerator {
+				continue
+			}
+
+			gen.done = false
+
+			return true
+		}
+	}
+
+	// a one-shot generator which is done is set aside, so move it back to be pushed once it is ready
+	for i, gen := range scheduler.doneGenerators {
+		if gen.taskGenerator != taskGenerator {
+			continue
+		}
+
+		gen.done = false
+
+		scheduler.doneGenerators = append(scheduler.doneGenerators[:i], scheduler.doneGenerators[i+1:]...)
+		scheduler.waitingGenerators = append(scheduler.waitingGenerators, gen)
+
+		return true
+	}
+
+	return false
 }
 
 func (scheduler *Scheduler) SubmitGenerator(taskGenerator TaskGenerator, interval time.Duration, priority Priority) {

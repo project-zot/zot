@@ -12,6 +12,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/log"
+	"zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
 type HTPasswd struct {
@@ -86,7 +87,11 @@ func (auth Auth) MarshalJSON() ([]byte, error) {
 	return json.Marshal(localAuth(auth))
 }
 
-func SetupMgmtRoutes(conf *config.Config, router *mux.Router, log log.Logger) {
+// SetupMgmtRoutes sets up the mgmt extension routes. gcOnDemand returns the on-demand GC of a store,
+// and whether the store exists.
+func SetupMgmtRoutes(conf *config.Config, router *mux.Router, gcOnDemand func(store string) (*gc.OnDemand, bool),
+	log log.Logger,
+) {
 	extensionsConfig := conf.CopyExtensionsConfig()
 	if !extensionsConfig.IsSearchEnabled() {
 		log.Info().Msg("skip enabling the mgmt route as the config prerequisites are not met")
@@ -104,8 +109,19 @@ func SetupMgmtRoutes(conf *config.Config, router *mux.Router, log log.Logger) {
 	mgmtRouter := router.PathPrefix(constants.ExtMgmt).Subrouter()
 	mgmtRouter.Use(zcommon.CORSHeadersMiddleware(conf.HTTP.AllowOrigin))
 	mgmtRouter.Use(zcommon.AddExtensionSecurityHeaders())
-	mgmtRouter.Use(zcommon.ACHeadersMiddleware(conf, allowedMethods...))
-	mgmtRouter.Methods(allowedMethods...).HandlerFunc(mgmt.HandleGetConfig)
+
+	// registered before the config handler, which handles any GET under the mgmt prefix;
+	// ACHeadersMiddleware answers the OPTIONS preflight before the admin check
+	gcHandler := GCHandler{GCOnDemand: gcOnDemand, Log: log}
+	gcRouter := mgmtRouter.Path(constants.MgmtGC).Subrouter()
+	gcRouter.Use(zcommon.ACHeadersMiddleware(conf, zcommon.AllowedMethods(http.MethodGet, http.MethodPost)...))
+	gcRouter.Use(zcommon.AuthzOnlyAdminsMiddleware(conf))
+	gcRouter.Methods(http.MethodPost).HandlerFunc(gcHandler.RunGC)
+	gcRouter.Methods(http.MethodGet).HandlerFunc(gcHandler.GetGCStatus)
+	gcRouter.Methods(http.MethodOptions).HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+
+	mgmtRouter.Methods(allowedMethods...).
+		Handler(zcommon.ACHeadersMiddleware(conf, allowedMethods...)(http.HandlerFunc(mgmt.HandleGetConfig)))
 
 	log.Info().Msg("finished setting up mgmt routes")
 }

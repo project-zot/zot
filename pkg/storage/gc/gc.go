@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -130,7 +131,9 @@ func NewGarbageCollect(imgStore types.ImageStore, metaDB mTypes.MetaDB, opts Opt
 CleanImageStorePeriodically runs a periodic garbage collect on the ImageStore provided in constructor,
 given an interval and a Scheduler.
 */
-func (gc GarbageCollect) CleanImageStorePeriodically(interval time.Duration, sch *scheduler.Scheduler) {
+// CleanImageStorePeriodically submits a periodic GC sweep of the image store to the scheduler,
+// and returns an OnDemand for running GC before the next periodic sweep is due.
+func (gc GarbageCollect) CleanImageStorePeriodically(interval time.Duration, sch *scheduler.Scheduler) *OnDemand {
 	processedRepos := make(map[string]struct{})
 
 	maxDelay := gc.opts.MaxSchedulerDelay
@@ -147,6 +150,8 @@ func (gc GarbageCollect) CleanImageStorePeriodically(interval time.Duration, sch
 	}
 
 	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
+
+	return newOnDemand(gc, sch, generator)
 }
 
 /*
@@ -1516,6 +1521,15 @@ type GCTaskGenerator struct {
 	maxDelay          time.Duration
 	timeWindow        config.GCTimeWindow
 	loggedWindowDefer bool
+	// nextRepo and nextRepoErr are the result of looking up the repository to hand out next,
+	// if nextRepoKnown, looked up with the previous one.
+	nextRepo      string
+	nextRepoErr   error
+	nextRepoKnown bool
+	// sweep tracks the status of the current or last sweep.
+	sweep sweepState
+	// forceSweep lets the next sweep start outside the time window, when requested on demand.
+	forceSweep atomic.Bool
 }
 
 func (gen *GCTaskGenerator) getRandomDelay() time.Duration {
@@ -1543,20 +1557,50 @@ func (gen *GCTaskGenerator) Next() (scheduler.Task, error) {
 
 	gen.nextRun = time.Now().Add(delay)
 
-	repo, err := gen.imgStore.GetNextRepository(gen.processedRepos)
+	repo, err := gen.nextRepo, gen.nextRepoErr
+	if !gen.nextRepoKnown {
+		repo, err = gen.imgStore.GetNextRepository(gen.processedRepos)
+	}
+
+	gen.nextRepoKnown = false
+
+	if len(gen.processedRepos) == 0 {
+		gen.sweep.start()
+	}
+
 	if err != nil {
+		// the scheduler retries the generator later, so the sweep keeps running
+		gen.sweep.setError(err)
+
 		return nil, err
 	}
 
 	if repo == "" {
 		gen.done = true
+		// a request which raced with this sweep's start is covered by this sweep
+		gen.forceSweep.Store(false)
+		gen.sweep.generationDone()
 
 		return nil, nil //nolint:nilnil
 	}
 
 	gen.processedRepos[repo] = struct{}{}
 
-	return NewGCTask(gen.imgStore, gen.gc, repo), nil
+	// Look up the next repository now, so that after the last one the call which ends the sweep
+	// doesn't wait for the delay. The next call returns the result, error included.
+	gen.nextRepo, gen.nextRepoErr = gen.imgStore.GetNextRepository(gen.processedRepos)
+	gen.nextRepoKnown = true
+
+	if gen.nextRepo == "" && gen.nextRepoErr == nil {
+		gen.nextRun = time.Now()
+	}
+
+	gen.sweep.taskStarted()
+
+	task := NewGCTask(gen.imgStore, gen.gc, repo)
+	task.onDone = gen.sweep.taskDone
+
+	return task, nil
 }
 
 func (gen *GCTaskGenerator) IsDone() bool {
@@ -1576,7 +1620,13 @@ func (gen *GCTaskGenerator) IsReady() bool {
 	// window reopens the next day.
 	startingNewSweep := len(gen.processedRepos) == 0 && gen.nextRun.IsZero()
 
-	if startingNewSweep && !gen.timeWindow.Contains(now) {
+	// Don't start a new sweep while tasks of the last one are still queued or running, so that
+	// the status reports when each sweep finishes.
+	if startingNewSweep && gen.sweep.hasPendingTasks() {
+		return false
+	}
+
+	if startingNewSweep && !gen.forceSweep.Load() && !gen.timeWindow.Contains(now) {
 		if !gen.loggedWindowDefer {
 			if gen.gc.log.Logger != nil {
 				gen.gc.log.Debug().Msg("gc sweep deferred, outside gcTimeWindow")
@@ -1597,22 +1647,31 @@ func (gen *GCTaskGenerator) Reset() {
 	gen.processedRepos = make(map[string]struct{})
 	gen.done = false
 	gen.nextRun = time.Time{}
+	gen.nextRepo, gen.nextRepoErr, gen.nextRepoKnown = "", nil, false
 }
 
 type gcTask struct {
 	imgStore types.ImageStore
 	gc       GarbageCollect
 	repo     string
+	// onDone, if set, is called with the result once the task has run.
+	onDone func(err error)
 }
 
 func NewGCTask(imgStore types.ImageStore, gc GarbageCollect, repo string,
 ) *gcTask {
-	return &gcTask{imgStore, gc, repo}
+	return &gcTask{imgStore: imgStore, gc: gc, repo: repo}
 }
 
 func (gct *gcTask) DoWork(ctx context.Context) error {
 	// run task
-	return gct.gc.CleanRepo(ctx, gct.repo) //nolint: contextcheck
+	err := gct.gc.CleanRepo(ctx, gct.repo) //nolint: contextcheck
+
+	if gct.onDone != nil {
+		gct.onDone(err)
+	}
+
+	return err
 }
 
 func (gct *gcTask) String() string {

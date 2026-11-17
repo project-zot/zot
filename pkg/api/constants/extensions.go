@@ -20,6 +20,8 @@ const (
 	Mgmt     = "/mgmt"
 	ExtMgmt  = ExtPrefix + Mgmt
 	FullMgmt = RoutePrefix + ExtMgmt
+	// MgmtGC is the on-demand garbage collection route of the mgmt extension.
+	MgmtGC = "/gc"
 
 	// Notation is the signatures extension.
 	Notation     = "/notation"
