@@ -23,6 +23,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/cluster"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
@@ -4567,4 +4568,86 @@ func TestGCTaskGeneratorStorageErrClasses(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestGCTaskGeneratorClusterOwnership(t *testing.T) {
+	Convey("A GC sweep in a scale-out cluster only visits the repos the local member owns", t, func() {
+		members := []string{"127.0.0.1:9000", "127.0.0.2:9000"}
+		hashKey := "loremipsumdolors"
+		repos := []string{"alpine", "busybox", "debian", "fedora", "ubuntu", "zot/test"}
+
+		imgStore := local.NewImageStore(t.TempDir(), false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+
+		ownedBy := map[uint64][]string{}
+
+		for _, repo := range repos {
+			So(WriteImageToFileSystem(CreateRandomImage(), repo, "v1", storeController), ShouldBeNil)
+
+			targetIdx, _ := cluster.ComputeTargetMember(hashKey, members, repo)
+			ownedBy[targetIdx] = append(ownedBy[targetIdx], repo)
+		}
+
+		// the test relies on each member owning some of the repos
+		So(ownedBy[0], ShouldNotBeEmpty)
+		So(ownedBy[1], ShouldNotBeEmpty)
+
+		sweep := func(clusterConfig *config.ClusterConfig) map[string]int {
+			gcInstance := NewGarbageCollect(imgStore, nil, Options{
+				Delay:          time.Hour,
+				ImageRetention: config.ImageRetention{Delay: time.Hour},
+				Cluster:        clusterConfig,
+			}, zlog.NewAuditLogger("debug", "/dev/null"), zlog.NewTestLogger(), monitoring.NewNopMetricServer())
+
+			gen := &GCTaskGenerator{
+				imgStore:       imgStore,
+				gc:             gcInstance,
+				processedRepos: map[string]struct{}{},
+				maxDelay:       time.Millisecond,
+			}
+
+			visited := map[string]int{}
+			So(runGCGenerator(context.Background(), gen, visited), ShouldBeNil)
+			So(gen.IsDone(), ShouldBeTrue)
+
+			return visited
+		}
+
+		for _, localIdx := range []uint64{0, 1} {
+			visited := sweep(&config.ClusterConfig{
+				Members: members,
+				HashKey: hashKey,
+				Proxy:   &config.ClusterRequestProxyConfig{LocalMemberClusterSocketIndex: localIdx},
+			})
+
+			So(visited, ShouldHaveLength, len(ownedBy[localIdx]))
+
+			for _, repo := range ownedBy[localIdx] {
+				So(visited[repo], ShouldEqual, 1)
+			}
+		}
+
+		Convey("and visits every repo when it is not part of a cluster", func() {
+			for _, clusterConfig := range []*config.ClusterConfig{
+				nil,
+				// a single member owns every repo
+				{
+					Members: members[:1],
+					HashKey: hashKey,
+					Proxy:   &config.ClusterRequestProxyConfig{LocalMemberClusterSocketIndex: 0},
+				},
+				// no local member index outside of a running controller, e.g. verify-feature retention
+				{Members: members, HashKey: hashKey},
+			} {
+				visited := sweep(clusterConfig)
+
+				So(visited, ShouldHaveLength, len(repos))
+
+				for _, repo := range repos {
+					So(visited[repo], ShouldEqual, 1)
+				}
+			}
+		})
+	})
 }
