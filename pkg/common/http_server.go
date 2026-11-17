@@ -142,37 +142,6 @@ func adminAuthChallenge(authConfig *config.AuthConfig, realm string) string {
 	}
 }
 
-// IsBrowserRequest reports whether a request comes from a browser, which must never get a
-// "WWW-Authenticate: Basic" challenge. Such a challenge makes the browser show its native
-// login prompt and cache the entered credentials per (origin, realm), independently of the
-// zot session. Logout cannot remove that cache over plain HTTP, and since a Basic
-// Authorization header takes precedence over the session cookie, cached credentials would
-// silently override any later UI login (see issue #4699). Bearer challenges are not
-// affected: browsers do not act on them.
-//
-// All inputs are client-controlled, which is fine: this only decides whether a challenge
-// header is sent, never whether a request is authenticated or authorized. A client that
-// spoofs browser headers just loses the hint telling it to send credentials.
-func IsBrowserRequest(request *http.Request) bool {
-	// UI requests that already carry the session header.
-	if request.Header.Get(constants.SessionClientHeaderName) == constants.SessionClientHeaderValue {
-		return true
-	}
-
-	// Fetch Metadata headers are only sent by browsers, so registry clients (docker,
-	// podman, skopeo, curl) are unaffected. Browsers send them only to secure origins
-	// (HTTPS or localhost), which covers requests issued before the UI attaches its header.
-	if request.Header.Get("Sec-Fetch-Mode") != "" {
-		return true
-	}
-
-	// Fallback for plain HTTP, where Fetch Metadata is absent: top-level navigations
-	// (e.g. a bookmarked /v2/_catalog URL) advertise text/html, registry clients do not.
-	// Script fetches send "Accept: */*" and cannot be told apart from registry clients here,
-	// so on plain HTTP they are only covered once the UI attaches its session header.
-	return strings.Contains(request.Header.Get("Accept"), "text/html")
-}
-
 func basicAuthChallenge(realm string) string {
 	if realm == "" {
 		realm = "Authorization Required"
@@ -194,8 +163,7 @@ func AuthzFailWithReason(w http.ResponseWriter, r *http.Request, identity, realm
 }
 
 // authzFailWithChallenge writes an authz failure: 401 without an identity, else 403. challenge, if
-// non-empty, is sent as WWW-Authenticate, except to UI session clients, and a Basic challenge is
-// additionally withheld from any browser request (see IsBrowserRequest).
+// non-empty, is sent as WWW-Authenticate, except to UI session clients.
 func authzFailWithChallenge(w http.ResponseWriter, r *http.Request, identity, challenge string, delay int,
 	reason string,
 ) {
@@ -205,17 +173,7 @@ func authzFailWithChallenge(w http.ResponseWriter, r *http.Request, identity, ch
 	}
 
 	// don't send auth headers if request is coming from UI
-	sendChallenge := challenge != "" &&
-		r.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue
-	// e.g. an anonymous browser navigation to /v2/_catalog with disableAnonymousCatalog, or to
-	// an admin route; Bearer challenges are still sent to non-UI clients. A prefix check is
-	// enough: callers build Basic challenges with basicAuthChallenge, which always emits
-	// a single `Basic realm=...` challenge.
-	if sendChallenge && strings.HasPrefix(challenge, "Basic ") && IsBrowserRequest(r) {
-		sendChallenge = false
-	}
-
-	if sendChallenge {
+	if challenge != "" && r.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
 		w.Header().Set("WWW-Authenticate", challenge)
 	}
 

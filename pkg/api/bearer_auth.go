@@ -570,8 +570,8 @@ func (b *BearerAuth) proxyOIDCBearerTokenExchange(response http.ResponseWriter, 
 	defer proxyResp.Body.Close()
 
 	copyTokenProxyHeaders(response.Header(), proxyResp.Header)
-	// An upstream Basic challenge would otherwise reach the browser unchanged and seed
-	// its credential cache, defeating suppressBasicAuthChallenge. Order matters: strip after
+	// An upstream Basic challenge would otherwise reach the zot UI unchanged and seed the
+	// browser's credential cache, defeating suppressBasicAuthChallenge. Order matters: strip after
 	// copying the upstream headers and before WriteHeader, which freezes them. The upstream
 	// status (e.g. 401) and body are passed through unchanged.
 	if suppressBasicAuthChallenge(request) {
@@ -768,7 +768,7 @@ func oidcTokenExchangeUnauthorized(response http.ResponseWriter, request *http.R
 		realm = authConfig.Bearer.Realm
 	}
 
-	// Same rule as authFail: no Basic challenge for browsers, so the token endpoint
+	// Same rule as authFail: no Basic challenge for the zot UI, so the token endpoint
 	// cannot seed the browser's credential cache either.
 	if !suppressBasicAuthChallenge(request) {
 		setBasicAuthChallenge(response, realm)

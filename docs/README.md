@@ -18,17 +18,20 @@ override a later UI login as a different user.
 
 To prevent that:
 
-- zot omits the Basic challenge for browser requests: UI requests, requests
-  carrying Fetch Metadata (`Sec-Fetch-Mode`), and requests accepting
-  `text/html`, including direct navigation to `/v2/` URLs. Authentication is
-  still required; only the challenge header (and so the native prompt) is
-  omitted. Signing in through the browser's native prompt is therefore no
-  longer offered; use the UI login form.
-  This covers authentication and authorization failures alike (e.g. an
-  anonymous visit to `/v2/_catalog` with `disableAnonymousCatalog`, or to an
-  admin route), as well as Basic challenges returned by an upstream token
+- zot omits the Basic challenge for zot UI requests, i.e. those carrying
+  `X-ZOT-API-CLIENT: zot-ui`, so the UI never triggers the native prompt.
+  Authentication is still required; only the challenge header is omitted.
+  This covers authentication and authorization failures alike, `/v2/`, zot's
+  own token endpoint, and Basic challenges returned by an upstream token
   endpoint (`bearer.upstreamTokenEndpoint`) that zot proxies. Bearer challenges
   are unaffected.
+
+  Every other client keeps the Basic challenge, browsers included. Pages such
+  as the GraphQL playground (`/v2/_zot/debug/graphql-playground`), Swagger UI
+  (`/swagger/v2/`) or a bookmarked `/v2/_catalog` URL do not send the UI
+  header, so zot ignores their session cookie and the native prompt is how
+  they authenticate. Credentials entered there are cached by the browser and
+  are cleared by the next UI logout as described below.
 - A successful `POST /zot/auth/logout` expires the session cookie and sends
   `Clear-Site-Data: "cookies"`, which in supporting browsers also clears cached
   HTTP Basic credentials, so the next UI login can use a different account.
@@ -51,10 +54,9 @@ Browsers honor `Clear-Site-Data` only in secure contexts (HTTPS or
 it. In those cases logout cannot remove credentials that were already cached by
 a native Basic prompt.
 
-On plain HTTP, browsers also omit Fetch Metadata, so zot can only recognize
-page navigations (which accept `text/html`) and UI requests carrying the zot
-UI header. A script request issued without that header is indistinguishable
-from a registry client and may still receive a Basic challenge.
+On plain HTTP, Basic credentials cached by a native prompt (e.g. after opening
+the GraphQL playground, Swagger UI or a `/v2/` URL directly) therefore survive
+UI logout and keep authenticating the previous account.
 
 ## Clearing cached credentials manually
 

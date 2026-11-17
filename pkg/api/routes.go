@@ -293,11 +293,8 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	// don't send auth headers if request is coming from UI
 	if !hasSessionHeader(request) && needsAuthChallenge {
 		if authConfig.ShouldAdvertiseBearerChallenge() {
-			// Not gated on browsers: a Bearer challenge opens no native prompt and caches nothing.
 			setBearerAuthChallenge(response, authConfig, nil)
-		} else if authConfig.CanAuthenticateWithBasicCredentials() && !suppressBasicAuthChallenge(request) {
-			// Browsers opening /v2/ directly must not get a Basic challenge (see
-			// suppressBasicAuthChallenge); registry clients still do.
+		} else if authConfig.CanAuthenticateWithBasicCredentials() {
 			setBasicAuthChallenge(response, rh.c.Config.GetRealm())
 		}
 	}

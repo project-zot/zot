@@ -1099,8 +1099,7 @@ func authFail(w http.ResponseWriter, r *http.Request, realm string, delay int) {
 		time.Sleep(time.Duration(delay) * time.Second)
 	}
 
-	// Registry clients need the challenge to know they must send credentials; browsers must
-	// not get it, or their native prompt caches credentials that outlive UI logout.
+	// don't send auth headers if request is coming from UI (see suppressBasicAuthChallenge)
 	if !suppressBasicAuthChallenge(r) {
 		setBasicAuthChallenge(w, realm)
 	}
@@ -1177,11 +1176,16 @@ func hasSessionHeader(request *http.Request) bool {
 }
 
 // suppressBasicAuthChallenge reports whether a 401 should omit "WWW-Authenticate: Basic".
-// The rule is shared with the authorization failure writers in pkg/common, see
-// zcommon.IsBrowserRequest for the rationale. Authentication is still enforced; only
-// the challenge is dropped.
+// Only the zot UI (X-ZOT-API-CLIENT: zot-ui) is exempt: it has its own login form, and a
+// challenge would make the browser show its native prompt and cache credentials that take
+// precedence over the session cookie (issue #4699). Every other client keeps the challenge,
+// including browsers opening the GraphQL playground, Swagger UI or a /v2/ URL directly:
+// they do not send the UI header, so their session cookie is ignored and the native prompt
+// is their only way to authenticate. Credentials cached that way are cleared by the UI
+// logout's Clear-Site-Data on HTTPS. Authentication is still enforced either way; only the
+// challenge is dropped. pkg/common's authz failure writers apply the same UI-only rule.
 func suppressBasicAuthChallenge(request *http.Request) bool {
-	return zcommon.IsBrowserRequest(request)
+	return hasSessionHeader(request)
 }
 
 func getUsernamePasswordBasicAuth(request *http.Request) (string, string, error) {

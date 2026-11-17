@@ -1409,7 +1409,7 @@ func TestOIDCBearerTokenExchangeRequiresOIDCAuthorizer(t *testing.T) {
 	}
 }
 
-func TestTokenExchangeProxyStripsBasicChallengeForBrowsers(t *testing.T) {
+func TestTokenExchangeProxyStripsBasicChallengeForUI(t *testing.T) {
 	t.Parallel()
 
 	proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
@@ -1449,9 +1449,9 @@ func TestTokenExchangeProxyStripsBasicChallengeForBrowsers(t *testing.T) {
 			expected: []string{`Basic realm="upstream"`, `Bearer realm="https://upstream/token"`},
 		},
 		{
-			name:     "browser navigation drops basic challenge",
+			name:     "browser without ui header keeps upstream challenges",
 			headers:  map[string]string{"Sec-Fetch-Mode": "navigate"},
-			expected: []string{`Bearer realm="https://upstream/token"`},
+			expected: []string{`Basic realm="upstream"`, `Bearer realm="https://upstream/token"`},
 		},
 		{
 			name:     "ui client drops basic challenge",

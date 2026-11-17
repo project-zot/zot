@@ -200,7 +200,7 @@ func TestAuthzFailDelaySkipsAnonymousRequests(t *testing.T) {
 }
 
 func TestAuthzFailBrowserChallenges(t *testing.T) {
-	Convey("Basic authz challenges are withheld from browsers, Bearer and registry clients unaffected", t, func() {
+	Convey("Authz challenges are withheld only from the zot UI, browsers keep Basic", t, func() {
 		tests := []struct {
 			name      string
 			headers   map[string]string
@@ -208,19 +208,23 @@ func TestAuthzFailBrowserChallenges(t *testing.T) {
 		}{
 			{name: "registry client", challenge: true},
 			{name: "docker client", headers: map[string]string{"User-Agent": "Docker-Client/28.0"}, challenge: true},
-			// curl's default Accept: not treated as a browser, so the challenge is kept
 			{name: "wildcard accept", headers: map[string]string{"Accept": "*/*"}, challenge: true},
 			{name: "ui client", headers: map[string]string{
 				constants.SessionClientHeaderName: constants.SessionClientHeaderValue,
 			}},
-			{name: "browser navigation over https", headers: map[string]string{"Sec-Fetch-Mode": "navigate"}},
+			// e.g. a bookmarked /v2/_catalog, the GraphQL playground or Swagger UI: no UI header,
+			// so the native Basic prompt is how they authenticate
+			{
+				name: "browser navigation over https", headers: map[string]string{"Sec-Fetch-Mode": "navigate"},
+				challenge: true,
+			},
 			{name: "browser navigation over plain http", headers: map[string]string{
 				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-			}},
+			}, challenge: true},
 		}
 
 		for _, test := range tests {
-			// anonymous browser navigation to /v2/_catalog with disableAnonymousCatalog
+			// anonymous request to /v2/_catalog with disableAnonymousCatalog
 			request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v2/_catalog", nil)
 			for name, value := range test.headers {
 				request.Header.Set(name, value)
@@ -238,7 +242,7 @@ func TestAuthzFailBrowserChallenges(t *testing.T) {
 		}
 	})
 
-	Convey("Admin routes: Basic withheld from browsers, Bearer still sent to non-UI browsers", t, func() {
+	Convey("Admin routes: browsers without the UI header keep their Basic or Bearer challenge", t, func() {
 		for _, bearer := range []bool{false, true} {
 			conf := config.New()
 			conf.HTTP.Realm = "zot"
@@ -266,7 +270,7 @@ func TestAuthzFailBrowserChallenges(t *testing.T) {
 			if bearer {
 				So(response.Header().Get("WWW-Authenticate"), ShouldStartWith, "Bearer ")
 			} else {
-				So(response.Header().Get("WWW-Authenticate"), ShouldBeEmpty)
+				So(response.Header().Get("WWW-Authenticate"), ShouldStartWith, "Basic ")
 			}
 		}
 	})

@@ -753,6 +753,9 @@ func TestAuthChallengeHelpers(t *testing.T) {
 func TestBrowserBasicAuthChallenges(t *testing.T) {
 	t.Parallel()
 
+	// Only the zot UI skips the Basic challenge. Other browser pages (GraphQL playground,
+	// Swagger UI, a bookmarked /v2/ URL) do not send the UI header, so the native prompt is
+	// their only way to authenticate and must keep working.
 	tests := []struct {
 		name      string
 		headers   map[string]string
@@ -760,19 +763,19 @@ func TestBrowserBasicAuthChallenges(t *testing.T) {
 	}{
 		{name: "registry client", challenge: true},
 		{name: "docker client", headers: map[string]string{"User-Agent": "Docker-Client/28.0"}, challenge: true},
-		// curl's default Accept; plain-HTTP script fetches look the same and are deliberately
-		// still challenged, since they cannot be told apart from registry clients
 		{name: "wildcard accept", headers: map[string]string{"Accept": "*/*"}, challenge: true},
 		{name: "json accept", headers: map[string]string{"Accept": "application/json"}, challenge: true},
 		{name: "ui client", headers: map[string]string{
 			constants.SessionClientHeaderName: constants.SessionClientHeaderValue,
 		}},
-		{name: "browser navigation", headers: map[string]string{"Sec-Fetch-Mode": "navigate"}},
-		// e.g. the UI's first fetches over HTTPS, sent before it attaches the session header
-		{name: "browser fetch before ui header", headers: map[string]string{"Sec-Fetch-Mode": "cors"}},
+		{name: "browser navigation", headers: map[string]string{"Sec-Fetch-Mode": "navigate"}, challenge: true},
+		{name: "browser fetch without ui header", headers: map[string]string{"Sec-Fetch-Mode": "cors"}, challenge: true},
 		{name: "browser without fetch metadata", headers: map[string]string{
 			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-		}},
+		}, challenge: true},
+		{name: "other api client header", headers: map[string]string{
+			constants.SessionClientHeaderName: "not-zot-ui", "Sec-Fetch-Mode": "navigate",
+		}, challenge: true},
 	}
 
 	for _, test := range tests {
