@@ -1,6 +1,6 @@
 # `userprefs`
 
-`userprefs` component provides an endpoint for adding user preferences for repos. It is available only to authenticated users. Unauthentificated users will be denied access.
+`userprefs` component provides an endpoint for adding user preferences for repos. It is available only to authenticated users. Unauthenticated users will be denied access.
 
 | Supported queries | Input | Output | Description |
 | --- | --- | --- | --- |
