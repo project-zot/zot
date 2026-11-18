@@ -70,10 +70,11 @@ type RegistryConfig struct {
 	// long after a successful one, and a negative value never checks a stored tag.
 	// Requires OnDemand.
 	ManifestCheckInterval time.Duration
-	// ManifestCheckTimeout bounds the upstream manifest request of an on-demand sync (dial, TLS,
-	// authentication and the response, retries included), so that an unreachable upstream fails
-	// fast and a stored manifest is served instead of the client timing out. It does not bound
-	// the blob copy that follows. 0 (default) leaves the request bounded by SyncTimeout only.
+	// ManifestCheckTimeout bounds the upstream manifest request of an on-demand sync (dial, TLS
+	// and the response from the registry, retries included; not the request to a separate token
+	// server), so that an unreachable
+	// upstream fails fast and a stored manifest is served instead of the client timing out. It
+	// does not bound the blob copy that follows. 0 (default) leaves the request bounded by SyncTimeout only.
 	// Requires OnDemand.
 	ManifestCheckTimeout time.Duration
 	CertDir              string

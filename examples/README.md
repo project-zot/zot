@@ -1534,7 +1534,7 @@ Configure each registry sync:
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"platforms": ["linux/amd64"],       # periodic sync default: sparse-copy these OS/arch[/variant] children; omit/empty = all. Overridden by content[].platforms when set. On-demand ignores both. Extra slash tokens beyond three are ignored by platform.Parse (not rejected).
 				"manifestCheckInterval": "1h",      # minimum interval between upstream manifest checks for the same repo:tag when serving on-demand requests; when 0 or unset every request checks upstream; when negative (e.g. -1) a locally present tag is never checked upstream. Requires onDemand.
-				"manifestCheckTimeout": "10s",      # max time the upstream has to answer the manifest request of an on-demand sync (dial, TLS, auth and response, retries included); past it a locally present manifest is served. 0 or unset: bounded by syncTimeout only. Requires onDemand. See "Sync's manifestCheckTimeout option" below
+				"manifestCheckTimeout": "10s",      # max time the registry call of an on-demand sync has to connect and answer the manifest request (dial, TLS and response, retries included); past it a locally present manifest is served. 0 or unset: bounded by syncTimeout only. Requires onDemand. See "Sync's manifestCheckTimeout option" below
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path similar to Docker's /etc/docker/certs.d., if not specified then use the default certs dir,
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
@@ -1692,9 +1692,9 @@ locally gets an error instead of a response that never comes. Notes:
 
  - the default is 0, which leaves the request bounded by `syncTimeout` only
  - it requires `onDemand`, since it only affects on-demand requests, never periodic sync
- - it covers connecting, the TLS handshake, authenticating to the upstream and its response, with
-   retries (`maxRetries`) included; it does not bound downloading the image once the manifest has
-   been received
+ - it limits the call to the registry: connecting, the TLS handshake and the manifest response,
+   with retries (`maxRetries`) included; it does not cover the request to a separate token server
+   for authentication, nor downloading the image once the manifest has been received
  - it applies to each upstream request on its own: with several registries matching a repository,
    each one that is tried gets the full timeout, and with `stream`, a request whose streaming
    lookup times out gets it once more for the regular on-demand sync it falls back to
