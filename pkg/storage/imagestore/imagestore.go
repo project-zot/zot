@@ -3886,6 +3886,12 @@ func (bs *blobStream) Read(buf []byte) (int, error) {
 	return bs.reader.Read(buf)
 }
 
+// WriteTo lets net/http see the bounded source instead of the blobStream wrapper.
+// net.TCPConn.ReadFrom unwraps only one LimitedReader to find the file descriptor.
+func (bs *blobStream) WriteTo(w io.Writer) (int64, error) {
+	return io.Copy(w, bs.reader)
+}
+
 func (bs *blobStream) Close() error {
 	return bs.closer.Close()
 }

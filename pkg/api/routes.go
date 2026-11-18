@@ -3319,18 +3319,10 @@ func WriteDataFromReader(response http.ResponseWriter, status int, length int64,
 	response.Header().Set("Content-Length", strconv.FormatInt(length, 10))
 	response.WriteHeader(status)
 
-	const maxSize = 10 * 1024 * 1024
-
-	for {
-		_, err := io.CopyN(response, reader, maxSize)
-		if errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			// other kinds of intermittent errors can occur, e.g, io.ErrShortWrite
-			logger.Error().Err(err).Msg("failed to copy data into http response")
-
-			return
-		}
+	// CopyN would hide the range stream's WriteTo method behind another LimitedReader.
+	// Copy lets that stream expose its bounded source to net/http's optimized copy path.
+	if _, err := io.Copy(response, reader); err != nil && !errors.Is(err, io.EOF) {
+		logger.Error().Err(err).Msg("failed to copy data into http response")
 	}
 }
 

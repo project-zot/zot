@@ -1,6 +1,8 @@
 package api
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -34,6 +36,24 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	w.length += n
 
 	return n, err
+}
+
+// ReadFrom lets net/http copy file data with sendfile instead of through Write.
+func (w *statusWriter) ReadFrom(source io.Reader) (int64, error) {
+	readerFrom, ok := w.ResponseWriter.(io.ReaderFrom)
+	if !ok {
+		// Hide ReadFrom to prevent recursion. Write counts the copied bytes.
+		return io.Copy(struct{ io.Writer }{w}, source)
+	}
+
+	written, err := readerFrom.ReadFrom(source)
+	w.length += int(written)
+	// net/http can commit 200 before rejecting every byte with ErrContentLength.
+	if w.status == 0 && (written > 0 || errors.Is(err, http.ErrContentLength)) {
+		w.status = http.StatusOK
+	}
+
+	return written, err
 }
 
 // Unwrap lets http.ResponseController reach the wrapped writer's Flush and deadline controls.
