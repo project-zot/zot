@@ -74,6 +74,10 @@ type syncImageOptions struct {
 	// SyncImageForStream sets it: any other sync (periodic, another registry, a moved tag) could
 	// feed bytes of a different manifest than the one served.
 	FeedStreams bool
+	// ManifestCheckTimeout, when positive, bounds the upstream request that resolves the
+	// reference (see RegistryConfig.ManifestCheckTimeout). Only on-demand SyncImage sets it; it
+	// is the same for every on-demand flight of a service, so it is not part of imageFlightKey.
+	ManifestCheckTimeout time.Duration
 }
 
 type BaseService struct {
@@ -444,6 +448,30 @@ func (service *BaseService) markUpstreamChecked(repo, reference string) {
 	service.checkTracker.MarkChecked(repo, reference)
 }
 
+// withManifestCheckTimeout bounds ctx by timeout when it is positive (see
+// RegistryConfig.ManifestCheckTimeout), and returns ctx unchanged otherwise.
+func withManifestCheckTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+
+	return context.WithTimeout(ctx, timeout)
+}
+
+// logManifestCheckTimeout logs that a failed upstream manifest request ran out of
+// manifestCheckTimeout: checkCtx's deadline fired while ctx, the sync's own context, is not done.
+// Caller must hold clientLock for reading (it reads service.remote directly, as taking the
+// read lock again could deadlock against a waiting credential refresh).
+func (service *BaseService) logManifestCheckTimeout(ctx, checkCtx context.Context, reference string) {
+	if ctx.Err() != nil || !errors.Is(checkCtx.Err(), context.DeadlineExceeded) {
+		return
+	}
+
+	service.log.Warn().Str("remote", service.remote.GetHostName()).Str("reference", reference).
+		Dur("manifestCheckTimeout", service.config.ManifestCheckTimeout).
+		Msg("upstream did not answer the manifest request within the manifest check timeout")
+}
+
 func (service *BaseService) GetSyncTimeout() time.Duration {
 	if service.config.SyncTimeout == 0 {
 		return syncConstants.DefaultSyncTimeout
@@ -570,8 +598,14 @@ func (service *BaseService) FetchManifest(ctx context.Context, repo, reference s
 		return nil, err
 	}
 
-	fetchedManifest, err := service.rc.ManifestGet(ctx, remoteImageRef)
+	fetchCtx, cancel := withManifestCheckTimeout(ctx, service.config.ManifestCheckTimeout)
+	fetchedManifest, err := service.rc.ManifestGet(fetchCtx, remoteImageRef)
+
+	cancel()
+
 	if err != nil {
+		service.logManifestCheckTimeout(ctx, fetchCtx, remoteImageRef.CommonName())
+
 		return nil, err
 	}
 
@@ -619,7 +653,8 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 		WithReferrers: false,
 		// Always sparse for on-demand (any tag/digest): indexes copy root only;
 		// image manifests still get config+layers via full ImageCopy.
-		Strategy: copySparseIndex,
+		Strategy:             copySparseIndex,
+		ManifestCheckTimeout: service.config.ManifestCheckTimeout,
 	}
 
 	// Multi-arch signatures cover the index, not each platform child. Digest pulls skip
@@ -1437,8 +1472,13 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 		} else {
 			var headDigest godigest.Digest
 
-			headDigest, mediaType, err = service.remote.HeadManifestRef(ctx, remoteImageRef)
+			headCtx, cancel := withManifestCheckTimeout(ctx, opts.ManifestCheckTimeout)
+			headDigest, mediaType, err = service.remote.HeadManifestRef(headCtx, remoteImageRef)
+
+			cancel()
+
 			if err != nil {
+				service.logManifestCheckTimeout(ctx, headCtx, remoteImageRef.CommonName())
 				service.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", lookupRef).
 					Msg("failed to get upstream image manifest details")
 

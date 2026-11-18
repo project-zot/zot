@@ -4436,6 +4436,64 @@ func TestManifestCheckIntervalConfig(t *testing.T) {
 	})
 }
 
+func TestManifestCheckTimeoutConfig(t *testing.T) {
+	Convey("manifestCheckTimeout validation", t, func() {
+		Convey("Parse a valid manifestCheckTimeout", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "manifestCheckTimeout": "15s"}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.Extensions.Sync.Registries[0].ManifestCheckTimeout, ShouldEqual, 15*time.Second)
+		})
+
+		Convey("Omitting manifestCheckTimeout leaves it disabled", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldBeNil)
+			So(cfg.Extensions.Sync.Registries[0].ManifestCheckTimeout, ShouldEqual, time.Duration(0))
+		})
+
+		Convey("Reject a negative manifestCheckTimeout", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": true, "manifestCheckTimeout": "-15s"}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "manifestCheckTimeout cannot be negative")
+		})
+
+		Convey("Reject manifestCheckTimeout when onDemand is false", func() {
+			content := `{"storage":{"rootDirectory":"/tmp/zot"},
+				"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+				"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+				"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
+				"onDemand": false, "pollInterval": "12h", "manifestCheckTimeout": "15s"}]}}}`
+			cfg := config.New()
+			tmpfile := MakeTempFileWithContent(t, "zot-test.json", content)
+			err := cli.LoadConfiguration(cfg, tmpfile)
+			So(err, ShouldNotBeNil)
+			So(err, ShouldWrap, zerr.ErrBadConfig)
+			So(err.Error(), ShouldContainSubstring, "manifestCheckTimeout requires onDemand to be enabled")
+		})
+	})
+}
+
 func TestOnDemandInBackgroundConfig(t *testing.T) {
 	Convey("onDemandInBackground validation", t, func() {
 		Convey("Accept onDemandInBackground with onDemand", func() {

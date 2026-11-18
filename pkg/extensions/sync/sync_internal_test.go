@@ -3545,6 +3545,117 @@ func TestBaseServiceGetSyncTimeout(t *testing.T) {
 	})
 }
 
+func TestManifestCheckTimeout(t *testing.T) {
+	Convey("manifestCheckTimeout bounds the upstream manifest request of on-demand sync", t, func() {
+		// An upstream that answers the version check but never answers a manifest request.
+		hung := make(chan struct{})
+		upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if strings.Contains(request.URL.Path, "/manifests/") {
+				select {
+				case <-request.Context().Done():
+				case <-hung:
+				}
+
+				return
+			}
+
+			response.WriteHeader(http.StatusOK)
+		}))
+
+		defer upstream.Close()
+		defer close(hung)
+
+		const manifestCheckTimeout = 200 * time.Millisecond
+
+		// syncCtxTimeout stands in for the sync's own timeout (SyncTimeout); a request that
+		// manifestCheckTimeout doesn't bound runs until it expires.
+		const syncCtxTimeout = 2 * time.Second
+
+		newService := func(timeout time.Duration) *BaseService {
+			logger := log.NewTestLogger()
+
+			service := &BaseService{
+				config: syncconf.RegistryConfig{
+					URLs:                 []string{upstream.URL},
+					OnDemand:             true,
+					ManifestCheckTimeout: timeout,
+				},
+				credentials:    syncconf.CredentialsFile{},
+				contentManager: NewContentManager(nil, logger),
+				log:            logger,
+				destination: &mocks.SyncDestinationMock{
+					GetImageReferenceFn: func(repo, tag string) (ref.Ref, error) {
+						return ref.New("local/" + repo + ":" + tag)
+					},
+					CleanupImageFn: func(imageReference ref.Ref, repo string) error {
+						return nil
+					},
+				},
+			}
+
+			So(service.init(), ShouldBeNil)
+
+			return service
+		}
+
+		timed := func(syncFn func(ctx context.Context) error) (time.Duration, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), syncCtxTimeout)
+			defer cancel()
+
+			start := time.Now()
+			err := syncFn(ctx)
+
+			return time.Since(start), err
+		}
+
+		Convey("SyncImage fails once the timeout expires", func() {
+			service := newService(manifestCheckTimeout)
+
+			elapsed, err := timed(func(ctx context.Context) error {
+				return service.SyncImage(ctx, "some/repo", "latest")
+			})
+			So(err, ShouldNotBeNil)
+			So(isTransientRemoteConnectivityErr(err), ShouldBeTrue)
+			So(elapsed, ShouldBeGreaterThanOrEqualTo, manifestCheckTimeout)
+			So(elapsed, ShouldBeLessThan, syncCtxTimeout)
+		})
+
+		Convey("FetchManifest fails once the timeout expires", func() {
+			service := newService(manifestCheckTimeout)
+
+			elapsed, err := timed(func(ctx context.Context) error {
+				_, err := service.FetchManifest(ctx, "some/repo", "latest")
+
+				return err
+			})
+			So(err, ShouldNotBeNil)
+			So(isTransientRemoteConnectivityErr(err), ShouldBeTrue)
+			So(elapsed, ShouldBeGreaterThanOrEqualTo, manifestCheckTimeout)
+			So(elapsed, ShouldBeLessThan, syncCtxTimeout)
+		})
+
+		Convey("Without it SyncImage waits for the sync's own timeout", func() {
+			service := newService(0)
+
+			elapsed, err := timed(func(ctx context.Context) error {
+				return service.SyncImage(ctx, "some/repo", "latest")
+			})
+			So(err, ShouldNotBeNil)
+			So(elapsed, ShouldBeGreaterThanOrEqualTo, syncCtxTimeout)
+		})
+
+		Convey("It does not bound the pinned sync that feeds streamed blobs", func() {
+			service := newService(manifestCheckTimeout)
+
+			elapsed, err := timed(func(ctx context.Context) error {
+				return service.SyncImageForStream(ctx, "some/repo", "latest", godigest.FromString("manifest"))
+			})
+			So(err, ShouldNotBeNil)
+			So(elapsed, ShouldBeGreaterThanOrEqualTo, syncCtxTimeout)
+		})
+	})
+}
+
 func TestOnDemandShouldCheckUpstreamManifest(t *testing.T) {
 	Convey("With no services configured the check is due", t, func() {
 		onDemand := NewOnDemand(log.NewTestLogger())
