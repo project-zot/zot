@@ -1152,14 +1152,6 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("DeleteUserAPIKeys bad context errors", func() {
-			uacKey := reqCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), uacKey, "bad context")
-
-			err := dynamoWrapper.DeleteUserAPIKeys(ctx)
-			So(err, ShouldNotBeNil)
-		})
-
 		Convey("UpdateUserAPIKeyLastUsed bad context errors", func() {
 			uacKey := reqCtx.GetContextKey()
 			ctx := context.WithValue(context.Background(), uacKey, "bad context")
@@ -1294,13 +1286,18 @@ func TestWrapperErrors(t *testing.T) {
 
 			Convey("api key table", func() {
 				dynamoWrapper.APIKeyTablename = wrongTableName
-				err = dynamoWrapper.DeleteUserAPIKeys(ctx)
+				err = dynamoWrapper.DeleteUserAPIKeys(ctx, "email")
 				So(err, ShouldNotBeNil)
+			})
+
+			Convey("empty username", func() {
+				err = dynamoWrapper.DeleteUserAPIKeys(ctx, "")
+				So(err, ShouldEqual, zerr.ErrUserDataNotAllowed)
 			})
 
 			Convey("user data table", func() {
 				dynamoWrapper.UserDataTablename = wrongTableName
-				err = dynamoWrapper.DeleteUserAPIKeys(ctx)
+				err = dynamoWrapper.DeleteUserAPIKeys(ctx, "email")
 				So(err, ShouldNotBeNil)
 			})
 		})

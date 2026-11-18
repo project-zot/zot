@@ -267,19 +267,21 @@ func (rc *RedisDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 }
 
 func (rc *RedisDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
-	userData := mTypes.UserData{}
-	userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
-
 	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
-		return userData, err
+		return mTypes.UserData{APIKeys: make(map[string]mTypes.APIKeyDetails)}, err
 	}
 
 	if userAc.IsAnonymous() {
-		return userData, zerr.ErrUserDataNotAllowed
+		return mTypes.UserData{APIKeys: make(map[string]mTypes.APIKeyDetails)}, zerr.ErrUserDataNotAllowed
 	}
 
-	userid := userAc.GetUsername()
+	return rc.getUserData(ctx, userAc.GetUsername())
+}
+
+func (rc *RedisDB) getUserData(ctx context.Context, userid string) (mTypes.UserData, error) {
+	userData := mTypes.UserData{}
+	userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
 
 	userDataBlob, err := rc.Client.HGet(ctx, rc.UserDataKey, userid).Bytes()
 	if err != nil && !errors.Is(err, redis.Nil) {
@@ -693,20 +695,13 @@ func (rc *RedisDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 	return err
 }
 
-func (rc *RedisDB) DeleteUserAPIKeys(ctx context.Context) error {
-	userAc, err := reqCtx.UserAcFromContext(ctx)
-	if err != nil {
-		return err
-	}
-
-	if userAc.IsAnonymous() {
+func (rc *RedisDB) DeleteUserAPIKeys(ctx context.Context, userid string) error {
+	if userid == "" {
 		return zerr.ErrUserDataNotAllowed
 	}
 
-	userid := userAc.GetUsername()
-
-	err = rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
-		userData, err := rc.GetUserData(ctx)
+	err := rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
+		userData, err := rc.getUserData(ctx, userid)
 		if errors.Is(err, zerr.ErrUserDataNotFound) {
 			// a user who never logged in has no api keys
 			return nil

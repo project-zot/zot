@@ -417,7 +417,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.AddUserAPIKey(otherCtx, "otherKey", &mTypes.APIKeyDetails{Label: "other", UUID: "otherKey"})
 				So(err, ShouldBeNil)
 
-				err = metaDB.DeleteUserAPIKeys(ctx)
+				err = metaDB.DeleteUserAPIKeys(ctx, "test")
 				So(err, ShouldBeNil)
 
 				storedAPIKeys, err := metaDB.GetUserAPIKeys(ctx)
@@ -445,7 +445,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(len(storedAPIKeys), ShouldEqual, 1)
 
 				// no keys left
-				err = metaDB.DeleteUserAPIKeys(ctx)
+				err = metaDB.DeleteUserAPIKeys(ctx, "test")
 				So(err, ShouldBeNil)
 
 				// a user can get new keys
@@ -457,17 +457,14 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(identity, ShouldEqual, "test")
 
 				// a user without user data has no keys
-				unknownUserAc := reqCtx.NewUserAccessControl()
-				unknownUserAc.SetUsername("unknown")
-
-				err = metaDB.DeleteUserAPIKeys(unknownUserAc.DeriveContext(context.Background()))
+				err = metaDB.DeleteUserAPIKeys(ctx, "unknown")
 				So(err, ShouldBeNil)
 
 				// clean up, the DynamoDB user data table is not reset between tests
-				err = metaDB.DeleteUserAPIKeys(ctx)
+				err = metaDB.DeleteUserAPIKeys(ctx, "test")
 				So(err, ShouldBeNil)
 
-				err = metaDB.DeleteUserAPIKeys(otherCtx)
+				err = metaDB.DeleteUserAPIKeys(ctx, "other")
 				So(err, ShouldBeNil)
 
 				err = metaDB.DeleteUserData(ctx)
@@ -494,9 +491,6 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				So(err, ShouldNotBeNil)
 
 				err = metaDB.DeleteUserAPIKey(ctx, hashKey1)
-				So(err, ShouldNotBeNil)
-
-				err = metaDB.DeleteUserAPIKeys(ctx)
 				So(err, ShouldNotBeNil)
 
 				_, err = metaDB.GetUserData(ctx)
@@ -540,7 +534,7 @@ func RunMetaDBTests(t *testing.T, metaDB mTypes.MetaDB, preparationFuncs ...func
 				err = metaDB.DeleteUserAPIKey(ctx, hashKey1)
 				So(err, ShouldNotBeNil)
 
-				err = metaDB.DeleteUserAPIKeys(ctx)
+				err = metaDB.DeleteUserAPIKeys(ctx, "")
 				So(err, ShouldNotBeNil)
 
 				_, err = metaDB.GetUserData(ctx)

@@ -933,7 +933,7 @@ func TestWrapperErrors(t *testing.T) {
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.DeleteUserAPIKeys(ctx)
+				err = boltdbWrapper.DeleteUserAPIKeys(ctx, "test")
 				So(err, ShouldEqual, zerr.ErrBucketDoesNotExist)
 			})
 
@@ -943,7 +943,7 @@ func TestWrapperErrors(t *testing.T) {
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.DeleteUserAPIKeys(ctx)
+				err = boltdbWrapper.DeleteUserAPIKeys(ctx, "test")
 				So(err, ShouldNotBeNil)
 			})
 
@@ -953,15 +953,12 @@ func TestWrapperErrors(t *testing.T) {
 				})
 				So(err, ShouldBeNil)
 
-				err = boltdbWrapper.DeleteUserAPIKeys(ctx)
+				err = boltdbWrapper.DeleteUserAPIKeys(ctx, "test")
 				So(err, ShouldEqual, zerr.ErrBucketDoesNotExist)
 			})
 
 			Convey("no userid found", func() {
-				userAc := reqCtx.NewUserAccessControl()
-				ctx := userAc.DeriveContext(context.Background())
-
-				err = boltdbWrapper.DeleteUserAPIKeys(ctx) //nolint: contextcheck
+				err = boltdbWrapper.DeleteUserAPIKeys(ctx, "")
 				So(err, ShouldEqual, zerr.ErrUserDataNotAllowed)
 			})
 		})
@@ -1162,14 +1159,6 @@ func TestWrapperErrors(t *testing.T) {
 			ctx := context.WithValue(context.Background(), uacKey, "bad context")
 
 			err := boltdbWrapper.DeleteUserAPIKey(ctx, "")
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("DeleteUserAPIKeys bad context errors", func() {
-			uacKey := reqCtx.GetContextKey()
-			ctx := context.WithValue(context.Background(), uacKey, "bad context")
-
-			err := boltdbWrapper.DeleteUserAPIKeys(ctx)
 			So(err, ShouldNotBeNil)
 		})
 

@@ -1201,15 +1201,15 @@ paths:
       consumes:
       - application/json
       description: |-
-        Revokes one current user API key based on given key ID.
-        Given a username instead of a key ID, revokes all API keys of that user.
-        Revoking the API keys of a user requires accessControl.adminPolicy.
+        With id, revokes that API key of the current user.
+        With username, revokes all API keys of that user. Requires accessControl.adminPolicy.
+        Set exactly one of id or username.
       parameters:
-      - description: api token id (UUID)
+      - description: API key id (UUID) of the current user
         in: query
         name: id
         type: string
-      - description: user whose api keys are all revoked (admin only)
+      - description: identity whose API keys are all revoked (admin only)
         in: query
         name: username
         type: string

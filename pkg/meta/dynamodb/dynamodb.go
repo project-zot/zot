@@ -2064,8 +2064,12 @@ func (dwr DynamoDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 	return nil
 }
 
-func (dwr DynamoDB) DeleteUserAPIKeys(ctx context.Context) error {
-	userData, err := dwr.getUserDataWithConsistency(ctx, true)
+func (dwr DynamoDB) DeleteUserAPIKeys(ctx context.Context, userid string) error {
+	if userid == "" {
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	userData, err := dwr.getUserData(ctx, userid, true)
 	if errors.Is(err, zerr.ErrUserDataNotFound) {
 		// a user who never logged in has no api keys
 		return nil
@@ -2095,7 +2099,7 @@ func (dwr DynamoDB) DeleteUserAPIKeys(ctx context.Context) error {
 
 	userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
 
-	return dwr.SetUserData(ctx, userData)
+	return dwr.setUserData(ctx, userid, userData)
 }
 
 func (dwr DynamoDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
@@ -2124,22 +2128,20 @@ func (dwr DynamoDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 }
 
 func (dwr DynamoDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
-	return dwr.getUserDataWithConsistency(ctx, false)
-}
-
-func (dwr DynamoDB) getUserDataWithConsistency(ctx context.Context, consistentRead bool) (mTypes.UserData, error) {
-	var userData mTypes.UserData
-
 	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
-		return userData, err
+		return mTypes.UserData{}, err
 	}
 
 	if userAc.IsAnonymous() {
-		return userData, zerr.ErrUserDataNotAllowed
+		return mTypes.UserData{}, zerr.ErrUserDataNotAllowed
 	}
 
-	userid := userAc.GetUsername()
+	return dwr.getUserData(ctx, userAc.GetUsername(), false)
+}
+
+func (dwr DynamoDB) getUserData(ctx context.Context, userid string, consistentRead bool) (mTypes.UserData, error) {
+	var userData mTypes.UserData
 
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.UserDataTablename),
@@ -2178,8 +2180,10 @@ func (dwr DynamoDB) SetUserData(ctx context.Context, userData mTypes.UserData) e
 		return zerr.ErrUserDataNotAllowed
 	}
 
-	userid := userAc.GetUsername()
+	return dwr.setUserData(ctx, userAc.GetUsername(), userData)
+}
 
+func (dwr DynamoDB) setUserData(ctx context.Context, userid string, userData mTypes.UserData) error {
 	userAttributeValue, err := attributevalue.Marshal(userData)
 	if err != nil {
 		return err

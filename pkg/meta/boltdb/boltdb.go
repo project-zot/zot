@@ -2084,19 +2084,12 @@ func (bdw *BoltDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 	return err
 }
 
-func (bdw *BoltDB) DeleteUserAPIKeys(ctx context.Context) error {
-	userAc, err := reqCtx.UserAcFromContext(ctx)
-	if err != nil {
-		return err
-	}
-
-	if userAc.IsAnonymous() {
+func (bdw *BoltDB) DeleteUserAPIKeys(_ context.Context, userid string) error {
+	if userid == "" {
 		return zerr.ErrUserDataNotAllowed
 	}
 
-	userid := userAc.GetUsername()
-
-	err = bdw.DB.Update(func(transaction *bbolt.Tx) error {
+	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
 		var userData mTypes.UserData
 
 		apiKeysbuck := transaction.Bucket([]byte(UserAPIKeysBucket))

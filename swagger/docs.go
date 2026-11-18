@@ -1476,7 +1476,7 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "Revokes one current user API key based on given key ID.\nGiven a username instead of a key ID, revokes all API keys of that user.\nRevoking the API keys of a user requires accessControl.adminPolicy.",
+                "description": "With id, revokes that API key of the current user.\nWith username, revokes all API keys of that user. Requires accessControl.adminPolicy.\nSet exactly one of id or username.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1487,13 +1487,13 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "api token id (UUID)",
+                        "description": "API key id (UUID) of the current user",
                         "name": "id",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "user whose api keys are all revoked (admin only)",
+                        "description": "identity whose API keys are all revoked (admin only)",
                         "name": "username",
                         "in": "query"
                     }

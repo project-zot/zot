@@ -2305,11 +2305,13 @@ func TestRoutes(t *testing.T) {
 				var revokedFor string
 
 				ctlr.MetaDB = mocks.MetaDBMock{
-					DeleteUserAPIKeysFn: func(ctx context.Context) error {
+					DeleteUserAPIKeysFn: func(ctx context.Context, username string) error {
+						// the caller stays in the context, the target is the argument
 						userAc, err := reqCtx.UserAcFromContext(ctx)
 						So(err, ShouldBeNil)
+						So(userAc.GetUsername(), ShouldEqual, "admin")
 
-						revokedFor = userAc.GetUsername()
+						revokedFor = username
 
 						return nil
 					},
@@ -2323,7 +2325,7 @@ func TestRoutes(t *testing.T) {
 				So(revoke(url.Values{"username": {"test"}, "id": {"apikeyid"}}), ShouldEqual, http.StatusBadRequest)
 
 				ctlr.MetaDB = mocks.MetaDBMock{
-					DeleteUserAPIKeysFn: func(ctx context.Context) error {
+					DeleteUserAPIKeysFn: func(ctx context.Context, username string) error {
 						return ErrUnexpectedError
 					},
 				}
