@@ -1,6 +1,6 @@
 # Profiling in Zot
 
-This project gives the user the posibility to debug and profile the runtime to find relevant data such as CPU intensive function calls. An in-depth article on profiling in Go can be found [here](https://go.dev/blog/pprof).
+This project gives the user the possibility to debug and profile the runtime to find relevant data such as CPU intensive function calls. An in-depth article on profiling in Go can be found [here](https://go.dev/blog/pprof).
 
 A call to http://localhost:8080/v2/_zot/pprof/ would list the following available profiles, wrapped in an HTML file, with count values prior to change due to the runtime:
 

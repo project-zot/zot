@@ -2,7 +2,7 @@
 
 `search` component provides efficient and enhanced registry search capabilities using graphQL backend.
 
-| Supported queries | Input | Ouput | Description | graphQL query |
+| Supported queries | Input | Output | Description | graphQL query |
 | --- | --- | --- | --- | --- |
 | [Search images by digest](#search-images-by-digest) | digest | image list | Search all repositories in the registry and return list of images that matches given digest (manifest, config or layers) | ImageListForDigest |
 | [Search images affected by a given CVE id](#search-images-affected-by-a-given-cve-id) | CVE id | image list | Search the entire registry and return list of images affected by given CVE | ImagesListForCVE |

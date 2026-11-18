@@ -1,6 +1,6 @@
 # `userprefs`
 
-`userprefs` component provides an endpoint for adding user preferences for repos. It is available only to authentificated users. Unauthentificated users will be denied access.
+`userprefs` component provides an endpoint for adding user preferences for repos. It is available only to authenticated users. Unauthentificated users will be denied access.
 
 | Supported queries | Input | Output | Description |
 | --- | --- | --- | --- |
@@ -15,7 +15,7 @@ The userprefs endpoint accepts as a query parameter what `action` to perform and
 | --- | --- | --- | --- |
 | toggleStar | repo | string | The repo name which should be starred |
 
-A request to togle a star on a repo would look like this:
+A request to toggle a star on a repo would look like this:
 ```
 (PUT) http://localhost:8080/v2/_zot/ext/userprefs?action=toggleStar&repo=repoName
 ```
@@ -25,7 +25,7 @@ A request to togle a star on a repo would look like this:
 | --- | --- | --- | --- |
 | toggleBookmark | repo | string | The repo name which should be bookmarked |
 
-A request to togle a bookmark on a repo would look like this:
+A request to toggle a bookmark on a repo would look like this:
 ```
 (PUT) http://localhost:8080/v2/_zot/ext/userprefs?action=toggleBookmark&repo=repoName
 ```
