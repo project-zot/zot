@@ -44,6 +44,8 @@ type MetaDBMock struct {
 
 	DeleteUserAPIKeyFn func(ctx context.Context, id string) error
 
+	DeleteUserAPIKeysFn func(ctx context.Context, username string) error
+
 	PatchDBFn func() error
 
 	GetFastRestartStampFn func() (string, error)
@@ -312,6 +314,14 @@ func (sdm MetaDBMock) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey st
 func (sdm MetaDBMock) DeleteUserAPIKey(ctx context.Context, id string) error {
 	if sdm.DeleteUserAPIKeyFn != nil {
 		return sdm.DeleteUserAPIKeyFn(ctx, id)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) DeleteUserAPIKeys(ctx context.Context, username string) error {
+	if sdm.DeleteUserAPIKeysFn != nil {
+		return sdm.DeleteUserAPIKeysFn(ctx, username)
 	}
 
 	return nil

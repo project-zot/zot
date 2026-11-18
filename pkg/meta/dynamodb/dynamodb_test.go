@@ -1270,6 +1270,38 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("DeleteUserAPIKeys errors", func() {
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername("email")
+			ctx := userAc.DeriveContext(context.Background())
+
+			apiKeyDetails := make(map[string]mTypes.APIKeyDetails)
+			apiKeyDetails["id"] = mTypes.APIKeyDetails{
+				UUID: "id",
+			}
+			err := dynamoWrapper.SetUserData(ctx, mTypes.UserData{
+				APIKeys: apiKeyDetails,
+			})
+			So(err, ShouldBeNil)
+
+			Convey("api key table", func() {
+				dynamoWrapper.APIKeyTablename = wrongTableName
+				err = dynamoWrapper.DeleteUserAPIKeys(ctx, "email")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("empty username", func() {
+				err = dynamoWrapper.DeleteUserAPIKeys(ctx, "")
+				So(err, ShouldEqual, zerr.ErrUserDataNotAllowed)
+			})
+
+			Convey("user data table", func() {
+				dynamoWrapper.UserDataTablename = wrongTableName
+				err = dynamoWrapper.DeleteUserAPIKeys(ctx, "email")
+				So(err, ShouldNotBeNil)
+			})
+		})
+
 		Convey("AddUserAPIKey", func() {
 			Convey("no userid found", func() {
 				userAc := reqCtx.NewUserAccessControl()

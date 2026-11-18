@@ -234,6 +234,9 @@ type UserDB interface { //nolint:interfacebloat
 	UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error
 
 	DeleteUserAPIKey(ctx context.Context, id string) error
+
+	// DeleteUserAPIKeys deletes all API keys of the given user, which is not necessarily the user in ctx
+	DeleteUserAPIKeys(ctx context.Context, username string) error
 }
 
 type (

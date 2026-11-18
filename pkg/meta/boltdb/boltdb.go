@@ -2084,6 +2084,44 @@ func (bdw *BoltDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 	return err
 }
 
+func (bdw *BoltDB) DeleteUserAPIKeys(_ context.Context, userid string) error {
+	if userid == "" {
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		var userData mTypes.UserData
+
+		apiKeysbuck := transaction.Bucket([]byte(UserAPIKeysBucket))
+		if apiKeysbuck == nil {
+			return zerr.ErrBucketDoesNotExist
+		}
+
+		err := bdw.getUserData(userid, transaction, &userData)
+		if errors.Is(err, zerr.ErrUserDataNotFound) {
+			// a user who never logged in has no api keys
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		for hash := range userData.APIKeys {
+			err := apiKeysbuck.Delete([]byte(hash))
+			if err != nil {
+				return fmt.Errorf("failed to delete userAPIKey entry for hash %s %w", hash, err)
+			}
+		}
+
+		userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
+
+		return bdw.setUserData(userid, transaction, userData)
+	})
+
+	return err
+}
+
 func (bdw *BoltDB) GetUserAPIKeyInfo(hashedKey string) (string, error) {
 	var userid string
 

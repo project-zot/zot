@@ -113,7 +113,7 @@ func (rh *RouteHandler) SetupRoutes() {
 
 		apiKeyRouter.Methods(http.MethodPost, http.MethodOptions).HandlerFunc(rh.CreateAPIKey)
 		apiKeyRouter.Methods(http.MethodGet).HandlerFunc(rh.GetAPIKeys)
-		apiKeyRouter.Methods(http.MethodDelete).HandlerFunc(rh.RevokeAPIKey)
+		apiKeyRouter.Methods(http.MethodDelete).HandlerFunc(rh.DeleteAPIKey)
 	}
 
 	/* on every route which may be used by UI we set OPTIONS as allowed METHOD
@@ -3734,17 +3734,32 @@ func (rh *RouteHandler) CreateAPIKey(resp http.ResponseWriter, req *http.Request
 	_, _ = resp.Write(data)
 }
 
-// RevokeAPIKey godoc
-// @Summary Revokes one current user API key
-// @Description Revokes one current user API key based on given key ID
+// DeleteAPIKey godoc
+// @Summary Revokes one current user API key, or all API keys of a user
+// @Description With id, revokes that API key of the current user.
+// @Description With username, revokes all API keys of that user. Requires accessControl.adminPolicy.
+// @Description Set exactly one of id or username.
 // @Accept  json
 // @Produce json
-// @Param   id  query  string   true   "api token id (UUID)"
+// @Param   id        query  string  false  "API key id (UUID) of the current user"
+// @Param   username  query  string  false  "identity whose API keys are all revoked (admin only)"
 // @Success 200 {string} string "ok"
 // @Failure 500 {string} string "internal server error"
 // @Failure 401 {string} string "unauthorized"
+// @Failure 403 {string} string "forbidden"
 // @Failure 400 {string} string "bad request"
 // @Router  /zot/auth/apikey [delete].
+func (rh *RouteHandler) DeleteAPIKey(resp http.ResponseWriter, req *http.Request) {
+	if req.URL.Query().Has("username") {
+		zcommon.AuthzOnlyAdminsMiddleware(rh.c.Config)(http.HandlerFunc(rh.RevokeUserAPIKeys)).ServeHTTP(resp, req)
+
+		return
+	}
+
+	rh.RevokeAPIKey(resp, req)
+}
+
+// RevokeAPIKey revokes the API key of the current user given in the id query parameter.
 func (rh *RouteHandler) RevokeAPIKey(resp http.ResponseWriter, req *http.Request) {
 	ids, ok := req.URL.Query()["id"]
 	if !ok || len(ids) != 1 {
@@ -3762,6 +3777,42 @@ func (rh *RouteHandler) RevokeAPIKey(resp http.ResponseWriter, req *http.Request
 
 		return
 	}
+
+	resp.WriteHeader(http.StatusOK)
+}
+
+// RevokeUserAPIKeys revokes all API keys of the user given in the username query parameter.
+// It is only reachable for admins, see DeleteAPIKey.
+// API keys outlive the user's access in the identity provider, so this is how an admin cuts a user off.
+func (rh *RouteHandler) RevokeUserAPIKeys(resp http.ResponseWriter, req *http.Request) {
+	userAc, err := reqCtx.UserAcFromContext(req.Context())
+	if err != nil {
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	query := req.URL.Query()
+
+	usernames := query["username"]
+	if query.Has("id") || len(usernames) != 1 || usernames[0] == "" {
+		resp.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	username := usernames[0]
+
+	err = rh.c.MetaDB.DeleteUserAPIKeys(req.Context(), username)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("username", username).Msg("failed to delete api keys of user")
+		resp.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	rh.c.Log.Info().Str("identity", userAc.GetUsername()).Str("username", username).
+		Msg("revoked all api keys of user")
 
 	resp.WriteHeader(http.StatusOK)
 }

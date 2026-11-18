@@ -1468,21 +1468,26 @@
                 }
             },
             "delete": {
-                "description": "Revokes one current user API key based on given key ID",
+                "description": "With id, revokes that API key of the current user.\nWith username, revokes all API keys of that user. Requires accessControl.adminPolicy.\nSet exactly one of id or username.",
                 "consumes": [
                     "application/json"
                 ],
                 "produces": [
                     "application/json"
                 ],
-                "summary": "Revokes one current user API key",
+                "summary": "Revokes one current user API key, or all API keys of a user",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "api token id (UUID)",
+                        "description": "API key id (UUID) of the current user",
                         "name": "id",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "identity whose API keys are all revoked (admin only)",
+                        "name": "username",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1500,6 +1505,12 @@
                     },
                     "401": {
                         "description": "unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
                         "schema": {
                             "type": "string"
                         }

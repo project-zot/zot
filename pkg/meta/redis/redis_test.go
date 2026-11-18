@@ -565,6 +565,9 @@ func TestRedisUnreachable(t *testing.T) {
 
 		err = metaDB.DeleteUserAPIKey(ctx, "test")
 		So(err, ShouldNotBeNil)
+
+		err = metaDB.DeleteUserAPIKeys(ctx, "")
+		So(err, ShouldNotBeNil)
 	})
 }
 
@@ -1359,6 +1362,21 @@ func TestWrapperErrors(t *testing.T) {
 
 			_, err = metaDB.GetUserAPIKeyInfo("")
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteUserAPIKeys", func() {
+			Convey("bad userdata", func() {
+				err = setUserData("test", []byte("dsa8"), client)
+				So(err, ShouldBeNil)
+
+				err = metaDB.DeleteUserAPIKeys(ctx, "test")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("no userid found", func() {
+				err = metaDB.DeleteUserAPIKeys(ctx, "")
+				So(err, ShouldEqual, zerr.ErrUserDataNotAllowed)
+			})
 		})
 
 		Convey("GetUserData", func() {

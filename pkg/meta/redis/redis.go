@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -266,19 +267,21 @@ func (rc *RedisDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 }
 
 func (rc *RedisDB) GetUserData(ctx context.Context) (mTypes.UserData, error) {
-	userData := mTypes.UserData{}
-	userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
-
 	userAc, err := reqCtx.UserAcFromContext(ctx)
 	if err != nil {
-		return userData, err
+		return mTypes.UserData{APIKeys: make(map[string]mTypes.APIKeyDetails)}, err
 	}
 
 	if userAc.IsAnonymous() {
-		return userData, zerr.ErrUserDataNotAllowed
+		return mTypes.UserData{APIKeys: make(map[string]mTypes.APIKeyDetails)}, zerr.ErrUserDataNotAllowed
 	}
 
-	userid := userAc.GetUsername()
+	return rc.getUserData(ctx, userAc.GetUsername())
+}
+
+func (rc *RedisDB) getUserData(ctx context.Context, userid string) (mTypes.UserData, error) {
+	userData := mTypes.UserData{}
+	userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
 
 	userDataBlob, err := rc.Client.HGet(ctx, rc.UserDataKey, userid).Bytes()
 	if err != nil && !errors.Is(err, redis.Nil) {
@@ -687,6 +690,58 @@ func (rc *RedisDB) DeleteUserAPIKey(ctx context.Context, keyID string) error {
 		}
 
 		return nil
+	})
+
+	return err
+}
+
+func (rc *RedisDB) DeleteUserAPIKeys(ctx context.Context, userid string) error {
+	if userid == "" {
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	err := rc.withRSLocks(ctx, []string{rc.getUserLockKey(userid)}, func() error {
+		userData, err := rc.getUserData(ctx, userid)
+		if errors.Is(err, zerr.ErrUserDataNotFound) {
+			// a user who never logged in has no api keys
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if len(userData.APIKeys) == 0 {
+			return nil
+		}
+
+		hashes := slices.Collect(maps.Keys(userData.APIKeys))
+		userData.APIKeys = make(map[string]mTypes.APIKeyDetails)
+
+		userDataBlob, err := json.Marshal(userData)
+		if err != nil {
+			return err
+		}
+
+		_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
+			if err := txrp.HSet(ctx, rc.UserDataKey, userid, userDataBlob).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hset", rc.UserDataKey).Str("userid", userid).
+					Msg("failed to set user data record")
+
+				return fmt.Errorf("failed to set user data for identity %s: %w", userid, err)
+			}
+
+			if err := txrp.HDel(ctx, rc.UserAPIKeysKey, hashes...).Err(); err != nil {
+				rc.Log.Error().Err(err).Str("hdel", rc.UserAPIKeysKey).Str("userid", userid).
+					Msg("failed to delete api key records")
+
+				return fmt.Errorf("failed to delete api key records for identity %s: %w", userid, err)
+			}
+
+			return nil
+		})
+
+		return err
 	})
 
 	return err

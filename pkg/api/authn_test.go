@@ -2623,6 +2623,187 @@ func TestAPIKeyMaxLifetimeOldKeys(t *testing.T) {
 	})
 }
 
+func TestRevokeUserAPIKeys(t *testing.T) {
+	Convey("An admin revokes all API keys of a user", t, func() {
+		const (
+			admin    = "admin"
+			alice    = "alice"
+			bob      = "bob"
+			password = "password"
+		)
+
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, strings.Join([]string{
+			test.GetBcryptCredString(admin, password),
+			test.GetBcryptCredString(alice, password),
+			test.GetBcryptCredString(bob, password),
+		}, "\n"))
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{Path: htpasswdPath},
+			APIKey:   true,
+		}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					DefaultPolicy: []string{"read"},
+				},
+			},
+			AdminPolicy: config.Policy{
+				Users:   []string{admin},
+				Actions: []string{"read", "create", "update", "delete"},
+			},
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		createKey := func(username string) string {
+			reqBody, err := json.Marshal(api.APIKeyPayload{Label: "test"})
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().SetBody(reqBody).SetBasicAuth(username, password).
+				Post(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			var apiKey apiKeyResponse
+			So(json.Unmarshal(resp.Body(), &apiKey), ShouldBeNil)
+
+			return apiKey.APIKey
+		}
+
+		useKey := func(username, apiKey string) int {
+			resp, err := resty.R().SetBasicAuth(username, apiKey).Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+
+			return resp.StatusCode()
+		}
+
+		listKeys := func(username string) []mTypes.APIKeyDetails {
+			resp, err := resty.R().SetBasicAuth(username, password).Get(baseURL + constants.APIKeyPath)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var apiKeyList apiKeyListResponse
+			So(json.Unmarshal(resp.Body(), &apiKeyList), ShouldBeNil)
+
+			return apiKeyList.APIKeys
+		}
+
+		revokeKeys := func(request *resty.Request, query string) *resty.Response {
+			resp, err := request.Delete(baseURL + constants.APIKeyPath + "?" + query)
+			So(err, ShouldBeNil)
+
+			return resp
+		}
+
+		aliceKey1 := createKey(alice)
+		aliceKey2 := createKey(alice)
+		bobKey := createKey(bob)
+
+		So(useKey(alice, aliceKey1), ShouldEqual, http.StatusOK)
+		So(useKey(alice, aliceKey2), ShouldEqual, http.StatusOK)
+		So(useKey(bob, bobKey), ShouldEqual, http.StatusOK)
+
+		Convey("Only admins can revoke the keys of a user", func() {
+			resp := revokeKeys(resty.R().SetBasicAuth(bob, password), "username="+alice)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			// alice herself is not an admin either
+			resp = revokeKeys(resty.R().SetBasicAuth(alice, password), "username="+alice)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			// nor with an API key
+			resp = revokeKeys(resty.R().SetBasicAuth(bob, bobKey), "username="+alice)
+			So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+			resp = revokeKeys(resty.R(), "username="+alice)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			So(useKey(alice, aliceKey1), ShouldEqual, http.StatusOK)
+			So(useKey(alice, aliceKey2), ShouldEqual, http.StatusOK)
+			So(len(listKeys(alice)), ShouldEqual, 2)
+		})
+
+		Convey("Bad requests", func() {
+			resp := revokeKeys(resty.R().SetBasicAuth(admin, password), "username=")
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			resp = revokeKeys(resty.R().SetBasicAuth(admin, password), "username="+alice+"&username="+bob)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			resp = revokeKeys(resty.R().SetBasicAuth(admin, password), "username="+alice+"&id=id")
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			So(useKey(alice, aliceKey1), ShouldEqual, http.StatusOK)
+			So(useKey(bob, bobKey), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("The keys stop working, the keys of other users are kept", func() {
+			resp := revokeKeys(resty.R().SetBasicAuth(admin, password), "username="+alice)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			So(useKey(alice, aliceKey1), ShouldEqual, http.StatusUnauthorized)
+			So(useKey(alice, aliceKey2), ShouldEqual, http.StatusUnauthorized)
+			So(listKeys(alice), ShouldBeEmpty)
+
+			So(useKey(bob, bobKey), ShouldEqual, http.StatusOK)
+			So(len(listKeys(bob)), ShouldEqual, 1)
+
+			// the user can still log in and create new keys
+			aliceKey3 := createKey(alice)
+			So(useKey(alice, aliceKey3), ShouldEqual, http.StatusOK)
+
+			// a user without keys
+			resp = revokeKeys(resty.R().SetBasicAuth(admin, password), "username="+admin)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp = revokeKeys(resty.R().SetBasicAuth(admin, password), "username=unknown")
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Users still revoke their own keys by id", func() {
+			keys := listKeys(alice)
+			So(len(keys), ShouldEqual, 2)
+
+			resp := revokeKeys(resty.R().SetBasicAuth(alice, password), "id="+keys[0].UUID)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(len(listKeys(alice)), ShouldEqual, 1)
+		})
+	})
+
+	Convey("Without adminPolicy nobody can revoke the keys of a user", t, func() {
+		username, _ := test.GenerateRandomString()
+		password, _ := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
+
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{Path: htpasswdPath},
+			APIKey:   true,
+		}
+		conf.Storage.RootDirectory = t.TempDir()
+
+		ctlr := api.NewController(conf)
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		resp, err := resty.R().SetBasicAuth(username, password).
+			Delete(baseURL + constants.APIKeyPath + "?username=" + username)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+	})
+}
+
 func TestAPIKeysOpenDBError(t *testing.T) {
 	Convey("Test API keys - unable to create database", t, func() {
 		conf := config.New()
