@@ -88,6 +88,9 @@ else ifeq ($(HOST_ARCH),arm64)
 endif
 
 BENCH_OUTPUT ?= stdout
+BENCH_CONFIG ?= examples/config-bench.json
+BENCH_URL ?= http://localhost:8080
+BENCH_CURL_FLAGS ?=
 ALL_EXTENSIONS = debug,imagetrust,lint,metrics,mgmt,profile,scrub,search,sync,ui,userprefs,events
 EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,profile,userprefs,imagetrust,events
 UI_DEPENDENCIES := search,mgmt,userprefs
@@ -287,15 +290,25 @@ $(TESTDATA): testdata-certs testdata-images
 
 .PHONY: run-bench
 run-bench: $(ZOT_BIN_DEP) $(ZB_DEP)
-	bin/zot-$(OS)-$(ARCH) serve examples/config-bench.json & echo $$! > zot.PID
-	curl --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 180 --retry-connrefused http://localhost:8080/v2/
-	curl -fsS --retry 5 --retry-delay 1 http://localhost:8080/v2/_catalog
-	curl -fsS http://localhost:8080/v2/_catalog
-	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) --max-timeout-failures 1 http://localhost:8080
+	bin/zot-$(OS)-$(ARCH) serve $(BENCH_CONFIG) & echo $$! > zot.PID
+	curl $(BENCH_CURL_FLAGS) --connect-timeout 3 --max-time 5 --retry 60 --retry-delay 1 --retry-max-time 180 --retry-connrefused $(BENCH_URL)/v2/
+	curl $(BENCH_CURL_FLAGS) -fsS --retry 5 --retry-delay 1 $(BENCH_URL)/v2/_catalog
+	curl $(BENCH_CURL_FLAGS) -fsS $(BENCH_URL)/v2/_catalog
+	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) --max-timeout-failures 1 $(BENCH_URL)
 	@if [ -e zot.PID ]; then \
 		kill -TERM $$(cat zot.PID) || true; \
 	fi; \
 	rm zot.PID
+
+# Same suite over HTTPS (TLS 1.3, kTLS enabled in the config; zot falls back to
+# userspace TLS if the kernel tls module is not loaded). The test server cert's
+# only SAN is IP:127.0.0.1, so the URL must use that address for curl to verify
+# it against the test CA. zb itself skips verification for https URLs.
+.PHONY: run-bench-tls
+run-bench-tls: testdata-certs
+	$(MAKE) run-bench BENCH_CONFIG=examples/config-bench-tls.json \
+		BENCH_URL=https://127.0.0.1:8080 \
+		BENCH_CURL_FLAGS="--cacert $(TESTDATA)/ca.crt"
 
 .PHONY: check-skopeo
 check-skopeo:
@@ -629,6 +642,13 @@ run-blackbox-ci: check-blackbox-prerequisites $(ZOT_BIN_DEP) $(ZOT_MIN_DEP) $(ZL
 run-blackbox-ci-shard: check-blackbox-prerequisites $(ZOT_BIN_DEP) $(ZOT_MIN_DEP) $(ZLI_DEP)
 	echo running CI bats tests concurrently \(shard=$(SHARD)\); \
 	$(BLACKBOX_DOCKER_ENV) BLACKBOX_CI_SHARD="$(SHARD)" BATS_FLAGS="$(BATS_FLAGS)" test/blackbox/ci.sh
+
+# Kernel TLS offload. ZOT_KTLS_EXPECT=offload|fallback pins the expected outcome
+# (CI); unset picks it from /proc/net/tls_stat.
+.PHONY: run-blackbox-ktls
+run-blackbox-ktls: check-linux check-skopeo $(BATS) $(ZOT_BIN_DEP)
+	echo running kTLS bats tests; \
+	$(BATS) $(BATS_FLAGS) test/blackbox/ktls.bats
 
 .PHONY: run-blackbox-cloud-ci
 run-blackbox-cloud-ci: check-blackbox-prerequisites check-awslocal $(ZOT_BIN_DEP) $(ZOT_MIN_DEP)

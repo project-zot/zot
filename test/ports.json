@@ -572,5 +572,11 @@
       "begin": 11700,
       "end": 11709
     }
+  },
+  "blackbox/ktls.bats": {
+    "zot": {
+      "begin": 11750,
+      "end": 11759
+    }
   }
 }

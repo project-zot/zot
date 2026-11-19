@@ -71,3 +71,92 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
           [[ -f zot.PID ]] && kill $(cat zot.PID) 2>/dev/null || true
+
+  # Kernel TLS offload ("http.tls.offload"): one job per path (offload, fallback).
+  # Each job pins and asserts the kernel state so a broken probe cannot
+  # pass by silently taking the other path: ZOT_KTLS_REQUIRE makes the Go kernel
+  # tests fail instead of skipping, ZOT_KTLS_EXPECT tells ktls.bats which
+  # outcome to assert. zot runs unprivileged and the kernel autoloads the tls
+  # ULP only for CAP_NET_ADMIN, so the module state set here is what zot sees.
+  #
+  # Offload runs on two runner images for kernel diversity: kTLS behaviour
+  # (RX options, cipher support) varies by kernel version. Fallback never
+  # reaches the kernel TLS code, so one runner is enough.
+  ktls-offload:
+    needs: build-binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    name: kTLS offload (${{ matrix.runner }}, tls module loaded)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-prebuilt-binaries
+      # Go tests, and the Makefile resolves bin paths via `go env GOOS/GOARCH`.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version-file: .go-version
+      - name: Load the tls kernel module
+        run: |
+          uname -r
+          sudo modprobe tls
+          cat /proc/net/tls_stat
+      - name: Go tests (kernel offload required)
+        env:
+          ZOT_KTLS_REQUIRE: "1"
+        run: |
+          go test -race -count=1 -v ./pkg/ktls/
+          go test -race -count=1 -v -run 'TestKTLSBlobGet|TestBlobFileReachesTCPReadFrom' ./pkg/api/
+      - name: Blackbox (offload expected)
+        env:
+          ZOT_KTLS_EXPECT: offload
+        run: make run-blackbox-ktls USE_PREBUILT=1
+
+  # Hosted runner kernels all ship the tls module, so "without kTLS" means
+  # unloaded and blocked: the modprobe.d rule stops anything (docker, a test)
+  # from loading it mid-job.
+  ktls-fallback:
+    needs: build-binaries
+    runs-on: ubuntu-24.04
+    name: kTLS fallback (tls module blocked)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version-file: .go-version
+      - name: Unload and block the tls kernel module
+        run: |
+          uname -r
+          # Say why the module cannot go away, if it cannot: built in (=y) or in use.
+          grep -E '^CONFIG_TLS=' "/boot/config-$(uname -r)" || echo "no kernel config for $(uname -r)"
+          grep -E '^tls ' /proc/modules || echo "tls not listed in /proc/modules"
+          echo 'install tls /bin/false' | sudo tee /etc/modprobe.d/zot-no-ktls.conf
+          # Explicit checks: `set -e` ignores commands negated with `!`.
+          if test -r /proc/net/tls_stat && ! sudo modprobe -r tls; then
+            echo "cannot unload the tls module (modprobe error above)" >&2; exit 1
+          fi
+          if test -r /proc/net/tls_stat; then
+            echo "tls module still loaded" >&2; exit 1
+          fi
+          # The block must hold, or the fallback assertions below are meaningless.
+          if sudo modprobe tls; then
+            echo "tls module load was not blocked" >&2; exit 1
+          fi
+      - name: Go tests (userspace TLS only)
+        run: |
+          go test -race -count=1 -v ./pkg/ktls/
+          go test -race -count=1 -v -run 'TestKTLSBlobGet|TestBlobFileReachesTCPReadFrom' ./pkg/api/
+      - name: Blackbox (fallback expected)
+        env:
+          ZOT_KTLS_EXPECT: fallback
+        run: make run-blackbox-ktls USE_PREBUILT=1
