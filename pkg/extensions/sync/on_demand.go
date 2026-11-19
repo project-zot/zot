@@ -139,7 +139,7 @@ func (onDemand *BaseOnDemand) IsTagFromNamespace(repo, reference, nsParam string
 
 	entry, ok := onDemand.tagProvenance[repo+"\x00"+reference]
 
-	return ok && entry.namespace == nsParam && entry.digest == digest
+	return ok && registryMatches([]string{entry.namespace}, nsParam) && entry.digest == digest
 }
 
 // streamSource names services[idx] as a stream source (see StreamableManifest.source). The

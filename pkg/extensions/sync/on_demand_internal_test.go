@@ -809,6 +809,27 @@ func TestTagProvenanceTracksNamespaceAndDigest(t *testing.T) {
 		onDemand.recordTagProvenance("repo", "latest", "registry-a", "")
 		So(onDemand.IsTagFromNamespace("repo", "latest", "registry-a", digestA), ShouldBeFalse)
 	})
+
+	Convey("provenance compares registries as the sync config does", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+
+		digestA := godigest.FromString("registry-a manifest")
+
+		onDemand.recordTagProvenance("repo", "latest", "docker.io", digestA)
+
+		// Docker Hub aliases name the same upstream, regardless of case or port.
+		So(onDemand.IsTagFromNamespace("repo", "latest", "DOCKER.IO", digestA), ShouldBeTrue)
+		So(onDemand.IsTagFromNamespace("repo", "latest", "registry-1.docker.io", digestA), ShouldBeTrue)
+		So(onDemand.IsTagFromNamespace("repo", "latest", "index.docker.io:443", digestA), ShouldBeTrue)
+		So(onDemand.IsTagFromNamespace("repo", "latest", "registry.example:5000", digestA), ShouldBeFalse)
+
+		// Every other authority is case-insensitive but port-sensitive.
+		digestB := godigest.FromString("registry-b manifest")
+		onDemand.recordTagProvenance("repo", "latest", "registry.example:5000", digestB)
+
+		So(onDemand.IsTagFromNamespace("repo", "latest", "REGISTRY.EXAMPLE:5000", digestB), ShouldBeTrue)
+		So(onDemand.IsTagFromNamespace("repo", "latest", "registry.example:5001", digestB), ShouldBeFalse)
+	})
 }
 
 // TestStageForStreamRejectsForeignNamespaceCollision covers the race in stageForStream: another
