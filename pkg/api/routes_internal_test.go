@@ -22,13 +22,138 @@ import (
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/api/constants"
+	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
+	"zotregistry.dev/zot/v2/pkg/storage/imagestore"
+	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
+
+type finalizeReaderFaultDriver struct {
+	storageTypes.Driver
+
+	path    string
+	openErr error
+	readErr error
+}
+
+func (d *finalizeReaderFaultDriver) Reader(readPath string, offset int64) (io.ReadCloser, error) {
+	if readPath != d.path {
+		return d.Driver.Reader(readPath, offset)
+	}
+
+	if d.openErr != nil {
+		return nil, d.openErr
+	}
+
+	reader, err := d.Driver.Reader(readPath, offset)
+	if err != nil || d.readErr == nil {
+		return reader, err
+	}
+
+	return &finalizeReadError{ReadCloser: reader, err: d.readErr}, nil
+}
+
+type finalizeReadError struct {
+	io.ReadCloser
+	err error
+}
+
+func (r *finalizeReadError) Read([]byte) (int, error) {
+	return 0, r.err
+}
+
+func newFinalizeRouteHandler(t *testing.T, driver *finalizeReaderFaultDriver) (
+	*RouteHandler, storageTypes.ImageStore, string, []byte, godigest.Digest,
+) {
+	t.Helper()
+
+	root := t.TempDir()
+	driver.Driver = local.New(true)
+	store := imagestore.NewImageStore(root, "", false, true, log.NewTestLogger(),
+		monitoring.NewNopMetricServer(), nil, driver, nil, nil, nil)
+	require.NotNil(t, store)
+
+	ctx := context.Background()
+	repo := "repo"
+	content := []byte("finalize-content")
+	digest := godigest.FromBytes(content)
+	uuid, err := store.NewBlobUpload(ctx, repo)
+	require.NoError(t, err)
+	_, err = store.PutBlobChunkStreamed(ctx, repo, uuid, bytes.NewReader(content))
+	require.NoError(t, err)
+
+	driver.path = store.BlobUploadPath(repo, uuid)
+	controller := &Controller{
+		Config:          config.New(),
+		Log:             log.NewTestLogger(),
+		StoreController: storage.StoreController{DefaultStore: store},
+	}
+
+	return &RouteHandler{c: controller}, store, uuid, content, digest
+}
+
+func TestFinalizeStorageErrorMapping(t *testing.T) {
+	transient := errclass.MarkTransient(errors.New("reader timeout")) //nolint:err113 // test
+	permanent := errclass.MarkPermanent(errors.New("reader denied"))  //nolint:err113 // test
+	missing := errclass.MarkMissing(errors.New("upload missing"))     //nolint:err113 // test
+
+	tests := []struct {
+		name       string
+		openErr    error
+		readErr    error
+		mismatch   bool
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "reader open transient", openErr: transient, wantStatus: http.StatusServiceUnavailable},
+		{name: "reader open permanent", openErr: permanent, wantStatus: http.StatusInternalServerError},
+		{name: "reader body transient", readErr: transient, wantStatus: http.StatusServiceUnavailable},
+		{name: "reader body permanent", readErr: permanent, wantStatus: http.StatusInternalServerError},
+		{
+			name:       "missing upload remains not found",
+			openErr:    missing,
+			wantStatus: http.StatusNotFound,
+			wantCode:   "BLOB_UPLOAD_UNKNOWN",
+		},
+		{
+			name:       "complete read mismatch is digest invalid",
+			mismatch:   true,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "DIGEST_INVALID",
+		},
+		{name: "complete read match succeeds", wantStatus: http.StatusCreated},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			driver := &finalizeReaderFaultDriver{}
+			handler, _, sessionID, _, digest := newFinalizeRouteHandler(t, driver)
+			driver.openErr = test.openErr
+			driver.readErr = test.readErr
+			if test.mismatch {
+				digest = godigest.FromString("different-content")
+			}
+
+			request := httptest.NewRequest(http.MethodPut,
+				"http://example.com/v2/repo/blobs/uploads/"+sessionID+"?digest="+digest.String(), http.NoBody)
+			request = mux.SetURLVars(request, map[string]string{"name": "repo", "session_id": sessionID})
+			response := httptest.NewRecorder()
+
+			handler.UpdateBlobUpload(response, request)
+
+			require.Equal(t, test.wantStatus, response.Code)
+			if test.wantCode != "" {
+				require.Contains(t, response.Body.String(), test.wantCode)
+			}
+		})
+	}
+}
 
 func TestParseRangeHeader(t *testing.T) {
 	t.Parallel()

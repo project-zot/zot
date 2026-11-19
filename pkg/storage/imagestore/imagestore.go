@@ -3286,14 +3286,22 @@ func getBlobDigest(imgStore *ImageStore, path string, digestAlgorithm godigest.A
 ) (godigest.Digest, error) {
 	fileReader, err := imgStore.storeDriver.Reader(path, 0)
 	if err != nil {
-		return "", zerr.ErrUploadNotFound
+		if errclass.IsStorageObjectMissing(err) {
+			return "", zerr.ErrUploadNotFound
+		}
+
+		return "", mapStorageErr(err)
 	}
 
 	defer fileReader.Close()
 
 	digest, err := digestAlgorithm.FromReader(fileReader)
 	if err != nil {
-		return "", zerr.ErrBadBlobDigest
+		if errclass.IsStorageObjectMissing(err) {
+			return "", zerr.ErrUploadNotFound
+		}
+
+		return "", mapStorageErr(err)
 	}
 
 	return digest, nil
