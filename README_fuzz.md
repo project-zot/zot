@@ -6,7 +6,7 @@ As language specifies, fuzz tests are included among unit-tests, inside the the 
 Zot doesn't store the test data for fuzzing in the same repo, nor it is added before fuzzing with `(*testing.F).Add` . Instead, it is stored in a separate repo called [test-data](https://github.com/project-zot/test-data).
 
 To start fuzzing locally, one can use the Make target [fuzz-all](Makefile) .
-**The default runtime for each fuzz test is 10s**, which can be overriden with the **fuzztime** variable
+**The default runtime for each fuzz test is 10s**, which can be overridden with the **fuzztime** variable
 ```
 make fuzz-all fuzztime=20
 ```

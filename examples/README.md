@@ -545,7 +545,7 @@ absolute redirect origins via:
 The callback url which should be used when making oauth2 provider setup is http://127.0.0.1:8080/zot/auth/callback/\<provider\>
 for example github callback url would be http://127.0.0.1:8080/zot/auth/callback/github
 
-If network policy doesn't allow inbound connections, this callback wont work!
+If network policy doesn't allow inbound connections, this callback won't work!
 
 #### GitHub Teams in Access Control
 
@@ -742,7 +742,7 @@ Note: The `redis` session driver cannot be specified along with configuration fo
 
 ### Securing session based login
 
-In order to secure session cookies used in session based authentication process you need to set the path to a file containg keys used to hash and encrypt the cookies:
+In order to secure session cookies used in session based authentication process you need to set the path to a file containing keys used to hash and encrypt the cookies:
 
 `sessionKeysFile`
 
@@ -987,7 +987,7 @@ Should authentication fail, to prevent automated attacks, a delayed response can
 Allowing actions on one or more repository paths can be tied to user
 identities. Two additional per-repository policies can be specified for identities not in the whitelist:
 
-- anonymousPolicy - applied for unathenticated users.
+- anonymousPolicy - applied for unauthenticated users.
 - defaultPolicy - applied for authenticated users.
 
 Furthermore, a global admin policy can also be
@@ -1248,7 +1248,7 @@ Set server path on which metrics will be exposed:
 }
 ```
 
-In order to test the Metrics feature locally in a [Kind](https://kind.sigs.k8s.io/) cluster, folow [this guide](metrics/README.md).
+In order to test the Metrics feature locally in a [Kind](https://kind.sigs.k8s.io/) cluster, follow [this guide](metrics/README.md).
 
 ## Storage Drivers
 
