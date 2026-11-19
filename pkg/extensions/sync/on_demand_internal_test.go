@@ -847,3 +847,60 @@ func TestStageForStreamRejectsForeignNamespaceCollision(t *testing.T) {
 		So(foreign.onSynced, ShouldBeEmpty)
 	})
 }
+
+// TestStreamOrSyncImageReturnsCommittedDigest covers the streamed path: the flight must publish
+// the digest its sync committed. A late joiner that missed the staged entry serves that digest by
+// digest instead of re-reading the shared tag, which another namespace may re-commit.
+func TestStreamOrSyncImageReturnsCommittedDigest(t *testing.T) {
+	Convey("a streamed flight returns the digest its sync committed", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		onDemand.SetStreamManager(newFakeStreamManagerForOnDemand())
+
+		man := newTestManifestForStream(t)
+		onDemand.Add(&fakeStreamService{
+			fetchManifestFn: func(_ context.Context, _, _ string) (manifest.Manifest, error) {
+				return man, nil
+			},
+			syncDigest: man.GetDescriptor().Digest,
+		})
+
+		outcome := make(chan manifest.Manifest, 1)
+
+		digest, err := onDemand.streamOrSyncImage(context.Background(), "repo", "latest", "", nil, outcome)
+		So(err, ShouldBeNil)
+		So(<-outcome, ShouldEqual, man)
+		So(digest, ShouldEqual, man.GetDescriptor().Digest)
+	})
+}
+
+// TestStreamOrSyncImageJoinedFlightReturnsCommittedDigest covers the pre-reload join path: the
+// joined manifest's sync is pinned to the digest it served, and that digest must be published to
+// the joining flight.
+func TestStreamOrSyncImageJoinedFlightReturnsCommittedDigest(t *testing.T) {
+	Convey("a flight joining a pre-reload stream returns its committed digest", t, func() {
+		onDemand := NewOnDemand(log.NewTestLogger())
+		streamManager := newFakeStreamManagerForOnDemand()
+		onDemand.SetStreamManager(streamManager)
+
+		man := newTestManifestForStream(t)
+		existing := NewStreamableManifest(man)
+		// Its own sync already committed and unstaged it successfully.
+		existing.synced = true
+		close(existing.done)
+
+		_, err := streamManager.StoreImageForStreaming("repo", "latest", existing, nil)
+		So(err, ShouldBeNil)
+
+		bService := &stubOnDemandService{streaming: true, fetchManifest: man}
+		onDemand.Add(bService)
+
+		outcome := make(chan manifest.Manifest, 1)
+
+		digest, err := onDemand.streamOrSyncImage(context.Background(), "repo", "latest", "", nil, outcome)
+		So(err, ShouldBeNil)
+		So(<-outcome, ShouldEqual, man)
+		So(digest, ShouldEqual, man.GetDescriptor().Digest)
+		// The joined flight owns the sync; this one must not run another beside it.
+		So(bService.syncImageCalls, ShouldEqual, 0)
+	})
+}

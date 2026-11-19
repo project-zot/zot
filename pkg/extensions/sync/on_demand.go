@@ -250,8 +250,9 @@ func (onDemand *BaseOnDemand) IsStreamingEnabledForRepo(repo string) bool {
 //
 // The returned digest, when non-empty, is the manifest the sync committed. The caller serves that
 // immutable result instead of re-reading the shared local tag, which another namespace's
-// concurrent sync can re-commit. It is empty for a streamed manifest (the caller already has the
-// upstream body) and when the sync committed nothing.
+// concurrent sync can re-commit. A caller served the staged manifest directly (the leader or an
+// early joiner) already has the upstream body and gets an empty digest; a late joiner instead gets
+// the committed digest. It is also empty when the sync committed nothing.
 //
 // ns, when non-empty, restricts the sync to the upstream registry named by the
 // containerd ?ns= namespace/query parameter.
@@ -396,9 +397,9 @@ func notStreamedErr(syncErr error) error {
 // streamOrSyncImage is the leader's flight body: stage and sync feeding the streams, or, if it
 // can't stage, run the plain on-demand sync. It sends outcome exactly once, as soon as it knows.
 //
-// It returns the digest the plain sync committed, so a caller reading storage can serve that
-// immutable result. Streamed paths return an empty digest: their callers already hold the upstream
-// manifest, and the sync is still running.
+// It returns the digest the sync committed, so a caller that joined the flight can serve that
+// immutable result instead of re-reading the shared tag. It is empty when the sync committed
+// nothing.
 func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, reference string,
 	nsParam string, onSynced func(manifest.Manifest), outcome chan<- manifest.Manifest,
 ) (godigest.Digest, error) {
@@ -428,7 +429,7 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 			return "", zerr.ErrSyncJoinedStreamFailed
 		}
 
-		return "", nil
+		return staged.referenceManifest.GetDescriptor().Digest, nil
 	}
 
 	if stageErr != nil {
@@ -471,7 +472,7 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 
 	// Pinned to the registry and digest just served, so the streams get exactly that manifest's
 	// blobs even if the tag moves upstream or another registry also matches repo.
-	_, err := onDemand.syncImage(ctx, repo, reference, nsParam, selectedIdx,
+	digest, err := onDemand.syncImage(ctx, repo, reference, nsParam, selectedIdx,
 		staged.referenceManifest.GetDescriptor().Digest, true)
 	onDemand.logImageSyncErr(repo, reference, err)
 
@@ -479,7 +480,9 @@ func (onDemand *BaseOnDemand) streamOrSyncImage(ctx context.Context, repo, refer
 	// onSynced (ours and joiners'), atomically with removal so none is lost.
 	onDemand.streamManager.RemoveStreamingImage(repo, reference, err == nil)
 
-	return "", err
+	// Publish the committed digest: a joiner that missed the staged entry serves it by digest
+	// instead of re-reading the shared tag, which another namespace may re-commit.
+	return digest, err
 }
 
 // registryHostsProvider is implemented by services that can name their upstream registry

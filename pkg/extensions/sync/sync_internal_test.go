@@ -3975,6 +3975,8 @@ type fakeStreamService struct {
 	syncImageCalls int32
 	syncImageBlock chan struct{}
 	syncImageErr   error
+	// syncDigest, if set, is the digest SyncImage reports as committed.
+	syncDigest godigest.Digest
 	// localDigest, if set, is reported as already committed locally by IsImageLocal.
 	localDigest godigest.Digest
 	// localErr, if set, is returned by IsImageLocal as a storage failure.
@@ -3994,7 +3996,7 @@ func (s *fakeStreamService) SyncImage(_ context.Context, _, _ string) (godigest.
 		<-s.syncImageBlock
 	}
 
-	return "", s.syncImageErr
+	return s.syncDigest, s.syncImageErr
 }
 
 func (s *fakeStreamService) SyncReferrers(_ context.Context, _ string, _ string, _ []string) error {
