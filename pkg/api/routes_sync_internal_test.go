@@ -1004,3 +1004,86 @@ func TestGetImageManifestScopedDigestReadFailure(t *testing.T) {
 		})
 	}
 }
+
+// TestGetImageManifestStagedForeignNamespaceIsNotJoined: a stream staged by another registry must
+// not suppress this request's background queueing. Only a stream from the requested namespace may
+// make the request join it through FetchManifestForStream.
+func TestGetImageManifestStagedForeignNamespaceIsNotJoined(t *testing.T) {
+	t.Parallel()
+
+	const (
+		repo = "library/test"
+		nsB  = "registry-b.example:5000"
+	)
+
+	enabled := true
+	appConfig := config.New()
+	appConfig.Extensions = &extconf.ExtensionConfig{
+		Sync: &syncconf.Config{Enable: &enabled},
+	}
+
+	upstream, err := manifest.New(manifest.WithRaw([]byte(`{"schemaVersion":2,` +
+		`"mediaType":"application/vnd.oci.image.manifest.v1+json",` +
+		`"config":{"mediaType":"application/vnd.oci.image.config.v1+json",` +
+		`"digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},` +
+		`"layers":[]}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const digestRef = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+	missingStore := mocks.MockedImageStore{
+		GetImageManifestFn: func(_, _ string) ([]byte, godigest.Digest, string, error) {
+			return nil, "", "", zerr.ErrManifestNotFound
+		},
+	}
+
+	for _, reference := range []string{"latest", digestRef} {
+		t.Run(reference, func(t *testing.T) {
+			t.Parallel()
+
+			queued := false
+			fetched := false
+
+			onDemand := &onDemandInBackgroundMock{
+				shouldQueueOnDemandSyncFn: func(_, ns string) bool { return ns != "" },
+				queueImageFn:              func(context.Context, string, string, string) { queued = true },
+				fetchForStreamFn: func(context.Context) (manifest.Manifest, error) {
+					fetched = true
+
+					return upstream, nil
+				},
+				// A stream with no registry hosts recorded matches no scoped request, so it is
+				// foreign to nsB.
+				streamManager: &stagedRefsStreamManager{
+					staged: map[string]bool{repo + ":" + reference: true},
+				},
+			}
+			handler := &RouteHandler{c: &Controller{
+				Config:       appConfig,
+				SyncOnDemand: onDemand,
+				Log:          log.NewTestLogger(),
+			}}
+
+			_, _, _, _, err := getImageManifest(context.Background(), handler, missingStore, repo,
+				reference, nsB, nil)
+			if !errors.Is(err, zerr.ErrManifestNotFound) {
+				t.Fatalf("getImageManifest() error = %v, want %v", err, zerr.ErrManifestNotFound)
+			}
+
+			if !queued {
+				t.Fatal("expected QueueImage for a foreign staged stream")
+			}
+
+			if fetched || onDemand.fetchForStreamCalls != 0 {
+				t.Fatalf("FetchManifestForStream() called %d times, want 0",
+					onDemand.fetchForStreamCalls)
+			}
+
+			if onDemand.syncImageCalls != 0 {
+				t.Fatalf("SyncImage() called %d times, want 0", onDemand.syncImageCalls)
+			}
+		})
+	}
+}

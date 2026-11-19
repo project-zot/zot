@@ -3448,7 +3448,7 @@ func resolveOnDemandManifest(ctx context.Context, routeHandler *RouteHandler,
 	// longer streams this repo (or made it background-only): join that stream. Starting a second
 	// sync of the same tag beside it would download it twice, and if the tag moved upstream, the
 	// older sync (pinned to the digest it served) could commit last and roll the tag back.
-	inFlightStream := isStreamingReference(routeHandler.c, name, reference)
+	inFlightStream := isStreamingReference(routeHandler.c, name, reference, nsParam)
 
 	if !inFlightStream && routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name, nsParam) {
 		content, digest, mediaType, err := serveOrQueueBackgroundSync(ctx, routeHandler,
@@ -3612,7 +3612,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 
 		// A digest still being streamed falls through to join that stream (see inFlightStream).
 		if routeHandler.c.SyncOnDemand.ShouldQueueOnDemandSync(name, nsParam) &&
-			!isStreamingReference(routeHandler.c, name, reference) {
+			!isStreamingReference(routeHandler.c, name, reference, nsParam) {
 			if isManifestNotFound(err) {
 				routeHandler.c.SyncOnDemand.QueueImage(ctx, name, reference, nsParam)
 			}
@@ -4012,18 +4012,23 @@ func getBlobUploadLocation(url *url.URL, name string, digest godigest.Digest) st
 	return url.String()
 }
 
-// isStreamingReference reports whether repo:reference is staged for streaming in the stream manager,
-// which a reload keeps (see EnableSyncExtension) even if the new config no longer streams repo.
-// FetchManifestForStream joins such a stream, and falls back to a plain sync if it just ended.
-func isStreamingReference(ctlr *Controller, repo, reference string) bool {
+// isStreamingReference reports whether repo:reference is staged for streaming by the upstream
+// registry that ns names (or by any, when ns is empty), which a reload keeps (see
+// EnableSyncExtension) even if the new config no longer streams repo. FetchManifestForStream joins
+// such a stream, and falls back to a plain sync if it just ended. A stream staged by another
+// registry must not suppress this request's background queueing or blocking sync.
+func isStreamingReference(ctlr *Controller, repo, reference, nsParam string) bool {
 	streamManager := ctlr.SyncOnDemand.StreamManager()
 	if streamManager == nil {
 		return false
 	}
 
-	_, staged := streamManager.StreamingImageManifest(repo, reference)
+	stagedManifest, staged := streamManager.StreamingImageManifest(repo, reference)
+	if !staged {
+		return false
+	}
 
-	return staged
+	return stagedManifest.MatchesNamespace(nsParam)
 }
 
 func isSyncOnDemandEnabled(ctlr *Controller) bool {
