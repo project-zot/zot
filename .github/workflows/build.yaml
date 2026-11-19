@@ -95,6 +95,12 @@ jobs:
         run: |
           make USE_PREBUILT=1 verify-config-schema
 
+      # zotctl is architecture independent; stage it from a single matrix leg so that the
+      # bin/z* upload below publishes it once. release-checksums then covers it (z*).
+      - name: Stage zotctl as a release asset
+        if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'
+        run: install -m 0755 install/linux/zotctl bin/zotctl
+
       - if: github.event_name == 'release' && github.event.action == 'published'
         name: Publish artifacts on releases
         uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # latest
