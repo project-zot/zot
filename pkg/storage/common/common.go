@@ -1252,8 +1252,8 @@ func BlobPathsByDigest(imgStore storageTypes.ImageStore, repos []string, log zlo
 		}
 
 		for _, digest := range blobs {
-			/* GetAllBlobs builds a digest from every filename under blobs/<alg>/ without
-			validating it, so a stray file would otherwise become a task that can never
+			/* GetAllBlobs validates basenames from List but does not Stat, so keep this
+			check so a stray or alternate inventory cannot enqueue a task that can never
 			succeed: it fails in checkCacheBlob, and a failed task never runs its completion
 			callback, leaving OnRunComplete unfired. */
 			if err := digest.Validate(); err != nil {

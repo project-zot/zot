@@ -1428,10 +1428,12 @@ func (gc GarbageCollect) deleteUnreferencedBlobs(ctx context.Context, repo strin
 
 	for _, digest := range allBlobs {
 		if err = digest.Validate(); err != nil {
-			log.Error().Err(err).Str("module", "gc").Str("repository", repo).
-				Str("digest", digest.String()).Msg("failed to parse digest")
+			// A stray non-digest entry must not abort orphan cleanup for the rest of
+			// the repository (for example a nested path under blobs/<alg>/).
+			log.Warn().Err(err).Str("module", "gc").Str("repository", repo).
+				Str("digest", digest.String()).Msg("skipping invalid digest during blob GC")
 
-			return 0, err
+			continue
 		}
 
 		if _, ok := refBlobs[digest]; !ok {

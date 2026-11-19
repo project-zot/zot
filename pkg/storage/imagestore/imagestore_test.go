@@ -34,9 +34,30 @@ import (
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
-var (
-	errDeleteFailed = errors.New("delete failed") //nolint: gochecknoglobals
-	errDriverFailed = errors.New("driver failed") //nolint: gochecknoglobals
+// Package-level so tests can hand the driver a static error. err113 rejects
+// errors.New at the call site.
+var ( //nolint: gochecknoglobals
+	errDeleteFailed       = errors.New("delete failed")
+	errDriverFailed       = errors.New("driver failed")
+	errLayoutStatBlip     = errors.New("layout stat blip")
+	errIndexBlip          = errors.New("index blip")
+	errAlgListBlip        = errors.New("alg list blip")
+	errAlgListDenied      = errors.New("alg list denied")
+	errStatBlip           = errors.New("stat blip")
+	errCacheBlip          = errors.New("cache blip")
+	errCachePutDenied     = errors.New("cache put denied")
+	errListBlip           = errors.New("list blip")
+	errRawListFailure     = errors.New("raw list failure")
+	errBlobsStatBlip      = errors.New("blobs stat blip")
+	errBlobsDenied        = errors.New("blobs denied")
+	errRawBlobsStat       = errors.New("raw blobs stat")
+	errLastStatBlip       = errors.New("last stat blip")
+	errLastValidateBlip   = errors.New("last validate blip")
+	errLastValidateDenied = errors.New("last validate denied")
+	errRootListFailed     = errors.New("root list failed")
+	errFlushEdquot        = errors.New("flush edquot")
+	errWriteEdquot        = errors.New("write edquot")
+	errDiskFull           = errors.New("disk full")
 )
 
 // rawListDriver returns List errors without driver formatErr classification so
@@ -178,12 +199,10 @@ func TestCleanupRepoToleratesDeletePathNotFound(t *testing.T) {
 
 		storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
 			if path == blobPath {
-				return &mocks.FileInfoMock{
-					SizeFn: func() int64 { return 10 },
-				}, nil
+				return mocks.FileInfoFile(10), nil
 			}
 
-			return &mocks.FileInfoMock{}, nil
+			return mocks.FileInfoDir(), nil
 		}
 		storeMock.DeleteFn = func(_ context.Context, path string) error {
 			if path == blobPath {
@@ -222,12 +241,10 @@ func TestCleanupRepoFailsOnUnexpectedDeleteBlobError(t *testing.T) {
 
 		storeMock.StatFn = func(_ context.Context, path string) (driver.FileInfo, error) {
 			if path == blobPath {
-				return &mocks.FileInfoMock{
-					SizeFn: func() int64 { return 10 },
-				}, nil
+				return mocks.FileInfoFile(10), nil
 			}
 
-			return &mocks.FileInfoMock{}, nil
+			return mocks.FileInfoDir(), nil
 		}
 		storeMock.DeleteFn = func(_ context.Context, path string) error {
 			if path == blobPath {
@@ -357,6 +374,227 @@ func TestRemoveIdleRepository(t *testing.T) {
 		So(store.DirExists(path.Join(rootDir, "repo")), ShouldBeFalse)
 	})
 
+	Convey("A nested repository survives idle removal of its parent", t, func() {
+		rootDir := t.TempDir()
+		store := newStore(rootDir)
+		ctx := context.Background()
+
+		So(store.InitRepo(ctx, "demo/app"), ShouldBeNil)
+		So(store.InitRepo(ctx, "demo/app/cache"), ShouldBeNil)
+
+		cacheContent := []byte("cache layer")
+		cacheDigest := godigest.FromBytes(cacheContent)
+		_, _, err := store.FullBlobUpload(ctx, "demo/app/cache", bytes.NewReader(cacheContent), cacheDigest)
+		So(err, ShouldBeNil)
+
+		removed, err := removeIdle(store, "demo/app", 0)
+		So(err, ShouldBeNil)
+		So(removed, ShouldBeTrue)
+
+		ok, err := store.ValidateRepo("demo/app/cache")
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+
+		present, _, _, err := store.StatBlob("demo/app/cache", cacheDigest)
+		So(err, ShouldBeNil)
+		So(present, ShouldBeTrue)
+
+		repos, err := store.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldContain, "demo/app/cache")
+		So(repos, ShouldNotContain, "demo/app")
+	})
+
+	Convey("A mid-flight layout cleanup failure keeps layout markers for retry", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		repoDir := path.Join(rootDir, repo)
+		indexPath := path.Join(repoDir, ispec.ImageIndexFile)
+		layoutPath := path.Join(repoDir, ispec.ImageLayoutFile)
+		uploadsDir := path.Join(repoDir, storageConstants.BlobUploadDir)
+		blobsDir := path.Join(repoDir, ispec.ImageBlobsDir)
+		emptyIndex := []byte(`{"schemaVersion":2,"manifests":[]}`)
+
+		// Fail during pruneEmptyBlobDirs (before oci-layout / index.json) so both
+		// markers remain and ValidateRepo / GetIndex can still find the repo.
+		failBlobsList := true
+
+		var deleted []string
+
+		fileInfo := func(size int64) driver.FileInfo {
+			return mocks.FileInfoFile(size)
+		}
+		dirInfo := func() driver.FileInfo {
+			return mocks.FileInfoDir()
+		}
+		notFound := func(objectPath string) error {
+			return driver.PathNotFoundError{Path: objectPath}
+		}
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+				if objectPath == indexPath || objectPath == layoutPath {
+					return fileInfo(10), nil
+				}
+
+				return dirInfo(), nil
+			},
+			GetContentFn: func(_ context.Context, _ string) ([]byte, error) {
+				return emptyIndex, nil
+			},
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				switch listPath {
+				case uploadsDir:
+					return nil, notFound(listPath)
+				case blobsDir:
+					if failBlobsList {
+						return nil, errDriverFailed
+					}
+
+					return nil, notFound(listPath)
+				case repoDir:
+					return []string{}, nil
+				default:
+					return nil, notFound(listPath)
+				}
+			},
+			DeleteFn: func(_ context.Context, objectPath string) error {
+				deleted = append(deleted, objectPath)
+
+				return nil
+			},
+		}
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+
+		removed, err := removeIdle(store, repo, 0)
+		So(err, ShouldNotBeNil)
+		So(removed, ShouldBeFalse)
+		So(deleted, ShouldNotContain, layoutPath)
+		So(deleted, ShouldNotContain, indexPath)
+
+		failBlobsList = false
+		deleted = nil
+
+		removed, err = removeIdle(store, repo, 0)
+		So(err, ShouldBeNil)
+		So(removed, ShouldBeTrue)
+		So(deleted, ShouldContain, layoutPath)
+		So(deleted, ShouldContain, indexPath)
+	})
+
+	Convey("Missing index with oci-layout already gone resumes layout prune", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		repoDir := path.Join(rootDir, repo)
+		indexPath := path.Join(repoDir, ispec.ImageIndexFile)
+		layoutPath := path.Join(repoDir, ispec.ImageLayoutFile)
+		uploadsDir := path.Join(repoDir, storageConstants.BlobUploadDir)
+		blobsDir := path.Join(repoDir, ispec.ImageBlobsDir)
+
+		var deleted []string
+
+		notFound := func(objectPath string) error {
+			return driver.PathNotFoundError{Path: objectPath}
+		}
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+				switch objectPath {
+				case indexPath, layoutPath:
+					return nil, notFound(objectPath)
+				case repoDir, uploadsDir, blobsDir:
+					return mocks.FileInfoDir(), nil
+				default:
+					return nil, notFound(objectPath)
+				}
+			},
+			GetContentFn: func(_ context.Context, objectPath string) ([]byte, error) {
+				return nil, notFound(objectPath)
+			},
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				switch listPath {
+				case uploadsDir, blobsDir:
+					return nil, notFound(listPath)
+				case repoDir:
+					// Leftover uploads dir from the interrupted prune.
+					return []string{uploadsDir}, nil
+				default:
+					return nil, notFound(listPath)
+				}
+			},
+			DeleteFn: func(_ context.Context, objectPath string) error {
+				deleted = append(deleted, objectPath)
+
+				return nil
+			},
+		}
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+
+		removed, err := removeIdle(store, repo, 0)
+		So(err, ShouldBeNil)
+		So(removed, ShouldBeTrue)
+		So(deleted, ShouldContain, uploadsDir)
+	})
+
+	Convey("Missing markers with a listed upload leave the staging tree alone", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		repoDir := path.Join(rootDir, repo)
+		indexPath := path.Join(repoDir, ispec.ImageIndexFile)
+		layoutPath := path.Join(repoDir, ispec.ImageLayoutFile)
+		uploadsDir := path.Join(repoDir, storageConstants.BlobUploadDir)
+		uploadPath := path.Join(uploadsDir, "active-uuid")
+
+		var deleted []string
+
+		notFound := func(objectPath string) error {
+			return driver.PathNotFoundError{Path: objectPath}
+		}
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+				switch objectPath {
+				case indexPath, layoutPath:
+					return nil, notFound(objectPath)
+				case repoDir, uploadsDir:
+					return mocks.FileInfoDir(), nil
+				default:
+					return nil, notFound(objectPath)
+				}
+			},
+			GetContentFn: func(_ context.Context, objectPath string) ([]byte, error) {
+				return nil, notFound(objectPath)
+			},
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				if listPath == uploadsDir {
+					return []string{uploadPath}, nil
+				}
+
+				return nil, notFound(listPath)
+			},
+			DeleteFn: func(_ context.Context, objectPath string) error {
+				deleted = append(deleted, objectPath)
+
+				return nil
+			},
+		}
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+
+		removed, err := removeIdle(store, repo, 0)
+		So(err, ShouldBeNil)
+		So(removed, ShouldBeFalse)
+		So(deleted, ShouldBeEmpty)
+	})
+
 	Convey("A repo already gone from storage is a no-op", t, func() {
 		store := newStore(t.TempDir())
 
@@ -371,8 +609,7 @@ func TestRemoveIdleRepository(t *testing.T) {
 		rootDir := t.TempDir()
 		repo := "repo"
 		indexPath := path.Join(rootDir, repo, ispec.ImageIndexFile)
-		transient := errclass.MarkTransient(errors.New("index blip")) //nolint:err113 // test
-
+		transient := errclass.MarkTransient(errIndexBlip)
 		storeMock := &mocks.StorageDriverMock{
 			GetContentFn: func(_ context.Context, getPath string) ([]byte, error) {
 				So(getPath, ShouldEqual, indexPath)
@@ -387,6 +624,162 @@ func TestRemoveIdleRepository(t *testing.T) {
 		So(removed, ShouldBeFalse)
 		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 	})
+}
+
+func TestRemoveIdleRepositoryInterruptedPruneErrors(t *testing.T) {
+	removeIdle := func(store storageTypes.ImageStore, repo string, maxBlobAge time.Duration) (bool, error) {
+		var removed bool
+
+		err := store.WithRepoLock(repo, func() error {
+			var err error
+
+			removed, err = store.RemoveIdleRepository(repo, maxBlobAge)
+
+			return err
+		})
+
+		return removed, err
+	}
+
+	Convey("Interrupted prune fails closed on driver errors", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		repoDir := path.Join(rootDir, repo)
+		indexPath := path.Join(repoDir, ispec.ImageIndexFile)
+		layoutPath := path.Join(repoDir, ispec.ImageLayoutFile)
+		uploadsDir := path.Join(repoDir, storageConstants.BlobUploadDir)
+
+		notFound := func(objectPath string) error {
+			return driver.PathNotFoundError{Path: objectPath}
+		}
+
+		newInterruptedStore := func(storeMock *mocks.StorageDriverMock) storageTypes.ImageStore {
+			return imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				gcs.New(storeMock), nil, nil, nil)
+		}
+
+		Convey("repo dir Stat failure", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+					if objectPath == indexPath {
+						return nil, notFound(objectPath)
+					}
+					if objectPath == repoDir {
+						return nil, errDriverFailed
+					}
+
+					return nil, notFound(objectPath)
+				},
+				GetContentFn: func(_ context.Context, objectPath string) ([]byte, error) {
+					return nil, notFound(objectPath)
+				},
+			}
+
+			removed, err := removeIdle(newInterruptedStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("oci-layout Stat failure", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+					switch objectPath {
+					case indexPath:
+						return nil, notFound(objectPath)
+					case repoDir:
+						return mocks.FileInfoDir(), nil
+					case layoutPath:
+						return nil, errDriverFailed
+					default:
+						return nil, notFound(objectPath)
+					}
+				},
+				GetContentFn: func(_ context.Context, objectPath string) ([]byte, error) {
+					return nil, notFound(objectPath)
+				},
+			}
+
+			removed, err := removeIdle(newInterruptedStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("uploads list failure", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+					switch objectPath {
+					case indexPath, layoutPath:
+						return nil, notFound(objectPath)
+					case repoDir:
+						return mocks.FileInfoDir(), nil
+					default:
+						return nil, notFound(objectPath)
+					}
+				},
+				GetContentFn: func(_ context.Context, objectPath string) ([]byte, error) {
+					return nil, notFound(objectPath)
+				},
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					if listPath == uploadsDir {
+						return nil, errDriverFailed
+					}
+
+					return nil, notFound(listPath)
+				},
+			}
+
+			removed, err := removeIdle(newInterruptedStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("prune failure after idle gates", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+					switch objectPath {
+					case indexPath, layoutPath:
+						return nil, notFound(objectPath)
+					case repoDir:
+						return mocks.FileInfoDir(), nil
+					default:
+						return nil, notFound(objectPath)
+					}
+				},
+				GetContentFn: func(_ context.Context, objectPath string) ([]byte, error) {
+					return nil, notFound(objectPath)
+				},
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					if listPath == uploadsDir {
+						return nil, notFound(listPath)
+					}
+					// Fail the first pruneEmptyBlobDirs list.
+					return nil, errDriverFailed
+				},
+			}
+
+			removed, err := removeIdle(newInterruptedStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+	})
+}
+
+func TestRemoveIdleRepositoryDriverFailures(t *testing.T) {
+	removeIdle := func(store storageTypes.ImageStore, repo string, maxBlobAge time.Duration) (bool, error) {
+		var removed bool
+
+		err := store.WithRepoLock(repo, func() error {
+			var err error
+
+			removed, err = store.RemoveIdleRepository(repo, maxBlobAge)
+
+			return err
+		})
+
+		return removed, err
+	}
 
 	Convey("Driver failures fail closed", t, func() {
 		log := zlog.NewTestLogger()
@@ -412,7 +805,7 @@ func TestRemoveIdleRepository(t *testing.T) {
 		}
 
 		dirInfo := func() driver.FileInfo {
-			return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}
+			return mocks.FileInfoDir()
 		}
 		notFound := func(path string) error {
 			return driver.PathNotFoundError{Path: path}
@@ -467,6 +860,10 @@ func TestRemoveIdleRepository(t *testing.T) {
 			So(removed, ShouldBeFalse)
 		})
 
+		fileInfo := func(size int64) driver.FileInfo {
+			return mocks.FileInfoFile(size)
+		}
+
 		Convey("a blob stat failure under a grace period", func() {
 			storeMock := &mocks.StorageDriverMock{
 				StatFn: func(_ context.Context, path string) (driver.FileInfo, error) {
@@ -500,7 +897,7 @@ func TestRemoveIdleRepository(t *testing.T) {
 			storeMock := &mocks.StorageDriverMock{
 				StatFn: func(_ context.Context, path string) (driver.FileInfo, error) {
 					if path == blobPath {
-						return &mocks.FileInfoMock{SizeFn: func() int64 { return 10 }}, nil
+						return fileInfo(10), nil
 					}
 
 					return dirInfo(), nil
@@ -535,7 +932,7 @@ func TestRemoveIdleRepository(t *testing.T) {
 			storeMock := &mocks.StorageDriverMock{
 				StatFn: func(_ context.Context, path string) (driver.FileInfo, error) {
 					if path == blobPath {
-						return &mocks.FileInfoMock{SizeFn: func() int64 { return 10 }}, nil
+						return fileInfo(10), nil
 					}
 
 					return dirInfo(), nil
@@ -565,16 +962,74 @@ func TestRemoveIdleRepository(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(removed, ShouldBeFalse)
 		})
+	})
+}
+
+func TestRemoveIdleRepositoryPruneFailures(t *testing.T) {
+	removeIdle := func(store storageTypes.ImageStore, repo string, maxBlobAge time.Duration) (bool, error) {
+		var removed bool
+
+		err := store.WithRepoLock(repo, func() error {
+			var err error
+
+			removed, err = store.RemoveIdleRepository(repo, maxBlobAge)
+
+			return err
+		})
+
+		return removed, err
+	}
+
+	Convey("Prune driver failures fail closed", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+
+		repo := "repo"
+		rootDir := t.TempDir()
+		repoDir := path.Join(rootDir, repo)
+		indexPath := path.Join(repoDir, "index.json")
+		uploadsDir := path.Join(repoDir, ".uploads")
+		blobsDir := path.Join(repoDir, "blobs")
+
+		emptyIndex := []byte(`{"schemaVersion":2,"manifests":[]}`)
+
+		blobContent := []byte("orphan blob")
+		blobDigest := godigest.FromBytes(blobContent)
+		sha256Dir := path.Join(blobsDir, "sha256")
+		blobPath := path.Join(sha256Dir, blobDigest.Encoded())
+
+		newMockStore := func(storeMock *mocks.StorageDriverMock) storageTypes.ImageStore {
+			return imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+				gcs.New(storeMock), nil, nil, nil)
+		}
+
+		dirInfo := func() driver.FileInfo {
+			return mocks.FileInfoDir()
+		}
+		notFound := func(path string) error {
+			return driver.PathNotFoundError{Path: path}
+		}
+		fileInfo := func(size int64) driver.FileInfo {
+			return mocks.FileInfoFile(size)
+		}
 
 		Convey("a layout delete failure", func() {
 			storeMock := &mocks.StorageDriverMock{
 				StatFn:       func(_ context.Context, _ string) (driver.FileInfo, error) { return dirInfo(), nil },
 				GetContentFn: func(_ context.Context, _ string) ([]byte, error) { return emptyIndex, nil },
-				ListFn:       func(_ context.Context, path string) ([]string, error) { return nil, notFound(path) },
-				DeleteFn: func(_ context.Context, path string) error {
-					So(path, ShouldEqual, repoDir)
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					if listPath == repoDir {
+						return []string{}, nil
+					}
 
-					return errDriverFailed
+					return nil, notFound(listPath)
+				},
+				DeleteFn: func(_ context.Context, deletePath string) error {
+					if deletePath == repoDir {
+						return errDriverFailed
+					}
+
+					return nil
 				},
 			}
 
@@ -582,6 +1037,351 @@ func TestRemoveIdleRepository(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(removed, ShouldBeFalse)
 		})
+
+		Convey("a countBlobFiles Stat failure after the sweep", func() {
+			blobStatCalls := 0
+			storeMock := &mocks.StorageDriverMock{
+				StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+					if objectPath == blobPath {
+						blobStatCalls++
+						if blobStatCalls > 1 {
+							return nil, errDriverFailed
+						}
+
+						return fileInfo(10), nil
+					}
+
+					return dirInfo(), nil
+				},
+				GetContentFn: func(_ context.Context, _ string) ([]byte, error) { return emptyIndex, nil },
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					switch listPath {
+					case uploadsDir:
+						return nil, notFound(listPath)
+					case blobsDir:
+						return []string{sha256Dir}, nil
+					case sha256Dir:
+						return []string{blobPath}, nil
+					}
+
+					return nil, notFound(listPath)
+				},
+				DeleteFn: func(_ context.Context, _ string) error { return nil },
+			}
+
+			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("a blobsDir list failure during prune", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn:       func(_ context.Context, _ string) (driver.FileInfo, error) { return dirInfo(), nil },
+				GetContentFn: func(_ context.Context, _ string) ([]byte, error) { return emptyIndex, nil },
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					switch listPath {
+					case uploadsDir:
+						return nil, notFound(listPath)
+					case blobsDir:
+						return nil, errDriverFailed
+					}
+
+					return nil, notFound(listPath)
+				},
+			}
+
+			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("an algorithm dir list failure during prune", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn:       func(_ context.Context, _ string) (driver.FileInfo, error) { return dirInfo(), nil },
+				GetContentFn: func(_ context.Context, _ string) ([]byte, error) { return emptyIndex, nil },
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					switch listPath {
+					case uploadsDir:
+						return nil, notFound(listPath)
+					case blobsDir:
+						return []string{sha256Dir}, nil
+					case sha256Dir:
+						return nil, errDriverFailed
+					}
+
+					return nil, notFound(listPath)
+				},
+			}
+
+			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("an empty algorithm dir delete failure during prune", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn:       func(_ context.Context, _ string) (driver.FileInfo, error) { return dirInfo(), nil },
+				GetContentFn: func(_ context.Context, _ string) ([]byte, error) { return emptyIndex, nil },
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					switch listPath {
+					case uploadsDir:
+						return nil, notFound(listPath)
+					case blobsDir:
+						return []string{sha256Dir}, nil
+					case sha256Dir:
+						return []string{}, nil
+					}
+
+					return nil, notFound(listPath)
+				},
+				DeleteFn: func(_ context.Context, deletePath string) error {
+					if deletePath == sha256Dir {
+						return errDriverFailed
+					}
+
+					return nil
+				},
+			}
+
+			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("a second blobsDir list failure during prune", func() {
+			blobsListCalls := 0
+			storeMock := &mocks.StorageDriverMock{
+				StatFn:       func(_ context.Context, _ string) (driver.FileInfo, error) { return dirInfo(), nil },
+				GetContentFn: func(_ context.Context, _ string) ([]byte, error) { return emptyIndex, nil },
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					switch listPath {
+					case uploadsDir:
+						return nil, notFound(listPath)
+					case blobsDir:
+						blobsListCalls++
+						if blobsListCalls > 1 {
+							return nil, errDriverFailed
+						}
+
+						return []string{sha256Dir}, nil
+					case sha256Dir:
+						return []string{}, nil
+					}
+
+					return nil, notFound(listPath)
+				},
+				DeleteFn: func(_ context.Context, _ string) error { return nil },
+			}
+
+			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("an uploads dir delete failure during prune", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn:       func(_ context.Context, _ string) (driver.FileInfo, error) { return dirInfo(), nil },
+				GetContentFn: func(_ context.Context, _ string) ([]byte, error) { return emptyIndex, nil },
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					return nil, notFound(listPath)
+				},
+				DeleteFn: func(_ context.Context, deletePath string) error {
+					if deletePath == uploadsDir {
+						return errDriverFailed
+					}
+
+					return nil
+				},
+			}
+
+			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("an index.json delete failure during prune", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+					if objectPath == indexPath {
+						return fileInfo(10), nil
+					}
+
+					return dirInfo(), nil
+				},
+				GetContentFn: func(_ context.Context, _ string) ([]byte, error) { return emptyIndex, nil },
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					return nil, notFound(listPath)
+				},
+				DeleteFn: func(_ context.Context, deletePath string) error {
+					if deletePath == indexPath {
+						return errDriverFailed
+					}
+
+					return nil
+				},
+			}
+
+			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+
+		Convey("a final repo list failure during prune", func() {
+			storeMock := &mocks.StorageDriverMock{
+				StatFn:       func(_ context.Context, _ string) (driver.FileInfo, error) { return dirInfo(), nil },
+				GetContentFn: func(_ context.Context, _ string) ([]byte, error) { return emptyIndex, nil },
+				ListFn: func(_ context.Context, listPath string) ([]string, error) {
+					if listPath == repoDir {
+						return nil, errDriverFailed
+					}
+
+					return nil, notFound(listPath)
+				},
+				DeleteFn: func(_ context.Context, _ string) error { return nil },
+			}
+
+			removed, err := removeIdle(newMockStore(storeMock), repo, 0)
+			So(err, ShouldNotBeNil)
+			So(removed, ShouldBeFalse)
+		})
+	})
+}
+
+func TestRemoveIdleRepositoryLayoutEdges(t *testing.T) {
+	newStore := func(rootDir string) storageTypes.ImageStore {
+		return imagestore.NewImageStore(rootDir, "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+	}
+
+	removeIdle := func(store storageTypes.ImageStore, repo string, maxBlobAge time.Duration) (bool, error) {
+		var removed bool
+
+		err := store.WithRepoLock(repo, func() error {
+			var err error
+
+			removed, err = store.RemoveIdleRepository(repo, maxBlobAge)
+
+			return err
+		})
+
+		return removed, err
+	}
+
+	Convey("Index missing while oci-layout remains is a no-op", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		repoDir := path.Join(rootDir, repo)
+		indexPath := path.Join(repoDir, ispec.ImageIndexFile)
+		layoutPath := path.Join(repoDir, ispec.ImageLayoutFile)
+
+		var deleted []string
+
+		notFound := func(objectPath string) error {
+			return driver.PathNotFoundError{Path: objectPath}
+		}
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+				switch objectPath {
+				case indexPath:
+					return nil, notFound(objectPath)
+				case layoutPath:
+					return mocks.FileInfoFile(10), nil
+				case repoDir:
+					return mocks.FileInfoDir(), nil
+				default:
+					return nil, notFound(objectPath)
+				}
+			},
+			GetContentFn: func(_ context.Context, objectPath string) ([]byte, error) {
+				return nil, notFound(objectPath)
+			},
+			DeleteFn: func(_ context.Context, objectPath string) error {
+				deleted = append(deleted, objectPath)
+
+				return nil
+			},
+		}
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+
+		removed, err := removeIdle(store, repo, 0)
+		So(err, ShouldBeNil)
+		So(removed, ShouldBeFalse)
+		So(deleted, ShouldBeEmpty)
+	})
+
+	Convey("Non-algorithm names under blobs/ are skipped when pruning empty blob dirs", t, func() {
+		rootDir := t.TempDir()
+		store := newStore(rootDir)
+		ctx := context.Background()
+		repo := "repo"
+
+		So(store.InitRepo(ctx, repo), ShouldBeNil)
+
+		strayDir := path.Join(rootDir, repo, ispec.ImageBlobsDir, "notanalgorithm")
+		So(os.MkdirAll(strayDir, 0o755), ShouldBeNil)
+
+		removed, err := removeIdle(store, repo, 0)
+		So(err, ShouldBeNil)
+		So(removed, ShouldBeTrue)
+
+		_, err = os.Stat(strayDir)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("deleteFileIfPresent surfaces non-missing Stat failures", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		repo := "repo"
+		repoDir := path.Join(rootDir, repo)
+		indexPath := path.Join(repoDir, ispec.ImageIndexFile)
+		layoutPath := path.Join(repoDir, ispec.ImageLayoutFile)
+		uploadsDir := path.Join(repoDir, storageConstants.BlobUploadDir)
+		blobsDir := path.Join(repoDir, ispec.ImageBlobsDir)
+		emptyIndex := []byte(`{"schemaVersion":2,"manifests":[]}`)
+
+		notFound := func(objectPath string) error {
+			return driver.PathNotFoundError{Path: objectPath}
+		}
+		statBlip := errclass.MarkTransient(errLayoutStatBlip)
+
+		storeMock := &mocks.StorageDriverMock{
+			StatFn: func(_ context.Context, objectPath string) (driver.FileInfo, error) {
+				switch objectPath {
+				case indexPath:
+					return mocks.FileInfoFile(10), nil
+				case layoutPath:
+					return nil, statBlip
+				case repoDir, uploadsDir, blobsDir:
+					return mocks.FileInfoDir(), nil
+				default:
+					return nil, notFound(objectPath)
+				}
+			},
+			GetContentFn: func(_ context.Context, _ string) ([]byte, error) {
+				return emptyIndex, nil
+			},
+			ListFn: func(_ context.Context, listPath string) ([]string, error) {
+				switch listPath {
+				case uploadsDir, blobsDir:
+					return nil, notFound(listPath)
+				case repoDir:
+					return []string{}, nil
+				default:
+					return nil, notFound(listPath)
+				}
+			},
+		}
+		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
+			gcs.New(storeMock), nil, nil, nil)
+
+		removed, err := removeIdle(store, repo, 0)
+		So(removed, ShouldBeFalse)
+		So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 	})
 }
 
@@ -611,6 +1411,121 @@ func TestStatBlobEntry(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(ok, ShouldBeTrue)
 		So(size, ShouldEqual, int64(len(content)))
+	})
+}
+
+func TestInitRepoRejectsReservedLayoutLeaves(t *testing.T) {
+	Convey("InitRepo rejects reserved layout path components and allows nested repos", t, func() {
+		store := imagestore.NewImageStore(t.TempDir(), "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+		ctx := context.Background()
+
+		for _, name := range []string{
+			"blobs",
+			"index.json",
+			"oci-layout",
+			"demo/blobs",
+			"demo/netlify/blobs",
+			"demo/index.json",
+			"demo/oci-layout",
+			"demo/blobs/cache",
+			"demo/index.json/cache",
+			"blobs/foo",
+			"parent/blobs/child",
+		} {
+			err := store.InitRepo(ctx, name)
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+		}
+
+		So(store.InitRepo(ctx, "image"), ShouldBeNil)
+		So(store.InitRepo(ctx, "image/cache"), ShouldBeNil)
+		So(store.InitRepo(ctx, "myblobs"), ShouldBeNil)
+		So(store.InitRepo(ctx, "demo/myblobs"), ShouldBeNil)
+	})
+}
+
+func TestDigestShapedDirectoryUnderBlobsIsNotDeleted(t *testing.T) {
+	Convey("StatBlobEntry and delete refuse a directory at a blob path", t, func() {
+		rootDir := t.TempDir()
+		store := imagestore.NewImageStore(rootDir, "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+		ctx := context.Background()
+		repo := "demo/x"
+
+		So(store.InitRepo(ctx, repo), ShouldBeNil)
+
+		content := []byte("real blob")
+		digest := godigest.FromBytes(content)
+		_, _, err := store.FullBlobUpload(ctx, repo, bytes.NewReader(content), digest)
+		So(err, ShouldBeNil)
+
+		nestedHex := "233562de1a0288b139c4fa40b7d189f806e906eeb048517aeb67f34ac0e2faf1"
+		nestedDir := path.Join(rootDir, repo, ispec.ImageBlobsDir, "sha256", nestedHex)
+		So(os.MkdirAll(nestedDir, 0o755), ShouldBeNil)
+		So(os.WriteFile(path.Join(nestedDir, ispec.ImageLayoutFile), []byte(`{"imageLayoutVersion":"1.0.0"}`), 0o600),
+			ShouldBeNil)
+
+		nestedDigest := godigest.NewDigestFromEncoded(godigest.SHA256, nestedHex)
+
+		// GetAllBlobs is List+Validate only, so the digest-shaped directory is named.
+		digests, err := store.GetAllBlobs(repo)
+		So(err, ShouldBeNil)
+		So(digests, ShouldContain, digest)
+		So(digests, ShouldContain, nestedDigest)
+
+		ok, _, _, err := store.StatBlobEntry(repo, nestedDigest)
+		So(ok, ShouldBeFalse)
+		So(errors.Is(err, zerr.ErrBadBlob), ShouldBeTrue)
+
+		var removed bool
+		err = store.WithRepoLock(repo, func() error {
+			var lockErr error
+			removed, lockErr = store.RemoveIdleRepository(repo, 0)
+
+			return lockErr
+		})
+		So(err, ShouldBeNil)
+		So(removed, ShouldBeTrue)
+
+		_, err = os.Stat(nestedDir)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Age checks skip digest-shaped directories via ErrBadBlob", t, func() {
+		rootDir := t.TempDir()
+		store := imagestore.NewImageStore(rootDir, "", false, false, zlog.NewTestLogger(),
+			monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+		ctx := context.Background()
+		repo := "demo/aged"
+
+		So(store.InitRepo(ctx, repo), ShouldBeNil)
+
+		// Empty the index so RemoveIdleRepository will age-check listed digests.
+		So(store.PutIndexContent(repo, ispec.Index{SchemaVersion: 2}), ShouldBeNil)
+
+		nestedHex := "433562de1a0288b139c4fa40b7d189f806e906eeb048517aeb67f34ac0e2faf1"
+		nestedDir := path.Join(rootDir, repo, ispec.ImageBlobsDir, "sha256", nestedHex)
+		So(os.MkdirAll(nestedDir, 0o755), ShouldBeNil)
+
+		nestedDigest := godigest.NewDigestFromEncoded(godigest.SHA256, nestedHex)
+		digests, err := store.GetAllBlobs(repo)
+		So(err, ShouldBeNil)
+		So(digests, ShouldContain, nestedDigest)
+
+		var removed bool
+		err = store.WithRepoLock(repo, func() error {
+			var lockErr error
+			// Non-zero maxBlobAge forces StatBlobEntry; ErrBadBlob must be skipped.
+			removed, lockErr = store.RemoveIdleRepository(repo, time.Hour)
+
+			return lockErr
+		})
+		So(err, ShouldBeNil)
+		So(removed, ShouldBeTrue)
+
+		_, err = os.Stat(nestedDir)
+		So(err, ShouldBeNil)
 	})
 }
 
@@ -672,7 +1587,7 @@ func TestGetAllBlobsNestedListMissing(t *testing.T) {
 				case blobsDir:
 					return []string{sha256Dir}, nil
 				case sha256Dir:
-					return nil, errclass.MarkTransient(errors.New("alg list blip")) //nolint:err113 // test
+					return nil, errclass.MarkTransient(errAlgListBlip)
 				default:
 					return nil, driver.PathNotFoundError{Path: listPath}
 				}
@@ -700,7 +1615,7 @@ func TestGetAllBlobsNestedListMissing(t *testing.T) {
 				case blobsDir:
 					return []string{sha256Dir}, nil
 				case sha256Dir:
-					return nil, errclass.MarkPermanent(errors.New("alg list denied")) //nolint:err113 // test
+					return nil, errclass.MarkPermanent(errAlgListDenied)
 				default:
 					return nil, driver.PathNotFoundError{Path: listPath}
 				}
@@ -727,7 +1642,7 @@ func TestGetImageManifestRepoStatClasses(t *testing.T) {
 
 		storeMock := &mocks.StorageDriverMock{
 			StatFn: func(_ context.Context, _ string) (driver.FileInfo, error) {
-				return nil, errclass.MarkTransient(errors.New("stat blip")) //nolint:err113 // test
+				return nil, errclass.MarkTransient(errStatBlip)
 			},
 		}
 
@@ -801,7 +1716,7 @@ func TestCheckBlobTransientSkipsCacheFallback(t *testing.T) {
 
 		storeMock := &mocks.StorageDriverMock{
 			StatFn: func(_ context.Context, _ string) (driver.FileInfo, error) {
-				return nil, errclass.MarkTransient(errors.New("stat blip")) //nolint:err113 // test
+				return nil, errclass.MarkTransient(errStatBlip)
 			},
 			PutContentFn: func(_ context.Context, _ string, _ []byte) error {
 				putContentCalls++
@@ -852,7 +1767,7 @@ func TestCheckBlobWithSize(t *testing.T) {
 			StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
 				So(statPath, ShouldEqual, blobPath)
 
-				return &mocks.FileInfoMock{SizeFn: func() int64 { return 5 }}, nil
+				return mocks.FileInfoFile(5), nil
 			},
 			GetContentFn: func(_ context.Context, contentPath string) ([]byte, error) {
 				contentReads = append(contentReads, contentPath)
@@ -929,7 +1844,7 @@ func TestCheckBlobWithSizeCacheOrigin(t *testing.T) {
 			{
 				name: "blob is a placeholder",
 				blobInfo: func(string) (driver.FileInfo, error) {
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+					return mocks.FileInfoFile(0), nil
 				},
 			},
 		} {
@@ -942,7 +1857,7 @@ func TestCheckBlobWithSizeCacheOrigin(t *testing.T) {
 						case blobPath:
 							return testCase.blobInfo(statPath)
 						case cacheHitPath:
-							return &mocks.FileInfoMock{SizeFn: func() int64 { return 42 }}, nil
+							return mocks.FileInfoFile(42), nil
 						default:
 							// initRepo layout/index: absent so WriteFile creates them.
 							return nil, driver.PathNotFoundError{Path: statPath}
@@ -1011,13 +1926,13 @@ func TestCheckBlobMissingCacheLookupErrors(t *testing.T) {
 						return nil, driver.PathNotFoundError{Path: statPath}
 					}
 
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return 1 }}, nil
+					return mocks.FileInfoFile(1), nil
 				},
 			}
 
 			cacheMock := mocks.CacheMock{
 				GetBlobFn: func(godigest.Digest) (string, error) {
-					return "", errclass.MarkTransient(errors.New("cache blip")) //nolint:err113 // test
+					return "", errclass.MarkTransient(errCacheBlip)
 				},
 			}
 
@@ -1036,8 +1951,7 @@ func TestCheckBlobMissingCacheLookupErrors(t *testing.T) {
 			digest := godigest.FromString("checkblob-putblob-fail")
 			blobPath := path.Join(rootDir, "repo", ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
 			cacheHitPath := path.Join(rootDir, "origin/blobs/sha256", digest.Encoded())
-			putBlobErr := errclass.MarkPermanent(errors.New("cache put denied")) //nolint:err113 // test
-
+			putBlobErr := errclass.MarkPermanent(errCachePutDenied)
 			storeMock := &mocks.StorageDriverMock{
 				StatFn: func(_ context.Context, statPath string) (driver.FileInfo, error) {
 					if statPath == blobPath {
@@ -1106,7 +2020,7 @@ func TestValidateRepoListStorageClasses(t *testing.T) {
 		Convey("Transient propagates without ErrRepoNotFound", func() {
 			storeMock := &mocks.StorageDriverMock{
 				ListFn: func(_ context.Context, _ string) ([]string, error) {
-					return nil, errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+					return nil, errclass.MarkTransient(errListBlip)
 				},
 			}
 			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
@@ -1124,7 +2038,7 @@ func TestValidateRepoListStorageClasses(t *testing.T) {
 			store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
 				&rawListDriver{
 					Driver:  gcs.New(&mocks.StorageDriverMock{}),
-					listErr: errors.New("raw list failure"), //nolint:err113 // test
+					listErr: errRawListFailure,
 				}, nil, nil, nil)
 
 			ok, err := store.ValidateRepo(repo)
@@ -1157,27 +2071,27 @@ func TestValidateRepoLocalBlobsStatStorageClasses(t *testing.T) {
 		})
 
 		Convey("Transient blobs/ Stat propagates (inventory fail-closed)", func() {
-			transient := errclass.MarkTransient(errors.New("blobs stat blip")) //nolint:err113 // test
+			transient := errclass.MarkTransient(errBlobsStatBlip)
 			ok, err := newStore(transient).ValidateRepo(repo)
 			So(ok, ShouldBeFalse)
 			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 		})
 
 		Convey("Permanent blobs/ Stat propagates", func() {
-			permanent := errclass.MarkPermanent(errors.New("blobs denied")) //nolint:err113 // test
+			permanent := errclass.MarkPermanent(errBlobsDenied)
 			ok, err := newStore(permanent).ValidateRepo(repo)
 			So(ok, ShouldBeFalse)
 			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
 		})
 
 		Convey("unclassified blobs/ Stat is marked Transient", func() {
-			ok, err := newStore(errors.New("raw blobs stat")).ValidateRepo(repo) //nolint:err113 // test
+			ok, err := newStore(errRawBlobsStat).ValidateRepo(repo)
 			So(ok, ShouldBeFalse)
 			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 		})
 
 		Convey("GetRepositories aborts on Transient blobs/ Stat", func() {
-			transient := errclass.MarkTransient(errors.New("blobs stat blip")) //nolint:err113 // test
+			transient := errclass.MarkTransient(errBlobsStatBlip)
 			store := newStore(transient)
 			repos, err := store.GetRepositories()
 			So(repos, ShouldBeEmpty)
@@ -1214,7 +2128,7 @@ func TestGetNextRepositoriesValidateRepoSoftSkip(t *testing.T) {
 			ListFn: func(_ context.Context, listPath string) ([]string, error) {
 				switch path.Base(listPath) {
 				case flakyRepo:
-					return nil, errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+					return nil, errclass.MarkTransient(errListBlip)
 				case goodRepo:
 					return []string{
 						path.Join(listPath, ispec.ImageIndexFile),
@@ -1317,7 +2231,7 @@ func TestGetNextRepositoriesLastRepoProbe(t *testing.T) {
 		})
 
 		Convey("Transient Stat on last treats as missing without failing the page", func() {
-			transient := errclass.MarkTransient(errors.New("last stat blip")) //nolint:err113 // test
+			transient := errclass.MarkTransient(errLastStatBlip)
 			repos, more, err := newStore(transient).GetNextRepositories(lastRepo, 10, acceptAll)
 			So(err, ShouldBeNil)
 			So(more, ShouldBeFalse)
@@ -1342,7 +2256,7 @@ func TestGetNextRepositoriesLastRepoProbe(t *testing.T) {
 				ListFn: func(_ context.Context, listPath string) ([]string, error) {
 					switch path.Base(listPath) {
 					case lastRepo:
-						return nil, errclass.MarkTransient(errors.New("last validate blip")) //nolint:err113 // test
+						return nil, errclass.MarkTransient(errLastValidateBlip)
 					case keepRepo:
 						return []string{
 							path.Join(listPath, ispec.ImageIndexFile),
@@ -1385,7 +2299,7 @@ func TestGetNextRepositoriesLastRepoProbe(t *testing.T) {
 				ListFn: func(_ context.Context, listPath string) ([]string, error) {
 					switch path.Base(listPath) {
 					case lastRepo:
-						return nil, errclass.MarkPermanent(errors.New("last validate denied")) //nolint:err113 // test
+						return nil, errclass.MarkPermanent(errLastValidateDenied)
 					case keepRepo:
 						return []string{
 							path.Join(listPath, ispec.ImageIndexFile),
@@ -1430,7 +2344,7 @@ func TestGetNextRepositoryValidateRepoFailClosed(t *testing.T) {
 
 				switch path.Base(listPath) {
 				case flakyRepo:
-					return nil, errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+					return nil, errclass.MarkTransient(errListBlip)
 				case goodRepo:
 					return []string{
 						path.Join(listPath, ispec.ImageIndexFile),
@@ -1501,7 +2415,7 @@ func TestGetRepositoriesValidateRepoFailClosed(t *testing.T) {
 			ListFn: func(_ context.Context, listPath string) ([]string, error) {
 				switch path.Base(listPath) {
 				case flakyRepo:
-					return nil, errclass.MarkTransient(errors.New("list blip")) //nolint:err113 // test
+					return nil, errclass.MarkTransient(errListBlip)
 				case goodRepo:
 					return []string{
 						path.Join(listPath, ispec.ImageIndexFile),
@@ -1531,7 +2445,7 @@ func TestGetRepositoriesValidateRepoFailClosed(t *testing.T) {
 // is an empty store; a Missing Walk with a non-empty root is Transient.
 func TestConfirmEmptyStoreWalkMissing(t *testing.T) {
 	acceptAll := func(string) (bool, error) { return true, nil }
-	listErr := errors.New("root list failed") //nolint:err113 // test
+	listErr := errRootListFailed
 
 	Convey("Walk PathNotFound with an empty root is an empty store", t, func() {
 		rootDir := t.TempDir()
@@ -1827,8 +2741,7 @@ func TestPutBlobChunkCloseError(t *testing.T) {
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewNopMetricServer()
 		rootDir := t.TempDir()
-		flushPermanent := errclass.MarkPermanent(errors.New("flush edquot")) //nolint:err113 // test
-
+		flushPermanent := errclass.MarkPermanent(errFlushEdquot)
 		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
 			gcs.New(&mocks.StorageDriverMock{
 				WriterFn: func(_ context.Context, _ string, _ bool) (driver.FileWriter, error) {
@@ -1854,7 +2767,7 @@ func TestPutBlobChunkCloseError(t *testing.T) {
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewNopMetricServer()
 		rootDir := t.TempDir()
-		writePermanent := errclass.MarkPermanent(errors.New("write edquot")) //nolint:err113 // test
+		writePermanent := errclass.MarkPermanent(errWriteEdquot)
 		closed := false
 
 		store := imagestore.NewImageStore(rootDir, "", false, false, log, metrics, nil,
@@ -1902,7 +2815,7 @@ func TestFullBlobUploadStagingCleanup(t *testing.T) {
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewNopMetricServer()
 		rootDir := t.TempDir()
-		writePermanent := errclass.MarkPermanent(errors.New("disk full")) //nolint:err113 // test
+		writePermanent := errclass.MarkPermanent(errDiskFull)
 
 		var deleted []string
 
@@ -2157,12 +3070,12 @@ func TestRepositoryWalkReservedDirNames(t *testing.T) {
 			monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 		storeController := storage.StoreController{DefaultStore: imgStore}
 
+		// Exact layout path components (blobs, index.json, oci-layout) are rejected
+		// at create time. Names that merely end with those strings remain valid.
 		repos := []string{
-			"blobs",
 			"demo/my.sync",
 			"demo/my.uploads",
 			"demo/myblobs",
-			"demo/netlify/blobs",
 			"demo/plain",
 			"demo/plain/team",
 		}
@@ -2172,6 +3085,10 @@ func TestRepositoryWalkReservedDirNames(t *testing.T) {
 		for _, repo := range repos {
 			So(WriteImageToFileSystem(image, repo, "v1", storeController), ShouldBeNil)
 		}
+
+		So(errors.Is(imgStore.InitRepo(context.Background(), "blobs"), zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+		So(errors.Is(imgStore.InitRepo(context.Background(), "demo/netlify/blobs"), zerr.ErrInvalidRepositoryName),
+			ShouldBeTrue)
 
 		// the content of a repository is still not taken for repositories: an interrupted
 		// upload, and sync staging, which holds an OCI layout of its own
