@@ -3497,6 +3497,18 @@ func resolveOnDemandManifest(ctx context.Context, routeHandler *RouteHandler,
 		// A failed namespaced sync must not be masked by the shared local tag: it may hold
 		// another registry's manifest, and serving it would hide the scoped failure.
 		if scopedErr, scoped := scopedSyncFailureError(syncErr, nsParam, isDigest); scoped {
+			// Namespaced requests always contact upstream, so a temporary outage must not hide a
+			// tag this namespace already committed. Serve it only when provenance proves the
+			// cached digest is that namespace's manifest: unrecorded and foreign tags stay a
+			// scoped miss.
+			content, digest, mediaType, cacheErr := imgStore.GetImageManifest(name, reference)
+			if cacheErr == nil &&
+				routeHandler.c.SyncOnDemand.IsTagFromNamespace(name, reference, nsParam, digest) {
+				return onDemandResolution{
+					content: content, digest: digest, mediaType: mediaType, resolved: true,
+				}
+			}
+
 			return onDemandResolution{err: scopedErr, resolved: true}
 		}
 	}

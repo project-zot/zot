@@ -1087,3 +1087,72 @@ func TestGetImageManifestStagedForeignNamespaceIsNotJoined(t *testing.T) {
 		})
 	}
 }
+
+// TestGetImageManifestScopedSyncFailureServesVerifiedCachedTag: namespaced requests always contact
+// upstream, so an outage must not hide a tag that namespace already committed. Only a cached digest
+// with provenance for the requested namespace may be served; unrecorded and foreign tags keep the
+// scoped failure.
+func TestGetImageManifestScopedSyncFailureServesVerifiedCachedTag(t *testing.T) {
+	t.Parallel()
+
+	const (
+		repo      = "library/test"
+		reference = "latest"
+		nsA       = "registry-a.example:5000"
+		nsB       = "registry-b.example:5000"
+	)
+
+	enabled := true
+	appConfig := config.New()
+	appConfig.Extensions = &extconf.ExtensionConfig{
+		Sync: &syncconf.Config{Enable: &enabled},
+	}
+
+	manifestA := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}`)
+	digestA := godigest.FromBytes(manifestA)
+
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(_, _ string) ([]byte, godigest.Digest, string, error) {
+			return manifestA, digestA, ispec.MediaTypeImageManifest, nil
+		},
+	}
+
+	onDemand := &onDemandInBackgroundMock{
+		shouldQueueOnDemandSyncFn: func(_, _ string) bool { return false },
+		syncImageFn: func(context.Context, string, string) error {
+			return zerr.ErrSyncInternal
+		},
+	}
+	// A's sync committed digestA; any other digest has no provenance.
+	onDemand.isTagFromNamespaceFn = func(_, ref, ns string, digest godigest.Digest) bool {
+		return ns == nsA && ref == reference && digest == digestA
+	}
+
+	handler := &RouteHandler{c: &Controller{
+		Config:       appConfig,
+		SyncOnDemand: onDemand,
+		Log:          log.NewTestLogger(),
+	}}
+
+	// Same namespace: the cached tag it committed is served despite the outage.
+	content, digest, _, streamed, err := getImageManifest(context.Background(), handler, store,
+		repo, reference, nsA, nil)
+	if err != nil || streamed || digest != digestA || string(content) != string(manifestA) {
+		t.Fatalf("getImageManifest(ns=A) = %q/%s streamed=%t/%v, want A's cached manifest",
+			content, digest, streamed, err)
+	}
+
+	// Another namespace: the shared tag is not attributable to it, so the failure surfaces.
+	_, _, _, _, err = getImageManifest(context.Background(), handler, store, repo, reference, nsB, nil)
+	if !errors.Is(err, zerr.ErrSyncInternal) {
+		t.Fatalf("getImageManifest(ns=B) error = %v, want %v", err, zerr.ErrSyncInternal)
+	}
+
+	// No provenance recorded: equally a scoped miss.
+	onDemand.isTagFromNamespaceFn = func(string, string, string, godigest.Digest) bool { return false }
+
+	_, _, _, _, err = getImageManifest(context.Background(), handler, store, repo, reference, nsA, nil)
+	if !errors.Is(err, zerr.ErrSyncInternal) {
+		t.Fatalf("getImageManifest(unrecorded) error = %v, want %v", err, zerr.ErrSyncInternal)
+	}
+}
