@@ -4453,7 +4453,7 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Test GetBlob() - error on second store.Stat()", t, func(c C) {
+	Convey("Test GetBlob() - origin gone, another copy holds the content", t, func(c C) {
 		tdir := t.TempDir()
 
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{})
@@ -4480,15 +4480,20 @@ func TestS3DedupeErr(t *testing.T) {
 		), input, 0o600)
 		So(err, ShouldBeNil)
 
+		var statsOfGoneOrigin atomic.Int32
+
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				// the cache origin is gone from storage
 				if strings.Contains(path, "repo1/dst1") {
+					statsOfGoneOrigin.Add(1)
+
 					return driver.FileInfoInternal{}, driver.PathNotFoundError{}
 				}
 
-				// Only the surviving cache origin holds content. The repo-local
-				// blob path must stay a zero-size placeholder so GetBlob still
-				// walks the cache (and fails while origin is missing).
+				// Only the other tracked copy holds content. The repo-local blob
+				// path must stay a zero-size placeholder so GetBlob still walks
+				// the cache.
 				if strings.Contains(path, "repo2/dst2") {
 					return &mocks.FileInfoMock{
 						SizeFn: func() int64 { return 1 },
@@ -4517,10 +4522,15 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 
-		_, _, err = imgStore.GetBlob("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
-		So(err, ShouldNotBeNil)
+		// the read finds the origin gone, makes the copy holding the content the
+		// origin, and is served by it
+		reader, size, err := imgStore.GetBlob("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
+		So(err, ShouldBeNil)
+		So(size, ShouldEqual, 1)
+		So(reader.Close(), ShouldBeNil)
+		So(statsOfGoneOrigin.Load(), ShouldEqual, 1)
 
-		// now it should move content from /repo1/dst1 to /repo2/dst2
+		// the cache no longer leads to the gone origin
 		_, err = imgStore.GetBlobContent("repo2", digest)
 		So(err, ShouldBeNil)
 
@@ -4529,6 +4539,8 @@ func TestS3DedupeErr(t *testing.T) {
 
 		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 0)
 		So(err, ShouldBeNil)
+
+		So(statsOfGoneOrigin.Load(), ShouldEqual, 1)
 	})
 
 	Convey("Test GetBlob() - error on store.Reader()", t, func(c C) {

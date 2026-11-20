@@ -21,6 +21,12 @@ type CacheMock struct {
 	// Uploads blob to cachedb.
 	PutBlobFn func(digest godigest.Digest, path string) error
 
+	// PutDuplicate records a copy of an existing digest; defaults to PutBlobFn.
+	PutDuplicateFn func(digest godigest.Digest, path string) error
+
+	// ReplaceBlob changes the origin if it still is oldPath; defaults to SetOrigin.
+	ReplaceBlobFn func(digest godigest.Digest, oldPath, newPath string) error
+
 	// Check if blob exists in cachedb.
 	HasBlobFn func(digest godigest.Digest, path string) bool
 
@@ -63,6 +69,22 @@ func (cacheMock CacheMock) PutBlob(digest godigest.Digest, path string) error {
 	}
 
 	return nil
+}
+
+func (cacheMock CacheMock) PutDuplicate(digest godigest.Digest, path string) error {
+	if cacheMock.PutDuplicateFn != nil {
+		return cacheMock.PutDuplicateFn(digest, path)
+	}
+
+	return cacheMock.PutBlob(digest, path)
+}
+
+func (cacheMock CacheMock) ReplaceBlob(digest godigest.Digest, oldPath, newPath string) error {
+	if cacheMock.ReplaceBlobFn != nil {
+		return cacheMock.ReplaceBlobFn(digest, oldPath, newPath)
+	}
+
+	return cacheMock.SetOrigin(digest, newPath)
 }
 
 func (cacheMock CacheMock) HasBlob(digest godigest.Digest, path string) bool {

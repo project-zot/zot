@@ -17,6 +17,35 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/constants"
 )
 
+// The conditional writes below run as Lua scripts, which Redis executes atomically: the check
+// and the write cannot be split by another writer. The per-digest lock around them keeps the
+// ordering with PutBlob and DeleteBlob, which read and then write in separate commands, but the
+// scripts do not depend on it: a lease that expires between the check and the write, while this
+// process is paused, cannot let a copy be recorded for an origin that is gone, or an origin be
+// replaced by a path that is no longer tracked.
+const (
+	// KEYS[1] is the origin hash, KEYS[2] the digest's path set; ARGV[1] the digest, ARGV[2]
+	// the path. Returns 1 when the path was added, 0 when the digest has no origin.
+	putDuplicateScript = `if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 then
+	redis.call('SADD', KEYS[2], ARGV[2])
+	return 1
+end
+return 0`
+
+	// KEYS[1] is the origin hash, KEYS[2] the digest's path set; ARGV[1] the digest, ARGV[2]
+	// the expected origin, ARGV[3] the new one. Returns 1 when the origin was replaced, 0 when
+	// it is not the expected one or the new path is not tracked.
+	replaceBlobScript = `local current = redis.call('HGET', KEYS[1], ARGV[1])
+if not current or current ~= ARGV[2] then
+	return 0
+end
+if redis.call('SISMEMBER', KEYS[2], ARGV[3]) ~= 1 then
+	return 0
+end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
+return 1`
+)
+
 type RedisDriver struct {
 	rootDir     string
 	db          redis.UniversalClient
@@ -159,6 +188,114 @@ func (d *RedisDriver) PutBlob(digest godigest.Digest, path string) error {
 		return nil
 	}); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (d *RedisDriver) PutDuplicate(digest godigest.Digest, path string) error {
+	ctx := context.TODO()
+
+	if path == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("failed to provide non-empty path")
+
+		return zerr.ErrEmptyValue
+	}
+
+	if d.useRelPaths {
+		rel, err := filepath.Rel(d.rootDir, path)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", path).Msg("failed to get relative path")
+
+			return err
+		}
+
+		path = rel
+	}
+
+	lock := d.rs.NewMutex(d.join(constants.RedisLocksBucket, digest.String()))
+	if err := lock.Lock(); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
+
+		return err
+	}
+
+	defer func() {
+		if _, err := lock.Unlock(); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		}
+	}()
+
+	originKey := d.join(constants.BlobsCache, constants.OriginalBucket)
+	pathSet := d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())
+
+	added, err := d.db.Eval(ctx, putDuplicateScript, []string{originKey, pathSet}, digest.String(), path).Int()
+	if err != nil {
+		d.log.Error().Err(err).Str("sadd", pathSet).Str("value", path).Msg("failed to put record")
+
+		return err
+	}
+
+	if added == 0 {
+		return zerr.ErrCacheMiss
+	}
+
+	return nil
+}
+
+func (d *RedisDriver) ReplaceBlob(digest godigest.Digest, oldPath, newPath string) error {
+	ctx := context.TODO()
+
+	if oldPath == "" || newPath == "" {
+		return zerr.ErrEmptyValue
+	}
+
+	if d.useRelPaths {
+		rel, err := filepath.Rel(d.rootDir, oldPath)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", oldPath).Msg("failed to get relative path")
+
+			return err
+		}
+
+		oldPath = rel
+
+		rel, err = filepath.Rel(d.rootDir, newPath)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", newPath).Msg("failed to get relative path")
+
+			return err
+		}
+
+		newPath = rel
+	}
+
+	lock := d.rs.NewMutex(d.join(constants.RedisLocksBucket, digest.String()))
+	if err := lock.Lock(); err != nil {
+		d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to acquire redis lock")
+
+		return err
+	}
+
+	defer func() {
+		if _, err := lock.Unlock(); err != nil {
+			d.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to release redis lock")
+		}
+	}()
+
+	originKey := d.join(constants.BlobsCache, constants.OriginalBucket)
+	pathSet := d.join(constants.BlobsCache, constants.DuplicatesBucket, digest.String())
+
+	replaced, err := d.db.Eval(ctx, replaceBlobScript, []string{originKey, pathSet},
+		digest.String(), path.Clean(oldPath), newPath).Int()
+	if err != nil {
+		d.log.Error().Err(err).Str("hset", originKey).Str("value", newPath).Msg("failed to put record")
+
+		return err
+	}
+
+	if replaced == 0 {
+		return zerr.ErrCacheConflict
 	}
 
 	return nil
