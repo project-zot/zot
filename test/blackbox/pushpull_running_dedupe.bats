@@ -243,31 +243,36 @@ function get_zot_port() {
 
 @test "push oras artifact - dedupe running" {
     zot_port=$(get_zot_port)
-    echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
-    echo "hello world" > artifact.txt
+    local src=${BATS_FILE_TMPDIR}/oras-push
+    mkdir -p "${src}"
+    echo "{\"name\":\"foo\",\"value\":\"bar\"}" > "${src}/config.json"
+    echo "hello world" > "${src}/artifact.txt"
     start=`date +%s`
+    # oras rejects absolute paths and stores the given name as the layer title.
+    pushd "${src}" >/dev/null
     run oras push --plain-http 127.0.0.1:${zot_port}/hello-artifact:v2 \
-        --config config.json:application/vnd.acme.rocket.config.v1+json artifact.txt:text/plain -d -v
+        --config config.json:application/vnd.acme.rocket.config.v1+json \
+        artifact.txt:text/plain -d -v
+    popd >/dev/null
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
 
     echo "push oras artifact exec time: $runtime sec" >&3
-    rm -f artifact.txt
-    rm -f config.json
 }
 
 @test "pull oras artifact - dedupe running" {
     zot_port=$(get_zot_port)
+    local out=${BATS_FILE_TMPDIR}/oras-pull
+    mkdir -p "${out}"
     start=`date +%s`
-    run oras pull --plain-http 127.0.0.1:${zot_port}/hello-artifact:v2 -d -v
+    run oras pull --plain-http --output "${out}" 127.0.0.1:${zot_port}/hello-artifact:v2 -d -v
     [ "$status" -eq 0 ]
     end=`date +%s`
     runtime=$((end-start))
 
     echo "pull oras artifact exec time: $runtime sec" >&3
-    grep -q "hello world" artifact.txt
-    rm -f artifact.txt
+    grep -q "hello world" "${out}/artifact.txt"
 }
 
 @test "attach oras artifacts - dedupe running" {

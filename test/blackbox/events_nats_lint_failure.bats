@@ -102,18 +102,19 @@ function teardown_file() {
     run wait_event_on_subject "zot.test" ${nats_server_port} ${output_path} 2
     [ "$status" -eq 0 ]
 
-    # Create dummy config
-    echo '{}' > config.json
-
-    # Create dummy layer
-    echo "this is a bogus artifact" > artifact.txt
+    # Create dummy config and layer outside the shared checkout so parallel suites
+    # cannot delete them mid-push. oras rejects absolute paths, so the names
+    # passed on the command line stay relative to this directory.
+    local fixture=${BATS_FILE_TMPDIR}
+    echo '{}' > "${fixture}/config.json"
+    echo "this is a bogus artifact" > "${fixture}/artifact.txt"
 
     # Push using oras with intentionally broken config + type
+    pushd "${fixture}" >/dev/null
     run oras push --plain-http 127.0.0.1:${zot_port}/test-artifact:v0 \
         --config config.json:application/vnd.oci.image.config.v1+json \
         artifact.txt:text/plain -d -v
-
-    rm -f artifact.txt config.json
+    popd >/dev/null
 
     run wait_for_nats_event_files "${output_path}" 2
     [ "$status" -eq 0 ]
@@ -135,19 +136,20 @@ function teardown_file() {
     run wait_event_on_subject "zot.test" ${nats_server_port} ${output_path} 1
     [ "$status" -eq 0 ]
 
-    # Create dummy config
-    echo '{}' > config.json
-
-    # Create dummy layer
-    echo "this is a bogus artifact" > artifact.txt
+    # Create dummy config and layer outside the shared checkout so parallel suites
+    # cannot delete them mid-push. oras rejects absolute paths, so the names
+    # passed on the command line stay relative to this directory.
+    local fixture=${BATS_FILE_TMPDIR}
+    echo '{}' > "${fixture}/config.json"
+    echo "this is a bogus artifact" > "${fixture}/artifact.txt"
 
     # Push using oras with intentionally broken config + type
+    pushd "${fixture}" >/dev/null
     run oras push --plain-http 127.0.0.1:${zot_port}/test-artifact:v1 \
         --annotation "event-test=true" \
         --config config.json:application/vnd.oci.image.config.v1+json \
         artifact.txt:text/plain -d -v
-
-    rm -f artifact.txt config.json
+    popd >/dev/null
 
     run wait_for_nats_event_files "${output_path}" 1
     [ "$status" -eq 0 ]

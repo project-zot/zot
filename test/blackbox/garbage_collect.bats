@@ -112,21 +112,31 @@ function teardown_file() {
 
 @test "attach oras artifacts" {
     zot_port=`cat ${BATS_FILE_TMPDIR}/zot.port`
+    local fixture=${BATS_FILE_TMPDIR}
     # attach signature to image
-    echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > signature.json
+    echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > "${fixture}/signature.json"
+    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/alpine:3.17.3'\", \"contents\": \"good\"}" > "${fixture}/sbom.json"
+    # Relative names keep the layer title as ./signature.json and ./sbom.json.
+    pushd "${fixture}" >/dev/null
     run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/alpine:3.17.3 --artifact-type 'signature/example' ./signature.json:application/json
+    popd >/dev/null
     [ "$status" -eq 0 ]
     # attach sbom to image
-    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/alpine:3.17.3'\", \"contents\": \"good\"}" > sbom.json
+    pushd "${fixture}" >/dev/null
     run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/alpine:3.17.3 --artifact-type 'sbom/example' ./sbom.json:application/json
+    popd >/dev/null
     [ "$status" -eq 0 ]
 
     # attach signature to index image
+    pushd "${fixture}" >/dev/null
     run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/busybox:latest --artifact-type 'signature/example' ./signature.json:application/json
+    popd >/dev/null
     [ "$status" -eq 0 ]
     # attach sbom to index image
-    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/alpine:3.17.3'\", \"contents\": \"good\"}" > sbom.json
+    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:${zot_port}/alpine:3.17.3'\", \"contents\": \"good\"}" > "${fixture}/sbom.json"
+    pushd "${fixture}" >/dev/null
     run oras attach --disable-path-validation --plain-http 127.0.0.1:${zot_port}/busybox:latest --artifact-type 'sbom/example' ./sbom.json:application/json
+    popd >/dev/null
     [ "$status" -eq 0 ]
 }
 

@@ -125,18 +125,19 @@ function wait_for_event_count() {
     [ "$status" -eq 0 ]
     [ -d "${output_path}" ] && rm -f "${output_path}"/*.json
 
-    # Create dummy config
-    echo '{}' > config.json
-
-    # Create dummy layer
-    echo "this is a bogus artifact" > artifact.txt
+    # Create dummy config and layer outside the shared checkout so parallel suites
+    # cannot delete them mid-push. oras rejects absolute paths, so the names
+    # passed on the command line stay relative to this directory.
+    local fixture=${BATS_FILE_TMPDIR}
+    echo '{}' > "${fixture}/config.json"
+    echo "this is a bogus artifact" > "${fixture}/artifact.txt"
 
     # Push using oras with intentionally broken config + type
+    pushd "${fixture}" >/dev/null
     run oras push --plain-http 127.0.0.1:${zot_port}/test-artifact:v0 \
         --config config.json:application/vnd.oci.image.config.v1+json \
         artifact.txt:text/plain -d -v
-
-    rm -f artifact.txt config.json
+    popd >/dev/null
 
     # Check the correct number of events were generated
     wait_for_event_count "${output_path}" 2
@@ -160,19 +161,20 @@ function wait_for_event_count() {
     [ "$status" -eq 0 ]
     [ -d "${output_path}" ] && rm -f "${output_path}"/*.json
 
-    # Create dummy config
-    echo '{}' > config.json
-
-    # Create dummy layer
-    echo "this is a bogus artifact" > artifact.txt
+    # Create dummy config and layer outside the shared checkout so parallel suites
+    # cannot delete them mid-push. oras rejects absolute paths, so the names
+    # passed on the command line stay relative to this directory.
+    local fixture=${BATS_FILE_TMPDIR}
+    echo '{}' > "${fixture}/config.json"
+    echo "this is a bogus artifact" > "${fixture}/artifact.txt"
 
     # Push using oras with intentionally broken config + type
+    pushd "${fixture}" >/dev/null
     run oras push --plain-http 127.0.0.1:${zot_port}/test-artifact:v1 \
         --annotation "event-test=true" \
         --config config.json:application/vnd.oci.image.config.v1+json \
         artifact.txt:text/plain -d -v
-
-    rm -f artifact.txt config.json
+    popd >/dev/null
 
     # Check the correct number of events were generated
     wait_for_event_count "${output_path}" 1

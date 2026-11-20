@@ -379,31 +379,37 @@ EOF
 # sync oras artifacts
 @test "push oras artifact periodically" {
     zot_port3=`cat ${BATS_FILE_TMPDIR}/zot.port3`
-    echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
-    echo "hello world" > artifact.txt
+    local src=${BATS_FILE_TMPDIR}/oras-push
+    mkdir -p "${src}"
+    echo "{\"name\":\"foo\",\"value\":\"bar\"}" > "${src}/config.json"
+    echo "hello world" > "${src}/artifact.txt"
+    # oras rejects absolute paths and stores the given name as the layer title.
+    pushd "${src}" >/dev/null
     run oras push --plain-http 127.0.0.1:${zot_port3}/hello-artifact:v2 \
-        --config config.json:application/vnd.acme.rocket.config.v1+json artifact.txt:text/plain -d -v
+        --config config.json:application/vnd.acme.rocket.config.v1+json \
+        artifact.txt:text/plain -d -v
+    popd >/dev/null
     [ "$status" -eq 0 ]
-    rm -f artifact.txt
-    rm -f config.json
 }
 
 @test "sync oras artifact periodically" {
     zot_port1=`cat ${BATS_FILE_TMPDIR}/zot.port1`
+    local out=${BATS_FILE_TMPDIR}/oras-pull
+    mkdir -p "${out}"
     # wait for oras artifact to be copied
     run sleep 15s
-    run oras pull --plain-http 127.0.0.1:${zot_port1}/hello-artifact:v2 -d -v
+    run oras pull --plain-http --output "${out}" 127.0.0.1:${zot_port1}/hello-artifact:v2 -d -v
     [ "$status" -eq 0 ]
-    grep -q "hello world" artifact.txt
-    rm -f artifact.txt
+    grep -q "hello world" "${out}/artifact.txt"
 }
 
 @test "sync oras artifact on demand" {
     zot_port2=`cat ${BATS_FILE_TMPDIR}/zot.port2`
-    run oras pull --plain-http 127.0.0.1:${zot_port2}/hello-artifact:v2 -d -v
+    local out=${BATS_FILE_TMPDIR}/oras-pull-ondemand
+    mkdir -p "${out}"
+    run oras pull --plain-http --output "${out}" 127.0.0.1:${zot_port2}/hello-artifact:v2 -d -v
     [ "$status" -eq 0 ]
-    grep -q "hello world" artifact.txt
-    rm -f artifact.txt
+    grep -q "hello world" "${out}/artifact.txt"
 }
 
 # sync helm chart
