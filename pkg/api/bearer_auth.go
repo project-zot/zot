@@ -211,6 +211,27 @@ func (b *BearerAuth) Authenticate(
 		return result, nil
 	}
 
+	// A credential-less token exchange returns this marker when an anonymous policy exists.
+	// Accept it only in that case. It carries no identity, so authorization applies
+	// anonymousPolicy. Without that policy, repository authorization is not installed,
+	// and this public marker would be an authenticated request with full repository access.
+	// Recognize it before OIDC and traditional bearer verification: a traditional bearer
+	// token with no repository grants is denied everywhere except the catalog.
+	if token, ok := bearerTokenFromAuthHeader(header); ok && isAnonymousBearerToken(token) {
+		if !anonymousRepositoryPolicyExists(ctlr) {
+			return result, nil
+		}
+
+		result.authenticated = true
+		// BEARER_OIDC authorizes through accessControl. The traditional BEARER type
+		// skips that check and trusts the token's access claim. This marker has
+		// neither an identity nor an access claim, so the empty username follows
+		// anonymousPolicy.
+		result.authnType = BEARER_OIDC
+
+		return result, nil
+	}
+
 	// Try OIDC authentication first if configured.
 	if b.oidc != nil {
 		res, err := b.oidc.Authenticate(request.Context(), header)
@@ -500,8 +521,52 @@ func (b *BearerAuth) TokenExchangeHandler(ctlr *Controller) http.HandlerFunc {
 			return
 		}
 
+		if anonymousBearerTokenAllowed(ctlr, request, tokenRequest) {
+			zcommon.WriteJSON(response, http.StatusOK, newAnonymousBearerTokenResponse(time.Now()))
+
+			return
+		}
+
 		oidcTokenExchangeUnauthorized(response, request, authConfig)
 	}
+}
+
+// anonymousRepositoryPolicyExists reports whether any repository anonymousPolicy is configured.
+// A nil access-control block is not an anonymous policy.
+func anonymousRepositoryPolicyExists(ctlr *Controller) bool {
+	if ctlr == nil {
+		return false
+	}
+
+	return ctlr.Config.CopyAccessControlConfig().AnonymousPolicyExists()
+}
+
+// anonymousBearerTokenAllowed reports whether a credential-less token request may
+// receive the anonymous marker. The Authorization header must be absent or decode
+// to an empty Basic credential. A supplied credential, including one discarded
+// while parsing or rejected during verification, does not qualify. Callers must
+// already have refused an upstream proxy.
+func anonymousBearerTokenAllowed(
+	ctlr *Controller, request *http.Request, tokenRequest *tokenExchangeRequest,
+) bool {
+	if request == nil || tokenRequest == nil || len(tokenRequest.credentials) != 0 ||
+		tokenRequest.discardedFormSecret || !anonymousTokenHeaderAllowed(request) {
+		return false
+	}
+
+	return anonymousRepositoryPolicyExists(ctlr)
+}
+
+// anonymousTokenHeaderAllowed reports whether the Authorization header is absent
+// or is Basic with an empty username and an empty password. The payload is decoded,
+// so only the exact encoding Og== matches. Lowercasing that payload matches other
+// credentials, such as OG==, which decodes to "8".
+func anonymousTokenHeaderAllowed(request *http.Request) bool {
+	if request.Header.Get("Authorization") == "" {
+		return true
+	}
+
+	return hasEmptyBasicAuthorizationHeader(request)
 }
 
 func (b *BearerAuth) proxyOIDCBearerTokenExchange(response http.ResponseWriter, request *http.Request) error {
