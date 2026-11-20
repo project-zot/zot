@@ -117,13 +117,13 @@ jobs:
           ZOT_KTLS_EXPECT: offload
         run: make run-blackbox-ktls USE_PREBUILT=1
 
-  # Hosted runner kernels all ship the tls module, so "without kTLS" means
-  # unloaded and blocked: the modprobe.d rule stops anything (docker, a test)
-  # from loading it mid-job.
+  # Hosted runner kernels all ship the tls module, and it may be loaded and
+  # pinned by a NIC driver, so "without kTLS" is simulated per process with
+  # seccomp (test/noktls) rather than by unloading the module.
   ktls-fallback:
     needs: build-binaries
     runs-on: ubuntu-24.04
-    name: kTLS fallback (tls module blocked)
+    name: kTLS fallback (kTLS hidden by seccomp)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,29 +134,21 @@ jobs:
           cache: false
           check-latest: true
           go-version-file: .go-version
-      - name: Unload and block the tls kernel module
+      # The tls module cannot be relied on to unload: on Azure-hosted runners
+      # mlx5_core holds it. noktls instead fails setsockopt(TCP_ULP) with the
+      # ENOENT of a kernel without the module, for the wrapped command and
+      # all its children, whatever the host has loaded. It checks that the
+      # filter holds before running the command.
+      - name: Build noktls
         run: |
           uname -r
-          # Say why the module cannot go away, if it cannot: built in (=y) or in use.
-          grep -E '^CONFIG_TLS=' "/boot/config-$(uname -r)" || echo "no kernel config for $(uname -r)"
           grep -E '^tls ' /proc/modules || echo "tls not listed in /proc/modules"
-          echo 'install tls /bin/false' | sudo tee /etc/modprobe.d/zot-no-ktls.conf
-          # Explicit checks: `set -e` ignores commands negated with `!`.
-          if test -r /proc/net/tls_stat && ! sudo modprobe -r tls; then
-            echo "cannot unload the tls module (modprobe error above)" >&2; exit 1
-          fi
-          if test -r /proc/net/tls_stat; then
-            echo "tls module still loaded" >&2; exit 1
-          fi
-          # The block must hold, or the fallback assertions below are meaningless.
-          if sudo modprobe tls; then
-            echo "tls module load was not blocked" >&2; exit 1
-          fi
+          go build -o bin/noktls ./test/noktls
       - name: Go tests (userspace TLS only)
         run: |
-          go test -race -count=1 -v ./pkg/ktls/
-          go test -race -count=1 -v -run 'TestKTLSBlobGet|TestBlobFileReachesTCPReadFrom' ./pkg/api/
+          bin/noktls go test -race -count=1 -v ./pkg/ktls/
+          bin/noktls go test -race -count=1 -v -run 'TestKTLSBlobGet|TestBlobFileReachesTCPReadFrom' ./pkg/api/
       - name: Blackbox (fallback expected)
         env:
           ZOT_KTLS_EXPECT: fallback
-        run: make run-blackbox-ktls USE_PREBUILT=1
+        run: bin/noktls make run-blackbox-ktls USE_PREBUILT=1
