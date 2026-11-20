@@ -48,6 +48,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	authutils "zotregistry.dev/zot/v2/pkg/test/auth"
 	test "zotregistry.dev/zot/v2/pkg/test/common"
+	image "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 	tlsutils "zotregistry.dev/zot/v2/pkg/test/tls"
 )
@@ -1585,6 +1586,95 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			So(invalidResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 			So(invalidResp.Header().Get("Cache-Control"), ShouldEqual, "no-store")
 			So(invalidResp.Header().Get("Pragma"), ShouldEqual, "no-cache")
+		})
+
+		Convey("Credential-less token exchange mints an anonymous bearer token for mixed policies", func() {
+			conf := config.New()
+			conf.HTTP.Port = "0"
+
+			conf.HTTP.Auth = &config.AuthConfig{
+				Bearer: &config.BearerConfig{
+					Realm:   "https://zot.example.test/zot/auth/token",
+					Service: "test-zot",
+					OIDC: []config.BearerOIDCConfig{{
+						Issuer:    issuer,
+						Audiences: []string{audience},
+					}},
+				},
+			}
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					"public/**": config.PolicyGroup{
+						AnonymousPolicy: []string{constants.ReadPermission},
+						Policies: []config.Policy{{
+							Users:   []string{"pusher"},
+							Actions: []string{constants.ReadPermission, constants.CreatePermission},
+						}},
+					},
+				},
+			}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			ctlr := api.NewController(conf)
+			cm := test.NewControllerManager(ctlr)
+			baseURL := cm.StartAndWait()
+			defer cm.StopServer()
+
+			err = image.WriteImageToFileSystem(image.CreateDefaultImage(), "public/app", "latest", ctlr.StoreController)
+			So(err, ShouldBeNil)
+
+			pingResp, err := resty.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(pingResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(pingResp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Bearer")
+
+			anonResp, err := resty.R().
+				SetQueryParam("service", "test-zot").
+				SetQueryParam("scope", "repository:public/app:pull").
+				Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(anonResp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(anonResp.Header().Get("Cache-Control"), ShouldEqual, "no-store")
+
+			anonTokenResp := struct {
+				Token       string `json:"token"`
+				AccessToken string `json:"access_token"` //nolint:tagliatelle
+				ExpiresIn   int64  `json:"expires_in"`   //nolint:tagliatelle
+			}{}
+			err = json.Unmarshal(anonResp.Body(), &anonTokenResp)
+			So(err, ShouldBeNil)
+			So(anonTokenResp.Token, ShouldEqual, "zot_anon_v1")
+			So(anonTokenResp.AccessToken, ShouldEqual, "zot_anon_v1")
+			So(anonTokenResp.ExpiresIn, ShouldEqual, int64(60))
+
+			tagsResp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+anonTokenResp.Token).
+				Get(baseURL + "/v2/public/app/tags/list")
+			So(err, ShouldBeNil)
+			So(tagsResp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			uploadResp, err := resty.R().
+				SetHeader("Authorization", "Bearer "+anonTokenResp.Token).
+				Post(baseURL + "/v2/public/app/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(uploadResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(uploadResp.Header().Get("WWW-Authenticate"), ShouldContainSubstring, "Bearer")
+
+			oidcToken, err := createWorkloadOIDCToken(privKey, issuer, audience, nil)
+			So(err, ShouldBeNil)
+
+			exchangeResp, err := resty.R().
+				SetBasicAuth("<token>", oidcToken).
+				Get(baseURL + constants.TokenPath)
+			So(err, ShouldBeNil)
+			So(exchangeResp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			exchanged := struct {
+				Token string `json:"token"`
+			}{}
+			err = json.Unmarshal(exchangeResp.Body(), &exchanged)
+			So(err, ShouldBeNil)
+			So(exchanged.Token, ShouldEqual, oidcToken)
 		})
 
 		Convey("OIDC token exchange refuses to proxy locally owned bearer OIDC tokens that fail authentication", func() {
