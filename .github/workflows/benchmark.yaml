@@ -75,7 +75,7 @@ jobs:
       - name: Flush disk after cache restore
         run: sync
       - name: Run benchmark
-        run: make USE_PREBUILT=1 BENCH_OUTPUT=ci-cd-tls run-bench-tls
+        run: make USE_PREBUILT=1 BENCH_OUTPUT=ci-cd run-bench-tls
       - name: Download previous benchmark data
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -91,7 +91,7 @@ jobs:
         with:
           name: 'Benchmark (HTTPS)'
           tool: 'customBiggerIsBetter'
-          output-file-path: ci-cd-tls.json
+          output-file-path: ci-cd.json
           external-data-json-path: ./cache/benchmark-data.json
           fail-on-alert: true
           summary-always: true
