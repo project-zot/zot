@@ -54,9 +54,8 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	Convey("Post request results in an error", t, func() {
-		// No server started: need a reachable-looking URL with nothing listening.
-		port := tcommon.GetFreePort()
-		baseURL := tcommon.GetBaseURL(port)
+		// No server started: port 0 is closed, so the dial fails.
+		baseURL := tcommon.GetBaseURL("0")
 
 		img := Image{
 			Layers: make([][]byte, 10),
