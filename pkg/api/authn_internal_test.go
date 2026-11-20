@@ -19,6 +19,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
+	testcommon "zotregistry.dev/zot/v2/pkg/test/common"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
@@ -699,6 +700,129 @@ func TestTryAuthnHandlersBearerChallengeForV2DependsOnAnonymousPolicyShape(t *te
 			} else {
 				assert.Empty(t, challenge)
 			}
+		})
+	}
+}
+
+func TestDockerEngineV2ChallengeIncludesWSLcUserAgent(t *testing.T) {
+	t.Parallel()
+
+	// dockerd's own registry client. WSLc runs that engine, so the ping carries
+	// this form: no "Docker-Client" token and no UpstreamClient(...) wrapper.
+	const wslcUserAgent = "docker/25.0.3 go/go1.26.3 git-commit/f417435 " +
+		"kernel/6.18.35.2-microsoft-standard-WSL2 os/linux arch/amd64"
+
+	const (
+		username = "alice"
+		password = "secret"
+	)
+
+	htpasswdPath := testcommon.MakeHtpasswdFileFromString(t, testcommon.GetBcryptCredString(username, password))
+	htpasswd := NewHTPasswd(log.NewTestLogger())
+	assert.NoError(t, htpasswd.Reload(htpasswdPath))
+
+	mixed := &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"public/**": config.PolicyGroup{
+				AnonymousPolicy: []string{constants.ReadPermission},
+			},
+			"private/**": config.PolicyGroup{
+				Policies: []config.Policy{
+					{Users: []string{username}, Actions: []string{constants.ReadPermission, constants.CreatePermission}},
+				},
+			},
+		},
+	}
+	anonymousOnly := &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"**": config.PolicyGroup{
+				AnonymousPolicy: []string{constants.ReadPermission},
+			},
+		},
+	}
+
+	tests := []struct {
+		name          string
+		accessControl *config.AccessControlConfig
+		userAgent     string
+		username      string
+		password      string
+		wantNext      bool
+		wantChallenge bool
+	}{
+		{
+			name:          "wslc engine client without credentials",
+			accessControl: mixed,
+			userAgent:     wslcUserAgent,
+			wantChallenge: true,
+		},
+		{
+			name:          "wslc engine client with credentials",
+			accessControl: mixed,
+			userAgent:     wslcUserAgent,
+			username:      username,
+			password:      password,
+			wantNext:      true,
+		},
+		{
+			name:          "wslc engine client against anonymous-only policies",
+			accessControl: anonymousOnly,
+			userAgent:     wslcUserAgent,
+			wantNext:      true,
+		},
+		{
+			name:          "non-docker client stays anonymous on the ping",
+			accessControl: mixed,
+			userAgent:     "containers/5.33.0 (github.com/containers/image)",
+			wantNext:      true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			conf := config.New()
+			conf.HTTP.Realm = "zot"
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{Path: htpasswdPath},
+			}
+			conf.HTTP.AccessControl = test.accessControl
+
+			called := false
+			next := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+				called = true
+				response.WriteHeader(http.StatusAccepted)
+			})
+
+			request := httptest.NewRequest(http.MethodGet, "/v2/", nil)
+			request.Header.Set("User-Agent", test.userAgent)
+
+			if test.username != "" {
+				request.SetBasicAuth(test.username, test.password)
+			}
+
+			response := httptest.NewRecorder()
+			(&AuthnMiddleware{htpasswd: htpasswd, log: log.NewTestLogger()}).
+				tryAuthnHandlers(&Controller{
+					Config: conf,
+					Log:    log.NewTestLogger(),
+					MetaDB: mocks.MetaDBMock{},
+				})(next).
+				ServeHTTP(response, request)
+
+			assert.Equal(t, test.wantNext, called)
+
+			if test.wantNext {
+				assert.Equal(t, http.StatusAccepted, response.Code)
+				assert.Empty(t, response.Header().Get("WWW-Authenticate"))
+
+				return
+			}
+
+			assert.Equal(t, http.StatusUnauthorized, response.Code)
+			assert.Equal(t, `Basic realm="zot"`, response.Header().Get("WWW-Authenticate"))
+			assert.True(t, test.wantChallenge)
 		})
 	}
 }
