@@ -2182,6 +2182,35 @@ func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 	return path.Join(is.rootDir, repo, ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
 }
 
+func (is *ImageStore) dedupeRepoFromCachePath(blobPath string, digest godigest.Digest) (string, bool) {
+	if filepath.IsAbs(blobPath) || path.IsAbs(blobPath) {
+		relPath, err := filepath.Rel(is.rootDir, blobPath)
+		if err != nil {
+			return "", false
+		}
+
+		blobPath = relPath
+	}
+
+	blobPath = path.Clean(filepath.ToSlash(blobPath))
+	if blobPath == "." || blobPath == ".." || strings.HasPrefix(blobPath, "../") {
+		return "", false
+	}
+
+	blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
+	if blobsDirIndex <= 0 {
+		return "", false
+	}
+
+	repo := blobPath[:blobsDirIndex]
+	blobSuffix := blobPath[blobsDirIndex+len("/blobs/"):]
+	if repo == "" || path.IsAbs(repo) || blobSuffix != path.Join(digest.Algorithm().String(), digest.Encoded()) {
+		return "", false
+	}
+
+	return repo, true
+}
+
 func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]string, error) {
 	var lockLatency time.Time
 
@@ -2214,15 +2243,15 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 	repos := []string{}
 
 	for _, blobPath := range blobsPaths {
-		// these can be both full paths or relative paths depending on the cache options
-		if !is.cache.UsesRelativePaths() && path.IsAbs(blobPath) {
-			blobPath, _ = filepath.Rel(is.rootDir, blobPath)
+		repo, ok := is.dedupeRepoFromCachePath(blobPath, digest)
+		if !ok {
+			is.log.Warn().Str("blobPath", blobPath).Str("digest", digest.String()).
+				Str("component", "dedupe").Msg("skipping invalid dedupe cache path")
+
+			continue
 		}
 
-		blobPath = filepath.ToSlash(blobPath)
-		blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
-
-		repos = append(repos, blobPath[:blobsDirIndex])
+		repos = append(repos, repo)
 	}
 
 	return repos, nil
