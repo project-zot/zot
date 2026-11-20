@@ -3601,7 +3601,7 @@ func TestCreateRedisDB(t *testing.T) {
 			// Bad key types
 			cacheDriverParams := map[string]any{
 				"name":      "redis",
-				"url":       "redis://127.0.0.1:" + tCommon.GetFreePort(),
+				"url":       "redis://127.0.0.1:0",
 				"keyprefix": true,
 			}
 
@@ -3612,7 +3612,7 @@ func TestCreateRedisDB(t *testing.T) {
 
 			cacheDriverParams = map[string]any{
 				"name":      "redis",
-				"url":       "redis://127.0.0.1:" + tCommon.GetFreePort(),
+				"url":       "redis://127.0.0.1:0",
 				"keyprefix": "",
 			}
 

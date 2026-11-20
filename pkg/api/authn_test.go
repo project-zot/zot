@@ -1478,13 +1478,13 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC token exchange returns the password token", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			conf.HTTP.Port = port
-			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
+			conf.HTTP.Port = "0"
+
+			const realmURL = "https://zot.example.test/zot/auth/token"
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   tokenRealm,
+					Realm:   realmURL,
 					Service: "test-zot",
 					OIDC: []config.BearerOIDCConfig{{
 						Issuer:    issuer,
@@ -1508,7 +1508,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			So(challengeResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 			challenge := authutils.ParseBearerAuthHeader(challengeResp.Header().Get("WWW-Authenticate"))
-			So(challenge.Realm, ShouldEqual, baseURL+constants.TokenPath)
+			So(challenge.Realm, ShouldEqual, realmURL)
 			So(challenge.Service, ShouldEqual, "test-zot")
 			So(challenge.Scope, ShouldEqual, "repository:testrepo:pull")
 
@@ -1520,7 +1520,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(missingBasicResp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 			So(missingBasicResp.Header().Get("WWW-Authenticate"), ShouldEqual,
-				`Basic realm="`+baseURL+constants.TokenPath+`"`)
+				`Basic realm="`+realmURL+`"`)
 			So(missingBasicResp.Header().Get("Cache-Control"), ShouldEqual, "no-store")
 			So(missingBasicResp.Header().Get("Pragma"), ShouldEqual, "no-cache")
 
@@ -1589,9 +1589,9 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC token exchange refuses to proxy locally owned bearer OIDC tokens that fail authentication", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			conf.HTTP.Port = port
-			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
+			conf.HTTP.Port = "0"
+
+			const realmURL = "https://zot.example.test/zot/auth/token"
 
 			proxyHit := false
 			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -1602,7 +1602,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   tokenRealm,
+					Realm:   realmURL,
 					Service: "zot-service",
 					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
 						Realm:             proxyServer.URL + "/token",
@@ -1639,9 +1639,9 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC token exchange refuses to proxy browser OpenID-owned tokens", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			conf.HTTP.Port = port
-			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
+			conf.HTTP.Port = "0"
+
+			const realmURL = "https://zot.example.test/zot/auth/token"
 			humanClientID := "human-client"
 
 			proxyHit := false
@@ -1653,7 +1653,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   tokenRealm,
+					Realm:   realmURL,
 					Service: "zot-service",
 					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
 						Realm:             proxyServer.URL + "/token",
@@ -1697,9 +1697,9 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC token exchange proxies GET requests when no local backend owns the credential", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			conf.HTTP.Port = port
-			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
+			conf.HTTP.Port = "0"
+
+			const realmURL = "https://zot.example.test/zot/auth/token"
 
 			var gotMethod, gotUsername, gotPassword, gotService, gotScope, gotClientID, gotFrom string
 			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -1719,7 +1719,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   tokenRealm,
+					Realm:   realmURL,
 					Service: "zot-service",
 					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
 						Realm:             proxyServer.URL + "/token?from=proxy",
@@ -1762,9 +1762,9 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 		Convey("OIDC token exchange proxies POST form requests when no local backend owns the credential", func() {
 			conf := config.New()
-			port := test.GetFreePort()
-			conf.HTTP.Port = port
-			tokenRealm := test.GetBaseURL(port) + constants.TokenPath
+			conf.HTTP.Port = "0"
+
+			const realmURL = "https://zot.example.test/zot/auth/token"
 
 			var gotMethod, gotService, gotScope, gotGrantType, gotUsername, gotPassword string
 			proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -1785,7 +1785,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 
 			conf.HTTP.Auth = &config.AuthConfig{
 				Bearer: &config.BearerConfig{
-					Realm:   tokenRealm,
+					Realm:   realmURL,
 					Service: "zot-service",
 					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
 						Realm:             proxyServer.URL + "/token",
