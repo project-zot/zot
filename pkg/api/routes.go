@@ -938,11 +938,11 @@ func (rh *RouteHandler) writePutImageManifestError(
 		return
 	}
 
-	if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-		details["name"] = name
-		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-	} else if errors.Is(err, zerr.ErrManifestNotFound) {
+	if writeRepositoryNameError(response, name, err) {
+		return
+	}
+
+	if errors.Is(err, zerr.ErrManifestNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 		details["reference"] = reference
 		e := apiErr.NewError(apiErr.MANIFEST_UNKNOWN).AddDetail(details)
 		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
@@ -2167,21 +2167,18 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		if err != nil || !userCanMount {
 			upload, err := imgStore.NewBlobUpload(ctx, name)
 			if err != nil {
-				details := zerr.GetDetails(err)
 				if writeStorageClassError(response, err) {
 					rh.c.Log.Error().Err(err).Msg("failed to start blob upload due to storage failure")
 
 					return
 				}
 
-				if errors.Is(err, zerr.ErrRepoNotFound) {
-					details["name"] = name
-					e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-					zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-				} else {
-					rh.c.Log.Error().Err(err).Msg("unexpected error")
-					response.WriteHeader(http.StatusInternalServerError)
+				if writeRepositoryNameError(response, name, err) {
+					return
 				}
+
+				rh.c.Log.Error().Err(err).Msg("unexpected error")
+				response.WriteHeader(http.StatusInternalServerError)
 
 				return
 			}
@@ -2214,21 +2211,18 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 	upload, err := imgStore.NewBlobUpload(ctx, name)
 	if err != nil {
-		details := zerr.GetDetails(err)
 		if writeStorageClassError(response, err) {
 			rh.c.Log.Error().Err(err).Msg("failed to start blob upload due to storage failure")
 
 			return
 		}
 
-		if errors.Is(err, zerr.ErrRepoNotFound) {
-			details["name"] = name
-			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
-		} else {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
-			response.WriteHeader(http.StatusInternalServerError)
+		if writeRepositoryNameError(response, name, err) {
+			return
 		}
+
+		rh.c.Log.Error().Err(err).Msg("unexpected error")
+		response.WriteHeader(http.StatusInternalServerError)
 
 		return
 	}
@@ -2305,6 +2299,10 @@ func (rh *RouteHandler) createFullBlobUpload(ctx context.Context, response http.
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
 
+			return
+		}
+
+		if writeRepositoryNameError(response, name, err) {
 			return
 		}
 
@@ -2500,14 +2498,14 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 			return
 		}
 
+		if writeRepositoryNameError(response, name, err) {
+			return
+		}
+
 		if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			details["name"] = name
-			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrUploadNotFound) {
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
@@ -2686,14 +2684,14 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
+		if writeRepositoryNameError(response, name, err) {
+			return
+		}
+
 		if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			details["name"] = name
-			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrUploadNotFound) {
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
@@ -2721,6 +2719,10 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
+		if writeRepositoryNameError(response, name, err) {
+			return
+		}
+
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			details["digest"] = digest.String()
 			e := apiErr.NewError(apiErr.DIGEST_INVALID).AddDetail(details)
@@ -2729,10 +2731,6 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_INVALID).AddDetail(details)
 			zcommon.WriteJSON(response, http.StatusRequestedRangeNotSatisfiable, apiErr.NewErrorList(e))
-		} else if errors.Is(err, zerr.ErrRepoNotFound) {
-			details["name"] = name
-			e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
-			zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
 		} else if errors.Is(err, zerr.ErrUploadNotFound) {
 			details["session_id"] = sessionID
 			e := apiErr.NewError(apiErr.BLOB_UPLOAD_UNKNOWN).AddDetail(details)
@@ -3475,6 +3473,28 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	}
 
 	return nil, "", "", false, localErr
+}
+
+// writeRepositoryNameError maps storage repository-name errors to distribution
+// NAME_* responses. Returns true when the error was handled.
+func writeRepositoryNameError(response http.ResponseWriter, name string, err error) bool {
+	details := zerr.GetDetails(err)
+	details["name"] = name
+
+	switch {
+	case errors.Is(err, zerr.ErrRepoNotFound):
+		e := apiErr.NewError(apiErr.NAME_UNKNOWN).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusNotFound, apiErr.NewErrorList(e))
+
+		return true
+	case errors.Is(err, zerr.ErrInvalidRepositoryName):
+		e := apiErr.NewError(apiErr.NAME_INVALID).AddDetail(details)
+		zcommon.WriteJSON(response, http.StatusBadRequest, apiErr.NewErrorList(e))
+
+		return true
+	default:
+		return false
+	}
 }
 
 // writeStorageClassError maps local storage classes to HTTP status codes:

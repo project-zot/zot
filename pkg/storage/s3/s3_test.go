@@ -965,6 +965,9 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 		Convey("Test DeleteBlob", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &mocks.StorageDriverMock{
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return mocks.FileInfoFile(0), nil
+				},
 				DeleteFn: func(ctx context.Context, path string) error {
 					return errS3
 				},
@@ -2129,6 +2132,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == blobPath("path/to", validDigest) {
 					return &mocks.FileInfoMock{
+						IsDirFn: func() bool { return false },
 						SizeFn: func() int64 {
 							return int64(0)
 						},
@@ -2136,6 +2140,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				}
 
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return int64(10)
 					},
@@ -2178,6 +2183,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == blobPath("path/to", validDigest) {
 					return &mocks.FileInfoMock{
+						IsDirFn: func() bool { return false },
 						SizeFn: func() int64 {
 							return int64(0)
 						},
@@ -2185,6 +2191,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				}
 
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return int64(10)
 					},
@@ -2227,6 +2234,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == blobPath("path/to", validDigest) {
 					return &mocks.FileInfoMock{
+						IsDirFn: func() bool { return false },
 						SizeFn: func() int64 {
 							return int64(10)
 						},
@@ -2234,6 +2242,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				}
 
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return int64(10)
 					},
@@ -2272,6 +2281,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 					if path == blobPath("path/to", validDigest) {
 						return &mocks.FileInfoMock{
+							IsDirFn: func() bool { return false },
 							SizeFn: func() int64 {
 								return int64(10)
 							},
@@ -2279,6 +2289,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 					}
 
 					return &mocks.FileInfoMock{
+						IsDirFn: func() bool { return false },
 						SizeFn: func() int64 {
 							return int64(10)
 						},
@@ -2320,6 +2331,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 		imgStore := createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return int64(10)
 					},
@@ -2364,6 +2376,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == blobPath("path/to", validDigest) {
 					return &mocks.FileInfoMock{
+						IsDirFn: func() bool { return false },
 						SizeFn: func() int64 {
 							return int64(0)
 						},
@@ -2371,6 +2384,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				}
 
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return int64(0)
 					},
@@ -2412,6 +2426,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == blobPath("path/to", validDigest) {
 					return &mocks.FileInfoMock{
+						IsDirFn: func() bool { return false },
 						SizeFn: func() int64 {
 							return int64(10)
 						},
@@ -2419,6 +2434,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				}
 
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return int64(10)
 					},
@@ -2520,6 +2536,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == blobPath("path/to", validDigest) {
 					return &mocks.FileInfoMock{
+						IsDirFn: func() bool { return false },
 						SizeFn: func() int64 {
 							return int64(0)
 						},
@@ -2527,6 +2544,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				}
 
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return int64(10)
 					},
@@ -2558,6 +2576,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == blobPath("path/to", validDigest) {
 					return &mocks.FileInfoMock{
+						IsDirFn: func() bool { return false },
 						SizeFn: func() int64 {
 							return int64(10)
 						},
@@ -2565,6 +2584,7 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 				}
 
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return int64(10)
 					},
@@ -2666,8 +2686,9 @@ func mockDedupeSizesDriver(sizes map[string]int64, emptied *[]string) *mocks.Sto
 			}
 
 			return &mocks.FileInfoMock{
-				SizeFn: func() int64 { return size },
-				PathFn: func() string { return objectPath },
+				IsDirFn: func() bool { return false },
+				SizeFn:  func() int64 { return size },
+				PathFn:  func() string { return objectPath },
 			}, nil
 		},
 		PutContentFn: func(ctx context.Context, objectPath string, content []byte) error {
@@ -3019,8 +3040,9 @@ func TestDedupeBlobsPreservesOrigin(t *testing.T) {
 			imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 				StatFn: func(ctx context.Context, objectPath string) (driver.FileInfo, error) {
 					return &mocks.FileInfoMock{
-						SizeFn: func() int64 { return 0 },
-						PathFn: func() string { return objectPath },
+						IsDirFn: func() bool { return false },
+						SizeFn:  func() int64 { return 0 },
+						PathFn:  func() string { return objectPath },
 					}, nil
 				},
 				PutContentFn: func(ctx context.Context, objectPath string, content []byte) error {
@@ -3048,8 +3070,9 @@ func TestDedupeBlobsPreservesOrigin(t *testing.T) {
 			imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 				StatFn: func(ctx context.Context, objectPath string) (driver.FileInfo, error) {
 					return &mocks.FileInfoMock{
-						SizeFn: func() int64 { return 0 },
-						PathFn: func() string { return objectPath },
+						IsDirFn: func() bool { return false },
+						SizeFn:  func() int64 { return 0 },
+						PathFn:  func() string { return objectPath },
 					}, nil
 				},
 				PutContentFn: func(ctx context.Context, objectPath string, content []byte) error {
@@ -3076,8 +3099,9 @@ func TestCopyBlobLinkFailure(t *testing.T) {
 			StatFn: func(ctx context.Context, objectPath string) (driver.FileInfo, error) {
 				if objectPath == originPath {
 					return &mocks.FileInfoMock{
-						SizeFn: func() int64 { return 42 },
-						PathFn: func() string { return objectPath },
+						IsDirFn: func() bool { return false },
+						SizeFn:  func() int64 { return 42 },
+						PathFn:  func() string { return objectPath },
 					}, nil
 				}
 
@@ -4491,14 +4515,16 @@ func TestS3DedupeErr(t *testing.T) {
 				// walks the cache (and fails while origin is missing).
 				if strings.Contains(path, "repo2/dst2") {
 					return &mocks.FileInfoMock{
-						SizeFn: func() int64 { return 1 },
-						PathFn: func() string { return path },
+						IsDirFn: func() bool { return false },
+						SizeFn:  func() int64 { return 1 },
+						PathFn:  func() string { return path },
 					}, nil
 				}
 
 				return &mocks.FileInfoMock{
-					SizeFn: func() int64 { return 0 },
-					PathFn: func() string { return path },
+					IsDirFn: func() bool { return false },
+					SizeFn:  func() int64 { return 0 },
+					PathFn:  func() string { return path },
 				}, nil
 			},
 			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
@@ -4561,6 +4587,7 @@ func TestS3DedupeErr(t *testing.T) {
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return 0
 					},
@@ -4605,6 +4632,7 @@ func TestS3DedupeErr(t *testing.T) {
 		imgStore = createMockStorage(testDir, tdir, true, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &mocks.FileInfoMock{
+					IsDirFn: func() bool { return false },
 					SizeFn: func() int64 {
 						return 0
 					},
@@ -4650,7 +4678,9 @@ func TestS3DedupeErr(t *testing.T) {
 						driver.PathNotFoundError{Path: path, DriverName: "s3"})
 				}
 
-				return &mocks.FileInfoMock{}, nil
+				// Non-zero size: this digest is non-empty, and CheckBlob rejects an
+				// empty origin (lacksContent). FileInfoFile keeps IsDir false.
+				return mocks.FileInfoFile(10), nil
 			},
 		})
 
@@ -4723,7 +4753,7 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 
 		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+				return mocks.FileInfoFile(0), nil
 			},
 		}, &mocks.CacheMock{
 			GetBlobFn: func(digest godigest.Digest) (string, error) {
@@ -4767,11 +4797,11 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == dstRecord {
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return realSize }}, nil
+					return mocks.FileInfoFile(realSize), nil
 				}
 
 				// Blob placeholder and repo metadata files all appear as zero-size.
-				return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+				return mocks.FileInfoFile(0), nil
 			},
 			// S3 Link is implemented as PutContent with empty bytes.
 			PutContentFn: func(ctx context.Context, path string, content []byte) error {
@@ -4804,12 +4834,14 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == dstRecord {
 					return &mocks.FileInfoMock{
+						IsDirFn:   func() bool { return false },
 						SizeFn:    func() int64 { return realSize },
 						ModTimeFn: func() time.Time { return originalModTime },
 					}, nil
 				}
 
 				return &mocks.FileInfoMock{
+					IsDirFn:   func() bool { return false },
 					SizeFn:    func() int64 { return 0 },
 					ModTimeFn: func() time.Time { return entryModTime },
 				}, nil
@@ -4850,7 +4882,7 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 
 			imgStore := createMockStorageWithMockCacheDedupe(testDir, dedupe, &mocks.StorageDriverMock{
 				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+					return mocks.FileInfoFile(0), nil
 				},
 			}, &mocks.CacheMock{
 				GetBlobFn: func(digest godigest.Digest) (string, error) {
@@ -4873,7 +4905,7 @@ func TestS3DedupeZeroSizeBlob(t *testing.T) {
 
 			imgStore := createMockStorageWithMockCacheDedupe(testDir, dedupe, &mocks.StorageDriverMock{
 				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+					return mocks.FileInfoFile(0), nil
 				},
 				PutContentFn: func(ctx context.Context, path string, content []byte) error {
 					return nil
@@ -4963,7 +4995,7 @@ func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
 		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
 				if statPath == contentBlobPath {
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+					return mocks.FileInfoFile(int64(len(content))), nil
 				}
 
 				if statPath == repoDirPath {
@@ -5028,7 +5060,7 @@ func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
 		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
 				if statPath == contentBlobPath {
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+					return mocks.FileInfoFile(0), nil
 				}
 
 				if statPath == repoDirPath {
@@ -5076,7 +5108,7 @@ func TestDeleteBlobDeferredDuringDedupeRebuild(t *testing.T) {
 		imgStore := createMockStorageWithMockCache(testDir, &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
 				if statPath == contentBlobPath {
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+					return mocks.FileInfoFile(int64(len(content))), nil
 				}
 
 				if statPath == repoDirPath {
@@ -5155,7 +5187,7 @@ func TestDeleteBlobDeferredDuringRestoreWalk(t *testing.T) {
 		return &mocks.StorageDriverMock{
 			StatFn: func(ctx context.Context, statPath string) (driver.FileInfo, error) {
 				if statPath == contentBlobPath {
-					return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+					return mocks.FileInfoFile(int64(len(content))), nil
 				}
 
 				if statPath == repoDirPath {
@@ -5305,9 +5337,9 @@ func TestDeleteBlobDeferredIssue2625CrossRepoOriginal(t *testing.T) {
 	statFn := func(_ context.Context, statPath string) (driver.FileInfo, error) {
 		switch statPath {
 		case originalPath:
-			return &mocks.FileInfoMock{SizeFn: func() int64 { return int64(len(content)) }}, nil
+			return mocks.FileInfoFile(int64(len(content))), nil
 		case placeholderPath:
-			return &mocks.FileInfoMock{SizeFn: func() int64 { return 0 }}, nil
+			return mocks.FileInfoFile(0), nil
 		case repoADirPath, repoBDirPath:
 			return &mocks.FileInfoMock{IsDirFn: func() bool { return true }}, nil
 		default:

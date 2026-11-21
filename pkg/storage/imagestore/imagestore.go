@@ -221,6 +221,26 @@ func (is *ImageStore) Unlock(lockStart *time.Time) {
 	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK) // histogram
 }
 
+// isReservedLayoutComponent reports whether component is an OCI layout sidecar
+// name. Those collide with blobs/, index.json, and oci-layout under a parent
+// repository and are rejected at create time in any path segment (not only the
+// leaf), so names such as parent/blobs/child cannot land inside blob storage.
+func isReservedLayoutComponent(component string) bool {
+	switch component {
+	case ispec.ImageBlobsDir, ispec.ImageIndexFile, ispec.ImageLayoutFile:
+		return true
+	default:
+		return false
+	}
+}
+
+// hasReservedLayoutComponent reports whether any slash-separated component of
+// name is a reserved layout sidecar name. Ordinary nesting such as image/cache
+// remains allowed.
+func hasReservedLayoutComponent(name string) bool {
+	return slices.ContainsFunc(strings.Split(name, "/"), isReservedLayoutComponent)
+}
+
 func (is *ImageStore) validateRepoName(name string) error {
 	if !utf8.ValidString(name) {
 		is.log.Error().Msg("invalid UTF-8 input")
@@ -230,6 +250,12 @@ func (is *ImageStore) validateRepoName(name string) error {
 
 	if !zreg.FullNameRegexp.MatchString(name) {
 		is.log.Error().Str("repository", name).Msg("invalid repository name")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
+	if hasReservedLayoutComponent(name) {
+		is.log.Error().Str("repository", name).Msg("failed to validate repository name: reserved layout component")
 
 		return zerr.ErrInvalidRepositoryName
 	}
@@ -2511,6 +2537,15 @@ func (is *ImageStore) StatBlobEntry(repo string, digest godigest.Digest) (bool, 
 		return false, -1, time.Time{}, mapStorageErr(err)
 	}
 
+	// A nested path can land under blobs/<alg>/<digest>/. GetAllBlobs may still
+	// name that path from List+Validate; callers must not treat it as a blob.
+	if binfo.IsDir() {
+		is.log.Warn().Str("blob", blobPath).Str("digest", digest.String()).
+			Msg("blob path is a directory, not a blob")
+
+		return false, -1, time.Time{}, zerr.ErrBadBlob
+	}
+
 	return true, binfo.Size(), binfo.ModTime(), nil
 }
 
@@ -3008,7 +3043,7 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 	index, err := common.GetIndex(is, repo, is.log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) {
-			return false, nil
+			return is.finishInterruptedLayoutPrune(repo, dir)
 		}
 
 		return false, err
@@ -3035,6 +3070,11 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 	for _, digest := range blobs {
 		if maxBlobAge > 0 {
 			_, _, modtime, err := is.StatBlobEntry(repo, digest)
+			if errors.Is(err, zerr.ErrBadBlob) {
+				// Directory under blobs/<alg>/, not a blob file.
+				continue
+			}
+
 			if err != nil {
 				return false, err
 			}
@@ -3051,23 +3091,28 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 		}
 	}
 
-	// fail closed on partial sweeps and eventually-consistent listings
+	// fail closed on partial sweeps and eventually-consistent listings. GetAllBlobs
+	// is List+Validate only, so digest-shaped directories may still appear; count only
+	// real blob files (Stat is limited to this idle-removal path).
 	blobs, err = is.GetAllBlobs(repo)
 	if err != nil {
 		return false, err
 	}
 
-	if len(blobs) > 0 {
+	remaining, err := is.countBlobFiles(repo, blobs)
+	if err != nil {
+		return false, err
+	}
+
+	if remaining > 0 {
 		return false, nil
 	}
 
 	// Chunk copies and commits are in progress before the bytes are a listed
 	// object. Drivers that keep an open multipart upload off the object listing
-	// report no uploads for that whole window. Delete removes this directory
-	// and every repository nested under it, so blockIfIdle matches an in-progress
-	// upload anywhere in that tree. It refuses new copies and commits under the
-	// directory before it returns, under the same lock that observed none in
-	// progress, and that refusal lasts through the delete.
+	// report no uploads for that whole window. Layout removal may still delete
+	// the directory when it is empty, and blockIfIdle also covers nested paths
+	// whose uploads would previously have been wiped by a recursive delete.
 	release, idle := is.uploads.blockIfIdle(dir)
 	if !idle {
 		return false, nil
@@ -3087,7 +3132,7 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 
 	is.log.Info().Str("repository", repo).Msg("removing idle repo")
 
-	if err := is.storeDriver.Delete(dir); err != nil {
+	if err := is.pruneRepositoryLayout(repo); err != nil {
 		is.log.Error().Err(err).Str("repository", repo).Msg("failed to remove repo")
 
 		return false, err
@@ -3095,6 +3140,218 @@ func (is *ImageStore) RemoveIdleRepository(repo string, maxBlobAge time.Duration
 
 	// finally update metrics
 	is.lifecycle.UpdateStorageUsage(repo)
+
+	return true, nil
+}
+
+// listMissingAsEmpty lists dir. A missing path is an empty listing, not an error.
+func (is *ImageStore) listMissingAsEmpty(dir string) ([]string, error) {
+	entries, err := is.storeDriver.List(dir)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return entries, nil
+}
+
+// deletePathIfPresent deletes path and treats a missing object as success.
+// Use only for paths that cannot be nested repositories (empty dirs, .uploads, .sync).
+func (is *ImageStore) deletePathIfPresent(pathName string) error {
+	err := is.storeDriver.Delete(pathName)
+	if err != nil && !errclass.IsStorageObjectMissing(err) {
+		return err
+	}
+
+	return nil
+}
+
+// deleteFileIfPresent deletes path when it is a regular object. A directory is left
+// alone so a legacy nested tree at a layout path is not wiped by RemoveAll.
+func (is *ImageStore) deleteFileIfPresent(pathName string) error {
+	fileInfo, err := is.storeDriver.Stat(pathName)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return nil
+		}
+
+		return err
+	}
+
+	if fileInfo.IsDir() {
+		is.log.Info().Str("path", pathName).
+			Msg("left directory at layout path")
+
+		return nil
+	}
+
+	return is.deletePathIfPresent(pathName)
+}
+
+// countBlobFiles counts digests whose BlobPath is a regular object. Digest-shaped
+// directories under blobs/<alg>/ are ignored. Used on the idle-removal path only.
+func (is *ImageStore) countBlobFiles(repo string, digests []godigest.Digest) (int, error) {
+	remaining := 0
+
+	for _, digest := range digests {
+		_, _, _, err := is.StatBlobEntry(repo, digest)
+		if err == nil {
+			remaining++
+
+			continue
+		}
+
+		if errors.Is(err, zerr.ErrBadBlob) || errors.Is(err, zerr.ErrBlobNotFound) ||
+			errclass.IsStorageObjectMissing(err) {
+			continue
+		}
+
+		return 0, err
+	}
+
+	return remaining, nil
+}
+
+// pruneEmptyBlobDirs removes empty blobs/<alg>/ directories after blob files have been
+// deleted. Only algorithm names are considered (same filter as GetAllBlobs). A
+// non-empty algorithm directory is left in place so Delete cannot wipe nested paths.
+func (is *ImageStore) pruneEmptyBlobDirs(repo string) error {
+	blobsDir := path.Join(is.rootDir, repo, ispec.ImageBlobsDir)
+
+	entries, err := is.listMissingAsEmpty(blobsDir)
+	if err != nil {
+		return err
+	}
+
+	for _, algorithmPath := range entries {
+		algorithm := godigest.Algorithm(path.Base(algorithmPath))
+		if !algorithm.Available() {
+			continue
+		}
+
+		digestPaths, err := is.listMissingAsEmpty(algorithmPath)
+		if err != nil {
+			return err
+		}
+
+		if len(digestPaths) > 0 {
+			continue
+		}
+
+		if err := is.deletePathIfPresent(algorithmPath); err != nil {
+			return err
+		}
+	}
+
+	entries, err = is.listMissingAsEmpty(blobsDir)
+	if err != nil {
+		return err
+	}
+
+	if len(entries) == 0 {
+		return is.deletePathIfPresent(blobsDir)
+	}
+
+	return nil
+}
+
+// pruneRepositoryLayout deletes this repository's OCI layout entries without removing
+// nested repositories that share the same directory tree. The repository directory is
+// removed only when it is empty afterwards.
+//
+// Sidecar layout files are deleted last (oci-layout, then index.json) so ValidateRepo
+// can still discover the repo during blob/upload cleanup. index.json is last so a
+// mid-flight failure remains retryable via GetIndex. If both markers are already gone,
+// finishInterruptedLayoutPrune resumes this cleanup so DeleteRepoMeta can still run.
+func (is *ImageStore) pruneRepositoryLayout(repo string) error {
+	dir := path.Join(is.rootDir, repo)
+
+	if err := is.pruneEmptyBlobDirs(repo); err != nil {
+		return err
+	}
+
+	// .uploads and .sync cannot be repository name components (a component cannot
+	// start with '.'), so deleting them cannot wipe a nested repository.
+	for _, name := range []string{storageConstants.BlobUploadDir, syncConstants.SyncBlobUploadDir} {
+		if err := is.deletePathIfPresent(path.Join(dir, name)); err != nil {
+			return err
+		}
+	}
+
+	if err := is.deleteFileIfPresent(path.Join(dir, ispec.ImageLayoutFile)); err != nil {
+		return err
+	}
+
+	if err := is.deleteFileIfPresent(path.Join(dir, ispec.ImageIndexFile)); err != nil {
+		return err
+	}
+
+	entries, err := is.listMissingAsEmpty(dir)
+	if err != nil {
+		return err
+	}
+
+	if len(entries) == 0 {
+		return is.deletePathIfPresent(dir)
+	}
+
+	is.log.Info().Str("repository", repo).Int("remaining", len(entries)).
+		Msg("left repository directory in place for nested repositories")
+
+	return nil
+}
+
+// finishInterruptedLayoutPrune resumes pruneRepositoryLayout after a mid-flight
+// failure that already removed index.json. Both oci-layout and index.json must be
+// gone (the intentional end of prune) and the repository directory must still
+// exist; otherwise this is a no-op like a never-created repo.
+//
+// FullBlobUpload stages under .uploads before creating layout markers, so this
+// path uses the same idle gates as RemoveIdleRepository and must not delete an
+// in-flight monolithic upload.
+func (is *ImageStore) finishInterruptedLayoutPrune(repo, dir string) (bool, error) {
+	_, dirErr := is.storeDriver.Stat(dir)
+	if errclass.IsStorageObjectMissing(dirErr) {
+		return false, nil
+	}
+
+	if dirErr != nil {
+		return false, dirErr
+	}
+
+	_, layoutErr := is.storeDriver.Stat(path.Join(dir, ispec.ImageLayoutFile))
+	if layoutErr == nil {
+		// Index missing but oci-layout still present: not the post-marker prune
+		// window (for example an accidental index-only loss). Keep the historical
+		// no-op so we do not strip layout from a still-marked tree.
+		return false, nil
+	}
+
+	if !errclass.IsStorageObjectMissing(layoutErr) {
+		return false, layoutErr
+	}
+
+	release, idle := is.uploads.blockIfIdle(dir)
+	if !idle {
+		return false, nil
+	}
+	defer release()
+
+	blobUploads, err := is.ListBlobUploads(repo)
+	if err != nil {
+		return false, err
+	}
+
+	if len(blobUploads) > 0 {
+		return false, nil
+	}
+
+	if err := is.pruneRepositoryLayout(repo); err != nil {
+		return false, err
+	}
 
 	return true, nil
 }
@@ -3121,6 +3378,15 @@ func (is *ImageStore) deleteBlobChecked(repo string, digest godigest.Digest, isR
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
 		return mapStorageErr(err)
+	}
+
+	// Never Delete a directory: local Delete is RemoveAll and would wipe nested
+	// content under blobs/<alg>/<digest>/.
+	if binfo.IsDir() {
+		is.log.Warn().Str("repository", repo).Str("digest", digest.String()).Str("blobPath", blobPath).
+			Msg("skipping delete of directory at blob path")
+
+		return nil
 	}
 
 	// first check if this blob is not currently in use
@@ -3353,7 +3619,17 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 		}
 
 		for _, file := range digestPaths {
+			// List+Validate only: no per-entry Stat (remote GC inventories are hot).
+			// Digest-shaped directories under blobs/<alg>/ may still appear; StatBlobEntry
+			// and deleteBlobChecked refuse to treat them as blob files.
 			digest := godigest.NewDigestFromEncoded(algorithm, filepath.Base(file))
+			if err := digest.Validate(); err != nil {
+				is.log.Warn().Err(err).Str("repository", repo).Str("path", file).
+					Msg("skipping non-digest entry under blobs directory")
+
+				continue
+			}
+
 			ret = append(ret, digest)
 		}
 	}

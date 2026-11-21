@@ -3501,6 +3501,98 @@ func TestGCRemoveRepoAfterAllBlobsGCed(t *testing.T) {
 		So(repos, ShouldNotContain, repoName)
 	})
 
+	Convey("nested repository survives GC of an emptied parent", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := monitoring.NewNopMetricServer()
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		parent := "demo/app"
+		child := "demo/app/cache"
+
+		parentImg := CreateRandomImage()
+		So(WriteImageToFileSystem(parentImg, parent, "v1", storeController), ShouldBeNil)
+
+		childImg := CreateRandomImage()
+		So(WriteImageToFileSystem(childImg, child, "v1", storeController), ShouldBeNil)
+
+		So(imgStore.DeleteImageManifest(ctx, parent, "v1", true), ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		So(gcInstance.CleanRepo(ctx, parent), ShouldBeNil)
+
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(repos, ShouldNotContain, parent)
+		So(repos, ShouldContain, child)
+
+		_, _, _, err = imgStore.GetImageManifest(child, "v1")
+		So(err, ShouldBeNil)
+	})
+
+	Convey("directory under blobs/sha256 is not garbage-collected as an orphan blob", t, func() {
+		log := zlog.NewTestLogger()
+		audit := zlog.NewAuditLogger("debug", "/dev/null")
+		metrics := monitoring.NewNopMetricServer()
+
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = imgStore
+
+		ctx := context.Background()
+		repoName := "demo2/x"
+
+		img := CreateRandomImage()
+		So(WriteImageToFileSystem(img, repoName, "v1", storeController), ShouldBeNil)
+
+		nestedName := "233562de1a0288b139c4fa40b7d189f806e906eeb048517aeb67f34ac0e2faf1"
+		nestedDir := path.Join(rootDir, repoName, ispec.ImageBlobsDir, "sha256", nestedName)
+		So(os.MkdirAll(nestedDir, 0o755), ShouldBeNil)
+		So(os.WriteFile(path.Join(nestedDir, ispec.ImageLayoutFile),
+			[]byte(`{"imageLayoutVersion":"1.0.0"}`), 0o600), ShouldBeNil)
+		So(os.WriteFile(path.Join(nestedDir, ispec.ImageIndexFile),
+			[]byte(`{"schemaVersion":2,"manifests":[]}`), 0o600), ShouldBeNil)
+
+		orphan := []byte("orphan of demo2/x")
+		orphanDigest := godigest.FromBytes(orphan)
+		_, _, err := imgStore.FullBlobUpload(ctx, repoName, bytes.NewReader(orphan), orphanDigest)
+		So(err, ShouldBeNil)
+
+		time.Sleep(1 * time.Second)
+
+		gcInstance := gc.NewGarbageCollect(imgStore, nil, gc.Options{
+			Delay: 1 * time.Second,
+			ImageRetention: config.ImageRetention{
+				Delay: 1 * time.Second,
+			},
+		}, audit, log, metrics)
+
+		So(gcInstance.CleanRepo(ctx, repoName), ShouldBeNil)
+
+		_, err = os.Stat(nestedDir)
+		So(err, ShouldBeNil)
+
+		ok, _, _, err := imgStore.StatBlob(repoName, orphanDigest)
+		So(ok, ShouldBeFalse)
+		So(err, ShouldNotBeNil)
+	})
+
 	Convey("repo directory is kept when a blob upload is in progress even though every blob was GCed", t, func() {
 		log := zlog.NewTestLogger()
 		audit := zlog.NewAuditLogger("debug", "/dev/null")

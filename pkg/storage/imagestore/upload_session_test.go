@@ -583,6 +583,73 @@ func TestRemoveIdleRepositoryKeepsRepoDuringUnlistedFullUpload(t *testing.T) {
 	}
 }
 
+// FullBlobUpload creates .uploads before oci-layout/index.json. Interrupted-layout
+// resume must not treat that window as a mid-flight prune and wipe the staging file.
+func TestRemoveIdleRepositoryKeepsMissingMarkersDuringFullUpload(t *testing.T) {
+	root := t.TempDir()
+	store := imagestore.NewImageStore(root, "", false, false, zlog.NewTestLogger(),
+		monitoring.NewNopMetricServer(), nil, local.New(true), nil, nil, nil)
+	ctx := context.Background()
+	repo := "pre-layout-full"
+	data := []byte("monolithic-pre-layout")
+	digest := godigest.FromBytes(data)
+
+	body := &blockedUploadBody{
+		data:    data,
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	writerErr := make(chan error, 1)
+
+	go func() {
+		_, _, err := store.FullBlobUpload(ctx, repo, body, digest)
+		writerErr <- err
+	}()
+
+	select {
+	case <-body.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("full blob upload did not start reading")
+	}
+
+	if _, err := os.Stat(path.Join(root, repo, "oci-layout")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("oci-layout present before InitRepo: %v", err)
+	}
+	if _, err := os.Stat(path.Join(root, repo, "index.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("index.json present before InitRepo: %v", err)
+	}
+
+	var removed bool
+
+	err := store.WithRepoLock(repo, func() error {
+		var lockErr error
+
+		removed, lockErr = store.RemoveIdleRepository(repo, 0)
+
+		return lockErr
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed {
+		t.Fatal("interrupted prune removed the repo while a pre-layout FullBlobUpload was in progress")
+	}
+
+	uploads := path.Join(root, repo, storageConstants.BlobUploadDir)
+	entries, err := os.ReadDir(uploads)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("upload entries = %d, want 1 after interrupted-prune skip", len(entries))
+	}
+
+	body.unblock()
+	if err := <-writerErr; err != nil {
+		t.Fatal(err)
+	}
+}
+
 // lateUploadListDriver reports no uploads on the first list of an upload
 // directory and one upload on the next. The idle-repo delete lists twice, and
 // the second list is the one that must keep the repository. onSecond runs
@@ -871,6 +938,9 @@ func TestRemoveIdleRepositoryKeepsParentWhileChildUploadIsUnlisted(t *testing.T)
 	}
 	if !removed {
 		t.Fatal("idle child upload kept the parent after the write finished")
+	}
+	if _, statErr := os.Stat(path.Join(root, child)); statErr != nil {
+		t.Fatal(statErr)
 	}
 }
 
