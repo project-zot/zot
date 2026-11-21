@@ -2221,6 +2221,12 @@ func (is *ImageStore) GetAllDedupeReposCandidates(digest godigest.Digest) ([]str
 
 		blobPath = filepath.ToSlash(blobPath)
 		blobsDirIndex := strings.LastIndex(blobPath, "/blobs/")
+		if blobsDirIndex < 0 {
+			is.log.Warn().Str("blobPath", blobPath).Str("digest", digest.String()).
+				Str("component", "dedupe").Msg("skipping invalid dedupe cache path")
+
+			continue
+		}
 
 		repos = append(repos, blobPath[:blobsDirIndex])
 	}

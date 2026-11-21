@@ -18,6 +18,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -77,6 +78,64 @@ func writeMinimalLocalOCILayout(t *testing.T, rootDir, repo string) {
 		0o600), ShouldBeNil)
 	So(os.WriteFile(path.Join(repoDir, ispec.ImageLayoutFile),
 		[]byte(`{"imageLayoutVersion": "1.0.0"}`), 0o600), ShouldBeNil)
+}
+
+func TestGetAllDedupeReposCandidatesSkipsMalformedPaths(t *testing.T) {
+	rootDir := t.TempDir()
+	outsideDir := t.TempDir()
+	digest := godigest.FromString("dedupe-cache-path")
+	blobSuffix := path.Join(ispec.ImageBlobsDir, digest.Algorithm().String(), digest.Encoded())
+
+	tests := []struct {
+		name              string
+		usesRelativePaths bool
+		cachedPaths       []string
+		wantRepositories  []string
+	}{
+		{
+			name:              "relative paths",
+			usesRelativePaths: true,
+			cachedPaths: []string{
+				"bad-path",
+				"",
+				path.Join("relative-repo", blobSuffix),
+			},
+			wantRepositories: []string{"relative-repo"},
+		},
+		{
+			name:              "absolute paths",
+			usesRelativePaths: false,
+			cachedPaths: []string{
+				path.Join(outsideDir, "not-a-blob"),
+				path.Join(rootDir, "absolute-repo", blobSuffix),
+			},
+			wantRepositories: []string{"absolute-repo"},
+		},
+		{
+			name:              "all paths malformed",
+			usesRelativePaths: false,
+			cachedPaths:       []string{"bad-path", ""},
+			wantRepositories:  []string{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cache := mocks.CacheMock{
+				GetAllBlobsFn: func(_ godigest.Digest) ([]string, error) {
+					return test.cachedPaths, nil
+				},
+				UsesRelativePathsFn: func() bool { return test.usesRelativePaths },
+			}
+
+			store := imagestore.NewImageStore(rootDir, rootDir, true, true, zlog.NewTestLogger(),
+				monitoring.NewNopMetricServer(), nil, local.New(true), cache, nil, nil)
+			repos, err := store.GetAllDedupeReposCandidates(digest)
+
+			require.NoError(t, err)
+			require.Equal(t, test.wantRepositories, repos)
+		})
+	}
 }
 
 func TestGetBlobRedirectURL(t *testing.T) {
