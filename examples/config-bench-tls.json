@@ -1,0 +1,21 @@
+{
+    "distSpecVersion": "1.1.1",
+    "storage": {
+        "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080",
+        "readTimeout": "2m",
+        "writeTimeout": "2m",
+        "tls": {
+            "cert": "test/data/server.cert",
+            "key": "test/data/server.key",
+            "offload": true
+        }
+    },
+    "log": {
+        "level": "debug",
+        "output": "/dev/null"
+    }
+}

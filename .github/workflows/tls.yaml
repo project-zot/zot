@@ -71,3 +71,84 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
           [[ -f zot.PID ]] && kill $(cat zot.PID) 2>/dev/null || true
+
+  # Kernel TLS offload ("http.tls.offload"): one job per path (offload, fallback).
+  # Each job pins and asserts the kernel state so a broken probe cannot
+  # pass by silently taking the other path: ZOT_KTLS_REQUIRE makes the Go kernel
+  # tests fail instead of skipping, ZOT_KTLS_EXPECT tells ktls.bats which
+  # outcome to assert. zot runs unprivileged and the kernel autoloads the tls
+  # ULP only for CAP_NET_ADMIN, so the module state set here is what zot sees.
+  #
+  # Offload runs on two runner images for kernel diversity: kTLS behaviour
+  # (RX options, cipher support) varies by kernel version. Fallback never
+  # reaches the kernel TLS code, so one runner is enough.
+  ktls-offload:
+    needs: build-binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    name: kTLS offload (${{ matrix.runner }}, tls module loaded)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-prebuilt-binaries
+      # Go tests, and the Makefile resolves bin paths via `go env GOOS/GOARCH`.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version-file: .go-version
+      - name: Load the tls kernel module
+        run: |
+          uname -r
+          sudo modprobe tls
+          cat /proc/net/tls_stat
+      - name: Go tests (kernel offload required)
+        env:
+          ZOT_KTLS_REQUIRE: "1"
+        run: |
+          go test -race -count=1 -v ./pkg/ktls/
+          go test -race -count=1 -v -run 'TestKTLSBlobGet|TestBlobFileReachesTCPReadFrom' ./pkg/api/
+      - name: Blackbox (offload expected)
+        env:
+          ZOT_KTLS_EXPECT: offload
+        run: make run-blackbox-ktls USE_PREBUILT=1
+
+  # Hosted runner kernels all ship the tls module, and it may be loaded and
+  # pinned by a NIC driver, so "without kTLS" is simulated per process with
+  # seccomp (test/noktls) rather than by unloading the module.
+  ktls-fallback:
+    needs: build-binaries
+    runs-on: ubuntu-24.04
+    name: kTLS fallback (kTLS hidden by seccomp)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/install-prebuilt-binaries
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache: false
+          check-latest: true
+          go-version-file: .go-version
+      # The tls module cannot be relied on to unload: on Azure-hosted runners
+      # mlx5_core holds it. noktls instead fails setsockopt(TCP_ULP) with the
+      # ENOENT of a kernel without the module, for the wrapped command and
+      # all its children, whatever the host has loaded. It checks that the
+      # filter holds before running the command.
+      - name: Build noktls
+        run: |
+          uname -r
+          grep -E '^tls ' /proc/modules || echo "tls not listed in /proc/modules"
+          go build -o bin/noktls ./test/noktls
+      - name: Go tests (userspace TLS only)
+        run: |
+          bin/noktls go test -race -count=1 -v ./pkg/ktls/
+          bin/noktls go test -race -count=1 -v -run 'TestKTLSBlobGet|TestBlobFileReachesTCPReadFrom' ./pkg/api/
+      - name: Blackbox (fallback expected)
+        env:
+          ZOT_KTLS_EXPECT: fallback
+        run: bin/noktls make run-blackbox-ktls USE_PREBUILT=1

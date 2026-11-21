@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 
@@ -52,6 +53,13 @@ func NewPerfRootCmd() *cobra.Command {
 
 			if maxTimeoutFailures < 0 {
 				panic("max-timeout-failures cannot be negative")
+			}
+
+			// Checked before any test runs: an unknown format used to be
+			// ignored, so a run meant to write ci-cd.json wrote nothing and
+			// still exited 0.
+			if !validOutputFormat(outFmt) {
+				panic(fmt.Sprintf("unknown output format %q: want stdout, json or ci-cd", outFmt))
 			}
 
 			var testRegex *regexp.Regexp
@@ -109,6 +117,18 @@ func NewPerfRootCmd() *cobra.Command {
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show the version and exit")
 
 	return rootCmd
+}
+
+// validOutputFormat reports whether format is one the help text documents.
+// "json" is accepted but, like "stdout", only prints to stdout; only "ci-cd"
+// writes a file (ci-cd.json).
+func validOutputFormat(format string) bool {
+	switch format {
+	case "", stdoutFmt, jsonFmt, cicdFmt:
+		return true
+	default:
+		return false
+	}
 }
 
 func main() {

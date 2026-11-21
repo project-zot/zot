@@ -53,3 +53,45 @@ jobs:
           # Show data in the job summary
           summary-always: true
       # Upload the updated cache file for the next job by actions/cache
+
+  benchmark-tls:
+    name: Performance regression check (HTTPS)
+    # Serial after the HTTP job: running both at once on shared runner hosts
+    # would make each job's numbers noisy and the alerts unreliable.
+    needs: benchmark
+    runs-on: cncf-ubuntu-8-32-x86
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/build-zot-binaries
+        with:
+          make-targets: binary bench
+          upload-artifact: "false"
+      # Without the tls module zot keeps TLS in userspace, so the job still
+      # passes; it just measures userspace TLS instead of kTLS.
+      - name: Load kernel TLS module
+        run: sudo modprobe tls || echo "kernel tls module unavailable, benchmarking userspace TLS"
+      - name: Flush disk after cache restore
+        run: sync
+      - name: Run benchmark
+        run: make USE_PREBUILT=1 BENCH_OUTPUT=ci-cd run-bench-tls
+      - name: Download previous benchmark data
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ./cache
+          # "tls-minimal-" rather than "minimal-tls-": the HTTP job's
+          # restore-keys prefix "...-benchmark-minimal-" would otherwise
+          # restore this job's HTTPS baseline.
+          key: ${{ runner.os }}-gen1-benchmark-tls-minimal-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-gen1-benchmark-tls-minimal-
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
+        with:
+          name: 'Benchmark (HTTPS)'
+          tool: 'customBiggerIsBetter'
+          output-file-path: ci-cd.json
+          external-data-json-path: ./cache/benchmark-data.json
+          fail-on-alert: true
+          summary-always: true
