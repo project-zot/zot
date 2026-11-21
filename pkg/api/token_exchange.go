@@ -22,6 +22,10 @@ const (
 	wrappedCredentialBearerPrefix = "zot_cred_v1." //nolint:gosec // Public token marker, not a credential.
 	wrappedCredentialVersion      = 1
 	wrappedCredentialTypeAPIKey   = "api-key"
+	// anonymousBearerToken is a public marker. Presenting it is the same privilege as
+	// sending no Authorization header: later requests are authorized only by anonymousPolicy.
+	anonymousBearerToken          = "zot_anon_v1" //nolint:gosec // Public token marker, not a credential.
+	anonymousBearerTokenExpiresIn = int64(60)
 )
 
 type tokenExchangeCredential struct {
@@ -31,6 +35,9 @@ type tokenExchangeCredential struct {
 
 type tokenExchangeRequest struct {
 	credentials []tokenExchangeCredential
+	// discardedFormSecret is set when a form password or token field was present
+	// but empty after trim. That attempt must not receive the anonymous marker.
+	discardedFormSecret bool
 }
 
 type localOIDCTokenOwner int
@@ -89,16 +96,28 @@ func normalizeTokenExchangeRequest(request *http.Request) (*tokenExchangeRequest
 	}
 
 	for _, value := range form["password"] {
-		tokenRequest.addCredential(formUsername, value)
+		tokenRequest.addFormCredential(formUsername, value)
 	}
 
 	for _, field := range []string{"id_token", "access_token", "refresh_token", "token"} {
 		for _, value := range form[field] {
-			tokenRequest.addCredential("", value)
+			tokenRequest.addFormCredential("", value)
 		}
 	}
 
 	return tokenRequest, nil
+}
+
+// addFormCredential records a form secret. An empty or whitespace value is kept as
+// evidence that the client supplied a credential, so the anonymous marker is not minted.
+func (request *tokenExchangeRequest) addFormCredential(username, secret string) {
+	if strings.TrimSpace(secret) == "" {
+		request.discardedFormSecret = true
+
+		return
+	}
+
+	request.addCredential(username, secret)
 }
 
 func (request *tokenExchangeRequest) addCredential(username, secret string) {
@@ -176,6 +195,23 @@ func newWrappedCredentialTokenResponse(token string) oidcBearerTokenResponse {
 		Token:       token,
 		AccessToken: token,
 		IssuedAt:    time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
+func isAnonymousBearerToken(token string) bool {
+	return token == anonymousBearerToken
+}
+
+func newAnonymousBearerTokenResponse(now time.Time) oidcBearerTokenResponse {
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	return oidcBearerTokenResponse{
+		Token:       anonymousBearerToken,
+		AccessToken: anonymousBearerToken,
+		ExpiresIn:   anonymousBearerTokenExpiresIn,
+		IssuedAt:    now.UTC().Format(time.RFC3339),
 	}
 }
 

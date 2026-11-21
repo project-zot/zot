@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -17,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 
@@ -1534,5 +1537,542 @@ func TestRemoveBasicAuthChallenges(t *testing.T) {
 				t.Fatalf("expected %q, got %q", test.expected, got)
 			}
 		})
+	}
+}
+
+func anonymousReadAccessControl() *config.AccessControlConfig {
+	return &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"public/**": config.PolicyGroup{
+				AnonymousPolicy: []string{constants.ReadPermission},
+				Policies: []config.Policy{{
+					Users:   []string{"pusher"},
+					Actions: []string{constants.ReadPermission, constants.CreatePermission},
+				}},
+			},
+		},
+	}
+}
+
+func TestCredentialLessTokenExchangeMintsAnonymousBearerToken(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		Bearer: &config.BearerConfig{
+			Realm:   "https://zot.example.test/zot/auth/token",
+			Service: "zot",
+			OIDC: config.BearerOIDCConfigs{{
+				Issuer:    "https://issuer.example.com",
+				Audiences: []string{"zot"},
+			}},
+		},
+	}
+	conf.HTTP.AccessControl = anonymousReadAccessControl()
+
+	bearerAuth := &BearerAuth{
+		authConfig:   conf.HTTP.Auth,
+		bearerConfig: conf.HTTP.Auth.Bearer,
+		log:          log.NewTestLogger(),
+		oidc:         &OIDCBearerAuthorizer{},
+	}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	requests := []*http.Request{
+		httptest.NewRequest(http.MethodGet, constants.TokenPath+"?service=zot&scope=repository:public/app:pull", nil),
+		httptest.NewRequest(http.MethodPost, constants.TokenPath+"?scope=repository:public/app:pull",
+			strings.NewReader("scope=repository:public/app:pull")),
+	}
+	requests[1].Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	for _, request := range requests {
+		response := httptest.NewRecorder()
+		handler(response, request)
+
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s: expected status %d, got %d: %s", request.Method, http.StatusOK, response.Code, response.Body.String())
+		}
+
+		if response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("%s: expected Cache-Control no-store, got %q", request.Method, response.Header().Get("Cache-Control"))
+		}
+
+		var tokenResponse oidcBearerTokenResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &tokenResponse); err != nil {
+			t.Fatalf("%s: failed to decode token response: %v", request.Method, err)
+		}
+
+		if tokenResponse.Token != anonymousBearerToken || tokenResponse.AccessToken != anonymousBearerToken {
+			t.Fatalf("%s: expected anonymous marker, got token %q access_token %q",
+				request.Method, tokenResponse.Token, tokenResponse.AccessToken)
+		}
+
+		if tokenResponse.ExpiresIn != anonymousBearerTokenExpiresIn || tokenResponse.IssuedAt == "" {
+			t.Fatalf("%s: expected expires_in %d and issued_at, got %d %q",
+				request.Method, anonymousBearerTokenExpiresIn, tokenResponse.ExpiresIn, tokenResponse.IssuedAt)
+		}
+	}
+}
+
+func TestCredentialLessTokenExchangeStaysUnauthorizedWithoutAnonymousPolicy(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "https://zot.example.test/zot/auth/token",
+			Service: "zot",
+		},
+	}
+	bearerAuth := &BearerAuth{
+		authConfig:   conf.HTTP.Auth,
+		bearerConfig: conf.HTTP.Auth.Bearer,
+		log:          log.NewTestLogger(),
+	}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+	response := httptest.NewRecorder()
+	handler(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusUnauthorized, response.Code, response.Body.String())
+	}
+
+	if strings.Contains(response.Body.String(), anonymousBearerToken) {
+		t.Fatalf("expected no anonymous marker, got %s", response.Body.String())
+	}
+}
+
+func TestTokenExchangeDoesNotMintAnonymousTokenForFailedCredential(t *testing.T) {
+	t.Parallel()
+
+	const issuer = "https://issuer.example.com"
+	const audience = "zot"
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		Bearer: &config.BearerConfig{
+			Realm:   "https://zot.example.test/zot/auth/token",
+			Service: "zot",
+			OIDC: config.BearerOIDCConfigs{{
+				Issuer:    issuer,
+				Audiences: []string{audience},
+			}},
+		},
+	}
+	conf.HTTP.AccessControl = anonymousReadAccessControl()
+
+	bearerAuth := &BearerAuth{
+		authConfig:   conf.HTTP.Auth,
+		bearerConfig: conf.HTTP.Auth.Bearer,
+		log:          log.NewTestLogger(),
+		oidc:         &OIDCBearerAuthorizer{},
+	}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	ownedJWT := testJWT(map[string]any{"iss": issuer, "aud": []string{audience}})
+	requests := []*http.Request{
+		httptest.NewRequest(http.MethodGet, constants.TokenPath, nil),
+		httptest.NewRequest(http.MethodGet, constants.TokenPath, nil),
+	}
+	requests[0].SetBasicAuth("alice", ownedJWT)
+	requests[1].SetBasicAuth("alice", "not-a-jwt")
+
+	for _, request := range requests {
+		response := httptest.NewRecorder()
+		handler(response, request)
+
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusUnauthorized, response.Code, response.Body.String())
+		}
+
+		if strings.Contains(response.Body.String(), anonymousBearerToken) {
+			t.Fatalf("expected failed credential to stay unauthorized, got %s", response.Body.String())
+		}
+	}
+}
+
+func TestTokenExchangeDoesNotMintAnonymousTokenForDroppedAuthorizationHeader(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		Bearer: &config.BearerConfig{
+			Realm:   "https://zot.example.test/zot/auth/token",
+			Service: "zot",
+			OIDC: config.BearerOIDCConfigs{{
+				Issuer:    "https://issuer.example.com",
+				Audiences: []string{"zot"},
+			}},
+		},
+	}
+	conf.HTTP.AccessControl = anonymousReadAccessControl()
+
+	bearerAuth := &BearerAuth{
+		authConfig:   conf.HTTP.Auth,
+		bearerConfig: conf.HTTP.Auth.Bearer,
+		log:          log.NewTestLogger(),
+		oidc:         &OIDCBearerAuthorizer{},
+	}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	requests := []*http.Request{
+		httptest.NewRequest(http.MethodGet, constants.TokenPath, nil),
+		httptest.NewRequest(http.MethodGet, constants.TokenPath, nil),
+		httptest.NewRequest(http.MethodGet, constants.TokenPath, nil),
+	}
+	requests[0].SetBasicAuth("alice", "")
+	requests[1].SetBasicAuth("alice", "   ")
+	requests[2].Header.Set("Authorization", "Basic !!!")
+
+	for _, request := range requests {
+		response := httptest.NewRecorder()
+		handler(response, request)
+
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s: expected status %d, got %d: %s",
+				request.Header.Get("Authorization"), http.StatusUnauthorized, response.Code, response.Body.String())
+		}
+
+		if strings.Contains(response.Body.String(), anonymousBearerToken) {
+			t.Fatalf("%s: expected dropped authorization to stay unauthorized, got %s",
+				request.Header.Get("Authorization"), response.Body.String())
+		}
+	}
+}
+
+func TestTokenExchangeAnonymousMarkerAcceptsOnlyExactEmptyBasicPayload(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		Bearer: &config.BearerConfig{
+			Realm:   "https://zot.example.test/zot/auth/token",
+			Service: "zot",
+			OIDC: config.BearerOIDCConfigs{{
+				Issuer:    "https://issuer.example.com",
+				Audiences: []string{"zot"},
+			}},
+		},
+	}
+	conf.HTTP.AccessControl = anonymousReadAccessControl()
+
+	bearerAuth := &BearerAuth{
+		authConfig:   conf.HTTP.Auth,
+		bearerConfig: conf.HTTP.Auth.Bearer,
+		log:          log.NewTestLogger(),
+		oidc:         &OIDCBearerAuthorizer{},
+	}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	for _, header := range []string{"Basic Og==", "BASIC Og=="} {
+		request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+		request.Header.Set("Authorization", header)
+
+		response := httptest.NewRecorder()
+		handler(response, request)
+
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), anonymousBearerToken) {
+			t.Fatalf("%s: expected anonymous marker, got %d: %s", header, response.Code, response.Body.String())
+		}
+	}
+
+	for _, header := range []string{"Basic OG==", "Basic og==", "Basic oG=="} {
+		request := httptest.NewRequest(http.MethodGet, constants.TokenPath, nil)
+		request.Header.Set("Authorization", header)
+
+		response := httptest.NewRecorder()
+		handler(response, request)
+
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s: expected status %d, got %d: %s",
+				header, http.StatusUnauthorized, response.Code, response.Body.String())
+		}
+
+		if strings.Contains(response.Body.String(), anonymousBearerToken) {
+			t.Fatalf("%s: expected case-variant payload to stay unauthorized, got %s", header, response.Body.String())
+		}
+	}
+}
+
+func TestTokenExchangeDoesNotMintAnonymousTokenForEmptyFormSecret(t *testing.T) {
+	t.Parallel()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		Bearer: &config.BearerConfig{
+			Realm:   "https://zot.example.test/zot/auth/token",
+			Service: "zot",
+			OIDC: config.BearerOIDCConfigs{{
+				Issuer:    "https://issuer.example.com",
+				Audiences: []string{"zot"},
+			}},
+		},
+	}
+	conf.HTTP.AccessControl = anonymousReadAccessControl()
+
+	bearerAuth := &BearerAuth{
+		authConfig:   conf.HTTP.Auth,
+		bearerConfig: conf.HTTP.Auth.Bearer,
+		log:          log.NewTestLogger(),
+		oidc:         &OIDCBearerAuthorizer{},
+	}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	bodies := []string{
+		"grant_type=password&username=alice&password=",
+		"grant_type=password&username=alice&password=%20%20%20",
+		"scope=repository:public/app:pull&token=",
+	}
+
+	for _, body := range bodies {
+		request := httptest.NewRequest(http.MethodPost, constants.TokenPath, strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		response := httptest.NewRecorder()
+		handler(response, request)
+
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s: expected status %d, got %d: %s",
+				body, http.StatusUnauthorized, response.Code, response.Body.String())
+		}
+
+		if strings.Contains(response.Body.String(), anonymousBearerToken) {
+			t.Fatalf("%s: expected empty form secret to stay unauthorized, got %s", body, response.Body.String())
+		}
+	}
+}
+
+func TestCredentialLessTokenExchangeProxiesWhenUpstreamIsConfigured(t *testing.T) {
+	t.Parallel()
+
+	var upstreamCalls atomic.Int32
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		upstreamCalls.Add(1)
+		response.Header().Set("Content-Type", "application/json")
+		response.WriteHeader(http.StatusAccepted)
+		_, _ = response.Write([]byte(`{"token":"proxied-token","access_token":"proxied-token"}`))
+	}))
+	defer proxyServer.Close()
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		Bearer: &config.BearerConfig{
+			Realm:   "https://zot.example.test/zot/auth/token",
+			Service: "zot",
+			OIDC: config.BearerOIDCConfigs{{
+				Issuer:    "https://issuer.example.com",
+				Audiences: []string{"zot"},
+			}},
+			UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+				Realm:             proxyServer.URL + "/token",
+				Service:           "upstream",
+				AllowInsecureHTTP: true,
+			},
+		},
+	}
+	conf.HTTP.AccessControl = anonymousReadAccessControl()
+
+	bearerAuth := &BearerAuth{
+		authConfig:   conf.HTTP.Auth,
+		bearerConfig: conf.HTTP.Auth.Bearer,
+		log:          log.NewTestLogger(),
+		oidc:         &OIDCBearerAuthorizer{},
+	}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+	handler := bearerAuth.TokenExchangeHandler(ctlr)
+	if handler == nil {
+		t.Fatal("expected token exchange handler")
+	}
+
+	request := httptest.NewRequest(http.MethodGet, constants.TokenPath+"?service=zot&scope=repository:public/app:pull", nil)
+	response := httptest.NewRecorder()
+	handler(response, request)
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, response.Code, response.Body.String())
+	}
+
+	if upstreamCalls.Load() != 1 {
+		t.Fatalf("expected one upstream call, got %d", upstreamCalls.Load())
+	}
+
+	if strings.Contains(response.Body.String(), anonymousBearerToken) || !strings.Contains(response.Body.String(), "proxied-token") {
+		t.Fatalf("expected proxied token, got %s", response.Body.String())
+	}
+}
+
+func TestAuthenticateAcceptsAnonymousBearerTokenAsEmptyIdentity(t *testing.T) {
+	t.Parallel()
+
+	const issuer = "https://issuer.example.com"
+	const audience = "zot"
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authorizer, err := NewOIDCBearerAuthorizer([]config.BearerOIDCConfig{{
+		Issuer: issuer, Audiences: []string{audience},
+	}}, log.NewTestLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	provider := authorizer.providers[0]
+	provider.verifier = oidc.NewVerifier(provider.issuer, &oidc.StaticKeySet{
+		PublicKeys: []crypto.PublicKey{&key.PublicKey},
+	}, &oidc.Config{SkipClientIDCheck: true})
+	provider.verifierDeadline = time.Now().Add(time.Hour)
+
+	conf := config.New()
+	conf.HTTP.Auth = &config.AuthConfig{
+		Bearer: &config.BearerConfig{
+			Realm:   "https://zot.example.test/zot/auth/token",
+			Service: "zot",
+			OIDC:    config.BearerOIDCConfigs{{Issuer: issuer, Audiences: []string{audience}}},
+		},
+	}
+	conf.HTTP.AccessControl = anonymousReadAccessControl()
+
+	bearerAuth := &BearerAuth{
+		authConfig:   conf.HTTP.Auth,
+		bearerConfig: conf.HTTP.Auth.Bearer,
+		log:          log.NewTestLogger(),
+		oidc:         authorizer,
+	}
+	ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+
+	anonymousAc := reqCtx.NewUserAccessControl()
+	anonymousRequest := httptest.NewRequest(http.MethodGet, "/v2/public/app/manifests/latest", nil)
+	anonymousRequest.Header.Set("Authorization", "Bearer "+anonymousBearerToken)
+
+	anonymousResult, err := bearerAuth.Authenticate(ctlr, anonymousAc, anonymousRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !anonymousResult.authenticated || anonymousResult.authnType != BEARER_OIDC {
+		t.Fatalf("expected anonymous bearer to authenticate as %s, got authenticated=%t type=%s",
+			BEARER_OIDC, anonymousResult.authenticated, anonymousResult.authnType)
+	}
+
+	if anonymousAc.GetUsername() != "" || !anonymousAc.IsAnonymous() {
+		t.Fatalf("expected empty anonymous identity, got %q", anonymousAc.GetUsername())
+	}
+
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": issuer,
+		"aud": []string{audience},
+		"sub": "alice",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	}).SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oidcAc := reqCtx.NewUserAccessControl()
+	oidcRequest := httptest.NewRequest(http.MethodGet, "/v2/public/app/manifests/latest", nil)
+	oidcRequest.Header.Set("Authorization", "Bearer "+signed)
+
+	oidcResult, err := bearerAuth.Authenticate(ctlr, oidcAc, oidcRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !oidcResult.authenticated || oidcResult.authnType != BEARER_OIDC {
+		t.Fatalf("expected OIDC bearer to authenticate as %s, got authenticated=%t type=%s",
+			BEARER_OIDC, oidcResult.authenticated, oidcResult.authnType)
+	}
+
+	if oidcAc.GetUsername() != issuer+"/alice" {
+		t.Fatalf("expected mapped username %q, got %q", issuer+"/alice", oidcAc.GetUsername())
+	}
+}
+
+func TestAuthenticateRejectsAnonymousBearerTokenWithoutAnonymousPolicy(t *testing.T) {
+	t.Parallel()
+
+	userOnly := &config.AccessControlConfig{
+		Repositories: config.Repositories{
+			"**": config.PolicyGroup{
+				Policies: []config.Policy{{
+					Users:   []string{"pusher"},
+					Actions: []string{constants.ReadPermission},
+				}},
+			},
+		},
+	}
+
+	for _, accessControl := range []*config.AccessControlConfig{nil, userOnly} {
+		conf := config.New()
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Realm:   "https://zot.example.test/zot/auth/token",
+				Service: "zot",
+			},
+		}
+		conf.HTTP.AccessControl = accessControl
+
+		bearerAuth := &BearerAuth{
+			authConfig:   conf.HTTP.Auth,
+			bearerConfig: conf.HTTP.Auth.Bearer,
+			log:          log.NewTestLogger(),
+			traditional: NewBearerAuthorizer("https://zot.example.test/token", "zot",
+				func(context.Context, *jwt.Token) (any, error) {
+					return nil, zerr.ErrInvalidBearerToken
+				}),
+		}
+		ctlr := &Controller{Config: conf, Log: log.NewTestLogger()}
+
+		userAc := reqCtx.NewUserAccessControl()
+		request := httptest.NewRequest(http.MethodGet, "/v2/public/app/manifests/latest", nil)
+		request.Header.Set("Authorization", "Bearer "+anonymousBearerToken)
+
+		result, err := bearerAuth.Authenticate(ctlr, userAc, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if result.authenticated {
+			t.Fatal("expected anonymous marker to stay unauthenticated without an anonymous policy")
+		}
+
+		if result.unsupported || result.challengeHeader != "" {
+			t.Fatalf("expected the marker to be rejected before bearer verification, got unsupported=%t challenge=%q",
+				result.unsupported, result.challengeHeader)
+		}
+
+		if userAc.GetUsername() != "" || !userAc.IsAnonymous() {
+			t.Fatalf("expected no identity, got %q", userAc.GetUsername())
+		}
 	}
 }
