@@ -980,6 +980,10 @@ paths:
         name: reference
         required: true
         type: string
+      - description: upstream registry namespace (e.g. docker.io, registry.k8s.io)
+        in: query
+        name: ns
+        type: string
       produces:
       - application/vnd.oci.image.manifest.v1+json
       responses:
@@ -1018,6 +1022,10 @@ paths:
         in: path
         name: reference
         required: true
+        type: string
+      - description: upstream registry namespace (e.g. docker.io, ghcr.io)
+        in: query
+        name: ns
         type: string
       produces:
       - application/json
