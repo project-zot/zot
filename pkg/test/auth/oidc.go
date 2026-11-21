@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/go-jose/go-jose/v4"
-	"github.com/project-zot/mockoidc"
+	"github.com/oauth2-proxy/mockoidc"
 )
 
 var errMalformedJWT = errors.New("malformed jwt")

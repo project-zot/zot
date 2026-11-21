@@ -28,8 +28,8 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	guuid "github.com/gofrs/uuid"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/oauth2-proxy/mockoidc"
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
