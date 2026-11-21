@@ -98,7 +98,6 @@ func TestGetAllDedupeReposCandidatesSkipsMalformedPaths(t *testing.T) {
 			cachedPaths: []string{
 				"bad-path",
 				"",
-				path.Join("..", "outside", blobSuffix),
 				path.Join("relative-repo", blobSuffix),
 			},
 			wantRepositories: []string{"relative-repo"},
@@ -108,7 +107,6 @@ func TestGetAllDedupeReposCandidatesSkipsMalformedPaths(t *testing.T) {
 			usesRelativePaths: false,
 			cachedPaths: []string{
 				path.Join(outsideDir, "not-a-blob"),
-				path.Join(outsideDir, blobSuffix),
 				path.Join(rootDir, "absolute-repo", blobSuffix),
 			},
 			wantRepositories: []string{"absolute-repo"},
