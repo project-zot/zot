@@ -132,6 +132,39 @@ func TestNormalizeTokenExchangeRequest(t *testing.T) {
 		}
 	})
 
+	t.Run("empty form secret is recorded and not kept", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			body      string
+			discarded bool
+		}{
+			{body: "grant_type=password&username=alice&password=", discarded: true},
+			{body: "grant_type=password&username=alice&password=%20%20%20", discarded: true},
+			{body: "scope=repository:public/app:pull&token=", discarded: true},
+			{body: "scope=repository:public/app:pull", discarded: false},
+		}
+
+		for _, test := range tests {
+			request := httptest.NewRequest(http.MethodPost, constants.TokenPath, strings.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+			tokenRequest, err := normalizeTokenExchangeRequest(request)
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", test.body, err)
+			}
+
+			if len(tokenRequest.credentials) != 0 {
+				t.Fatalf("%s: expected no kept credentials, got %#v", test.body, tokenRequest.credentials)
+			}
+
+			if tokenRequest.discardedFormSecret != test.discarded {
+				t.Fatalf("%s: discardedFormSecret=%t, want %t",
+					test.body, tokenRequest.discardedFormSecret, test.discarded)
+			}
+		}
+	})
+
 	t.Run("non api key credentials dedupe by secret", func(t *testing.T) {
 		t.Parallel()
 

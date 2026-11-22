@@ -28,8 +28,12 @@ flowchart TD
   Multi -->|yes| Reject[Reject request]
   Multi -->|no| BearerHeader{Bearer credential?}
   BearerHeader -->|yes| BearerLocal{Zot Bearer support enabled?}
-  BearerLocal -->|yes| BearerAuth[Authenticate as wrapped API key, workload OIDC, or traditional Bearer]
   BearerLocal -->|no| Reject
+  BearerLocal -->|yes| AnonMarker{Anonymous marker?}
+  AnonMarker -->|yes| MarkerPolicy{Anonymous repository policy?}
+  MarkerPolicy -->|yes| AnonIdentity[Empty identity]
+  MarkerPolicy -->|no| Reject
+  AnonMarker -->|no| BearerAuth[Authenticate as wrapped API key, workload OIDC, or traditional Bearer]
   BearerHeader -->|no| BasicHeader{Username/password credential?}
   BasicHeader -->|yes| BasicAuth[Authenticate with htpasswd, LDAP, or API key]
   BasicHeader -->|no| SessionHeader{Browser session client?}
@@ -44,7 +48,8 @@ flowchart TD
   Anonymous -->|yes| Authz
   Anonymous -->|no| Reject
   NoCreds -->|no| Reject
-  BearerAuth --> Authz[Apply authorization policy]
+  AnonIdentity --> Authz[Apply authorization policy]
+  BearerAuth --> Authz
   BasicAuth --> Authz
   SessionAuth -->|valid session| Authz
   MTLSAuth --> Authz
@@ -105,10 +110,32 @@ In mixed deployments, Zot should be the advertised token endpoint:
 }
 ```
 
+```mermaid
+flowchart TD
+  Start[Token request] --> Multi{Multiple Authorization headers?}
+  Multi -->|yes| Reject[Reject request]
+  Multi -->|no| Creds{Credential submitted?}
+  Creds -->|no| NoCredUpstream{upstreamTokenEndpoint set?}
+  NoCredUpstream -->|yes| Proxy[Forward the token request]
+  NoCredUpstream -->|no| Header{Authorization header empty?}
+  Header -->|no| Reject
+  Header -->|yes| AnonPolicy{Anonymous repository policy?}
+  AnonPolicy -->|yes| Marker["Return anonymous marker, no identity"]
+  AnonPolicy -->|no| Reject
+  Creds -->|yes| Owned{Local Zot credential?}
+  Owned -->|API key| Wrap[Return wrapped API-key bearer]
+  Owned -->|OIDC JWT| Echo[Return that same JWT]
+  Owned -->|wrapped credential or browser OpenID| Reject
+  Owned -->|no| HasUpstream{upstreamTokenEndpoint set?}
+  HasUpstream -->|yes| Proxy
+  HasUpstream -->|no| Reject
+```
+
 Zot successfully exchanges these token requests locally:
 
 - API keys that start with Zot's API-key prefix.
 - A JWT whose issuer and audience match `bearer.oidc`. Zot verifies it and returns that same token. The Basic username is not the registry identity. Claim mapping supplies the identity when that JWT is presented later. Zot splits the Basic credential on the first colon, so the username must not contain a colon.
+- A request with an empty `Authorization` header, when an anonymous repository policy exists and `upstreamTokenEndpoint` is not set. Zot returns a bearer token that carries no identity. Later registry requests are authorized only by `anonymousPolicy`, and the marker is accepted only when that policy exists. `Authorization: Basic Og==` is the encoding of `:` and follows the same path as no header. The payload is case-sensitive, so `OG==` decodes to `8` and is rejected. A credential that fails verification is still rejected. An `Authorization` header that does not yield a credential, including an empty or whitespace password or a malformed Basic value, is rejected and is not replaced with this token. A form `password`, `id_token`, `access_token`, `refresh_token`, or `token` field that is empty or whitespace is a credential attempt and is rejected the same way. When `upstreamTokenEndpoint` is set, a request that is not locally owned is forwarded there, including a request with an empty `Authorization` header.
 
 htpasswd and LDAP passwords are not checked here. A registry route accepts them as `Authorization: Basic`. On this endpoint, a password Zot does not recognize as an API key or a matching OIDC JWT is rejected, or forwarded when `upstreamTokenEndpoint` is set. An opaque access token is one of those unrecognized credentials.
 
@@ -146,6 +173,8 @@ For traditional Bearer JWT verification, Zot can load a static public key/certif
 ### Anonymous Mirrors With Protected Pushes
 
 Public or internal mirrors often allow unauthenticated pulls while requiring authentication for pushes or private repositories. Anonymous policy can coexist with the other methods above. Invalid `Authorization` credentials are rejected; browser UI clients with a missing or expired session may still use anonymous policy when configured.
+
+When bearer authentication is advertised and policies are mixed, `GET /v2/` with no credential still returns `401` and a Bearer challenge. A client that then calls `/zot/auth/token` with no credential receives the anonymous token described above and retries. A push with that token is challenged again, so the client can exchange a real credential. A direct manifest GET with no `Authorization` header remains allowed when `anonymousPolicy` includes read.
 
 ## Related Examples
 
