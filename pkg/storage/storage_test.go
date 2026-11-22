@@ -1071,11 +1071,11 @@ func TestGetAllDedupeReposCandidates(t *testing.T) {
 					"second",
 					"repo/a",
 					"repo/a/b/c/d/e/f",
-					"repo/repo-b/blobs",
+					"repo/repo-b/cache",
 					"foo/bar/baz",
-					"blobs/foo/bar/blobs",
-					"blobs",
-					"blobs/foo",
+					"myblobs/foo/bar/cache",
+					"myblobs",
+					"myblobs/foo",
 				}
 
 				storeController := storage.StoreController{DefaultStore: imgStore}

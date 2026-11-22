@@ -514,6 +514,20 @@ func TestRoutes(t *testing.T) {
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusNotFound)
+			// reserved repository name component
+			statusCode = testUpdateManifest(
+				map[string]string{
+					"name":      "demo/blobs",
+					"reference": "reference",
+				},
+				&mocks.MockedImageStore{
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string,
+						body []byte, extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
+						return "", "", zerr.ErrInvalidRepositoryName
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
 			// ErrManifestNotFound
 			statusCode = testUpdateManifest(
 				map[string]string{
@@ -1313,6 +1327,22 @@ func TestRoutes(t *testing.T) {
 				})
 			So(statusCode, ShouldEqual, http.StatusNotFound)
 
+			// Mount miss then NewBlobUpload unexpected error
+			statusCode = testCreateBlobUpload(
+				[]struct{ k, v string }{
+					{"mount", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
+				},
+				map[string]string{},
+				&mocks.MockedImageStore{
+					CheckBlobFn: func(ctx context.Context, repo string, digest godigest.Digest) (bool, int64, error) {
+						return false, 0, zerr.ErrBlobNotFound
+					},
+					NewBlobUploadFn: func(ctx context.Context, repo string) (string, error) {
+						return "", ErrUnexpectedError
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+
 			// a full blob upload if multiple digests are present
 			statusCode = testCreateBlobUpload(
 				[]struct{ k, v string }{
@@ -1425,6 +1455,38 @@ func TestRoutes(t *testing.T) {
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusNotFound)
+
+			// newBlobUpload invalid repository name (reserved layout component)
+			statusCode = testCreateBlobUpload(
+				[]struct{ k, v string }{},
+				map[string]string{
+					"Content-Type":   constants.BinaryMediaType,
+					"Content-Length": "100",
+				},
+				&mocks.MockedImageStore{
+					NewBlobUploadFn: func(ctx context.Context, repo string) (string, error) {
+						return "", zerr.ErrInvalidRepositoryName
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
+
+			// full blob upload invalid repository name
+			statusCode = testCreateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
+				},
+				map[string]string{
+					"Content-Type":   constants.BinaryMediaType,
+					"Content-Length": "100",
+				},
+				&mocks.MockedImageStore{
+					FullBlobUploadFn: func(ctx context.Context, repo string, body io.Reader,
+						digest godigest.Digest,
+					) (string, int64, error) {
+						return "", 0, zerr.ErrInvalidRepositoryName
+					},
+				})
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
 
 			// newBlobUpload unexpected error
 			statusCode = testCreateBlobUpload(
@@ -1637,6 +1699,31 @@ func TestRoutes(t *testing.T) {
 			)
 			So(status, ShouldEqual, http.StatusNotFound)
 
+			deleteCalled := false
+			status = testPatchBlobUpload(
+				[]struct{ k, v string }{},
+				map[string]string{
+					"Content-Length": "100",
+					"Content-Range":  "1-100",
+				},
+				map[string]string{
+					"name":       "demo/blobs",
+					"session_id": "test",
+				},
+				&mocks.MockedImageStore{
+					PutBlobChunkFn: func(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error) {
+						return 100, zerr.ErrInvalidRepositoryName
+					},
+					DeleteBlobUploadFn: func(repo, uuid string) error {
+						deleteCalled = true
+
+						return nil
+					},
+				},
+			)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(deleteCalled, ShouldBeFalse)
+
 			status = testPatchBlobUpload(
 				[]struct{ k, v string }{},
 				map[string]string{
@@ -1818,6 +1905,33 @@ func TestRoutes(t *testing.T) {
 			)
 			So(status, ShouldEqual, http.StatusNotFound)
 
+			deleteOnChunk := false
+			status = testUpdateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
+				},
+				map[string]string{
+					"Content-Length": "100",
+					"Content-Range":  "1-100",
+				},
+				map[string]string{
+					"name":       "demo/blobs",
+					"session_id": "test",
+				},
+				&mocks.MockedImageStore{
+					PutBlobChunkFn: func(ctx context.Context, repo, uuid string, from, to int64, body io.Reader) (int64, error) {
+						return 0, zerr.ErrInvalidRepositoryName
+					},
+					DeleteBlobUploadFn: func(repo, uuid string) error {
+						deleteOnChunk = true
+
+						return nil
+					},
+				},
+			)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(deleteOnChunk, ShouldBeFalse)
+
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
 					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
@@ -1920,6 +2034,33 @@ func TestRoutes(t *testing.T) {
 				},
 			)
 			So(status, ShouldEqual, http.StatusNotFound)
+
+			deleteOnFinish := false
+			status = testUpdateBlobUpload(
+				[]struct{ k, v string }{
+					{"digest", "sha256:7b8437f04f83f084b7ed68ad8c4a4947e12fc4e1b006b38129bac89114ec3621"},
+				},
+				map[string]string{
+					"Content-Length": "0",
+					"Content-Range":  "",
+				},
+				map[string]string{
+					"name":       "demo/blobs",
+					"session_id": "test",
+				},
+				&mocks.MockedImageStore{
+					FinishBlobUploadFn: func(repo, uuid string, body io.Reader, digest godigest.Digest) error {
+						return zerr.ErrInvalidRepositoryName
+					},
+					DeleteBlobUploadFn: func(repo, uuid string) error {
+						deleteOnFinish = true
+
+						return nil
+					},
+				},
+			)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(deleteOnFinish, ShouldBeFalse)
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{

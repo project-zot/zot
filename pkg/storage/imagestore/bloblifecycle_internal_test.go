@@ -63,7 +63,7 @@ func TestBlobLifecycle(t *testing.T) {
 	emptyDigest := godigest.FromBytes(nil)
 
 	sized := func(size int64) driver.FileInfo {
-		return &mocks.FileInfoMock{SizeFn: func() int64 { return size }}
+		return mocks.FileInfoFile(size)
 	}
 
 	newLifecycle := func(name string) (blobLifecycle, *lifecycleTestDriver) {

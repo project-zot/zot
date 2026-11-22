@@ -75,7 +75,9 @@ func (s *StorageDriverMock) Stat(ctx context.Context, path string) (driver.FileI
 		return s.StatFn(ctx, path)
 	}
 
-	return &FileInfoMock{}, nil
+	// Default to a regular object so DeleteBlob / negative-path fixtures that only
+	// stub Delete see a file. Directory paths must set IsDirFn themselves.
+	return FileInfoFile(int64(fileInfoSize)), nil
 }
 
 func (s *StorageDriverMock) List(ctx context.Context, path string) ([]string, error) {
@@ -131,6 +133,21 @@ type FileInfoMock struct {
 	ModTimeFn func() time.Time
 }
 
+// FileInfoFile returns a FileInfoMock for a regular object of the given size.
+func FileInfoFile(size int64) *FileInfoMock {
+	return &FileInfoMock{
+		IsDirFn: func() bool { return false },
+		SizeFn:  func() int64 { return size },
+	}
+}
+
+// FileInfoDir returns a FileInfoMock for a directory.
+func FileInfoDir() *FileInfoMock {
+	return &FileInfoMock{
+		IsDirFn: func() bool { return true },
+	}
+}
+
 func (f *FileInfoMock) Path() string {
 	if f != nil && f.PathFn != nil {
 		return f.PathFn()
@@ -160,6 +177,8 @@ func (f *FileInfoMock) IsDir() bool {
 		return f.IsDirFn()
 	}
 
+	// Unspecified fixtures default to directories. Blob/object fixtures must set
+	// IsDirFn (or use FileInfoFile).
 	return true
 }
 
