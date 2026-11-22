@@ -88,7 +88,7 @@ EOF
 }
 
 function teardown() {
-    # conditionally printing on failure is possible from teardown but not from from teardown_file
+    # conditionally printing on failure is possible from teardown but not from teardown_file
     cat ${BATS_FILE_TMPDIR}/zot/zot-log.json
 }
 
