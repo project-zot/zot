@@ -17,6 +17,10 @@ import (
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 )
 
+// singlePutThreshold is the smallest chunk size the S3 driver accepts. Below it, a write
+// through Writer is always a multipart upload of a single part.
+const singlePutThreshold = 5 * 1024 * 1024
+
 type Driver struct {
 	store storagedriver.StorageDriver
 }
@@ -164,6 +168,14 @@ func (driver *Driver) Writer(filepath string, isAppend bool) (storagedriver.File
 }
 
 func (driver *Driver) WriteFile(filepath string, content []byte) (int, error) {
+	if len(content) < singlePutThreshold {
+		if err := driver.store.PutContent(context.Background(), filepath, content); err != nil {
+			return -1, driver.formatErr(err, filepath)
+		}
+
+		return len(content), nil
+	}
+
 	stwr, err := driver.Writer(filepath, false)
 	if err != nil {
 		return -1, err

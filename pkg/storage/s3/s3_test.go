@@ -2217,8 +2217,8 @@ func TestRebuildDedupeMockStoreDriver(t *testing.T) {
 
 				return nil
 			},
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &mocks.FileWriterMock{}, errS3
+			PutContentFn: func(ctx context.Context, path string, content []byte) error {
+				return errS3
 			},
 		})
 
@@ -5207,21 +5207,16 @@ func TestDeleteBlobDeferredDuringRestoreWalk(t *testing.T) {
 
 				return nil, driver.PathNotFoundError{Path: readPath}
 			},
-			// zot's s3 Driver.WriteFile goes through store.Writer, not PutContent.
-			WriterFn: func(ctx context.Context, writePath string, isAppend bool) (driver.FileWriter, error) {
+			PutContentFn: func(ctx context.Context, writePath string, content []byte) error {
 				if strings.HasSuffix(writePath, storageConstants.DedupeRestoreCompleteMarker) {
 					if writeErr != nil {
-						return nil, writeErr
+						return writeErr
 					}
 
-					return &mocks.FileWriterMock{CommitFn: func() error {
-						markerWritten.Store(true)
-
-						return nil
-					}}, nil
+					markerWritten.Store(true)
 				}
 
-				return &mocks.FileWriterMock{}, nil
+				return nil
 			},
 			DeleteFn: func(ctx context.Context, deletePath string) error {
 				if deletePath == contentBlobPath {
