@@ -292,10 +292,12 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	var metaErr error
 
 	if isSignature {
-		metaErr = metaDB.DeleteSignature(repo, signedManifestDigest, mTypes.SignatureMetadata{
+		signatureMeta := mTypes.SignatureMetadata{
 			SignatureDigest: digest.String(),
 			SignatureType:   signatureType,
-		})
+		}
+
+		metaErr = metaDB.DeleteSignature(repo, signedManifestDigest, signatureMeta)
 
 		switch {
 		case errors.Is(metaErr, zerr.ErrImageMetaNotFound):
@@ -308,6 +310,26 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 		case metaErr != nil:
 			log.Error().Err(metaErr).Str("tag", reference).Str("repository", repo).Str("component", "metadb").
 				Msg("failed to delete signature meta")
+
+			log.Info().Str("component", "metadb").Msg("restoring image store")
+
+			// Restore the signature manifest so the caller can retry metadata cleanup after
+			// the MetaDB failure is resolved.
+			_, _, restoreErr := imgStore.PutImageManifest(context.Background(), repo, reference, mediaType, manifestBlob, nil)
+			if restoreErr != nil {
+				log.Error().Err(restoreErr).Str("component", "metadb").
+					Msg("failed to restore signature manifest to image store, database is not consistent")
+
+				retryErr := metaDB.DeleteSignature(repo, signedManifestDigest, signatureMeta)
+				if retryErr != nil && !errors.Is(retryErr, zerr.ErrImageMetaNotFound) {
+					log.Error().Err(retryErr).Str("repository", repo).Str("component", "metadb").
+						Msg("failed to retry signature metadata deletion after restore failure")
+				} else {
+					releaseIdleRepository(repo, storeController, metaDB, log)
+				}
+			}
+
+			return fmt.Errorf("%w: %w", zerr.ErrManifestRestoreAttempted, metaErr)
 		}
 	} else {
 		metaErr = metaDB.RemoveRepoReference(repo, reference, digest)
