@@ -157,6 +157,14 @@ func TestFormatErrClassification(t *testing.T) {
 			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 		})
 
+		Convey("WriteFile PutContent failure → classified via formatErr", func() {
+			storeMock.PutContentFn = func(_ context.Context, _ string, _ []byte) error {
+				return awserr.New("SlowDown", "throttle", nil)
+			}
+			_, err := s3Driver.WriteFile("/key", []byte("x"))
+			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
+		})
+
 		Convey("WriteFile Write failure → classified via formatErr", func() {
 			storeMock.WriterFn = func(_ context.Context, _ string, _ bool) (storagedriver.FileWriter, error) {
 				return &mocks.FileWriterMock{
@@ -165,7 +173,7 @@ func TestFormatErrClassification(t *testing.T) {
 					},
 				}, nil
 			}
-			_, err := s3Driver.WriteFile("/key", []byte("x"))
+			_, err := s3Driver.WriteFile("/key", make([]byte, multipartContentSize))
 			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 		})
 
@@ -177,7 +185,7 @@ func TestFormatErrClassification(t *testing.T) {
 					},
 				}, nil
 			}
-			_, err := s3Driver.WriteFile("/key", []byte("x"))
+			_, err := s3Driver.WriteFile("/key", make([]byte, multipartContentSize))
 			So(errors.Is(err, zerr.ErrStoragePermanent), ShouldBeTrue)
 		})
 
@@ -189,7 +197,7 @@ func TestFormatErrClassification(t *testing.T) {
 					},
 				}, nil
 			}
-			_, err := s3Driver.WriteFile("/key", []byte("x"))
+			_, err := s3Driver.WriteFile("/key", make([]byte, multipartContentSize))
 			So(errors.Is(err, zerr.ErrStorageTransient), ShouldBeTrue)
 		})
 
