@@ -638,6 +638,13 @@ func TestVerify(t *testing.T) {
 
 	defer func() { os.Args = oldArgs }()
 
+	Convey("Test verify without a config file", t, func(c C) {
+		os.Args = []string{"cli_test", "verify"}
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "accepts 1 arg(s), received 0")
+	})
+
 	Convey("Test verify bad config", t, func(c C) {
 		tmpfile := MakeTempFileWithContent(t, "zot-test.json", `{"log":{}}`)
 
