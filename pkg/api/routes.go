@@ -668,7 +668,13 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 			Msg("trying to get updated referrers by syncing on demand")
 
 		if errSync := routeHandler.c.SyncOnDemand.SyncReferrers(ctx, name, digest.String(), artifactTypes); errSync != nil {
-			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", digest.String()).
+			// A soft miss is answered from the local referrers below; only ErrSyncInternal is a failure.
+			event := routeHandler.c.Log.Debug()
+			if errors.Is(errSync, zerr.ErrSyncInternal) {
+				event = routeHandler.c.Log.Error()
+			}
+
+			event.Err(errSync).Str("repository", name).Str("reference", digest.String()).
 				Msg("failed to sync image referrers")
 		}
 	}
@@ -3451,7 +3457,13 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		}
 
 		if syncErr != nil {
-			routeHandler.c.Log.Err(syncErr).Str("repository", name).Str("reference", reference).
+			// A soft miss is answered from local storage below; only ErrSyncInternal is a failure.
+			event := routeHandler.c.Log.Debug()
+			if errors.Is(syncErr, zerr.ErrSyncInternal) {
+				event = routeHandler.c.Log.Error()
+			}
+
+			event.Err(syncErr).Str("repository", name).Str("reference", reference).
 				Msg("failed to sync image")
 		}
 	}
