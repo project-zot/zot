@@ -886,6 +886,10 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 	result := []ispec.Descriptor{}
 	seenDigests := make(map[godigest.Digest]struct{})
 
+	// A subject is looked for in image manifests and image indexes only, so
+	// nothing else is read.
+	candidates := make([]ispec.Descriptor, 0, len(index.Manifests))
+
 	for _, descriptor := range index.Manifests {
 		if descriptor.Digest == gdigest {
 			continue
@@ -899,26 +903,47 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 		// Mark as seen early to avoid processing duplicates
 		seenDigests[descriptor.Digest] = struct{}{}
 
-		buf, err := imgStore.GetBlobContent(repo, descriptor.Digest)
-		if err != nil {
-			if errclass.IsBlobUnavailable(err) {
-				log.Warn().Err(err).Str("blob", imgStore.BlobPath(repo, descriptor.Digest)).
-					Msg("skipping missing blob while listing referrers")
+		if descriptor.MediaType == ispec.MediaTypeImageManifest || descriptor.MediaType == ispec.MediaTypeImageIndex {
+			candidates = append(candidates, descriptor)
+		}
+	}
 
-				continue
-			}
+	// skipUnreadable logs a blob that could not be read and reports whether the
+	// listing goes on without it, which it does when the blob is missing.
+	skipUnreadable := func(descriptor ispec.Descriptor, err error) bool {
+		if errclass.IsBlobUnavailable(err) {
+			log.Warn().Err(err).Str("blob", imgStore.BlobPath(repo, descriptor.Digest)).
+				Msg("skipping missing blob while listing referrers")
 
-			log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, descriptor.Digest)).Msg("failed to read manifest")
+			return true
+		}
 
-			return nilIndex, err
+		log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, descriptor.Digest)).Msg("failed to read manifest")
+
+		return false
+	}
+
+	// Each candidate has to be read to learn its subject and the reads are independent, so
+	// warm them concurrently; the walk reads again what failed there. A parsed manifest is
+	// only needed until its subject has been compared, so the memo holds one window at a
+	// time, not the repository.
+	var memo *WalkMemo
+
+	for pos, descriptor := range candidates {
+		if pos%walkReadParallelism == 0 {
+			window := candidates[pos:min(pos+walkReadParallelism, len(candidates))]
+
+			memo = NewWalkMemo()
+			memo.Prefetch(context.Background(), imgStore, repo, window, log)
 		}
 
 		switch descriptor.MediaType {
 		case ispec.MediaTypeImageManifest:
-			var manifestContent ispec.Manifest
-
-			if err := json.Unmarshal(buf, &manifestContent); err != nil {
-				log.Error().Err(err).Str("manifest digest", descriptor.Digest.String()).Msg("invalid JSON")
+			manifestContent, err := memo.GetManifest(imgStore, repo, descriptor.Digest, log)
+			if err != nil {
+				if skipUnreadable(descriptor, err) {
+					continue
+				}
 
 				return nilIndex, err
 			}
@@ -942,10 +967,11 @@ func GetReferrers(imgStore storageTypes.ImageStore, repo string, gdigest godiges
 				Annotations:  manifestContent.Annotations,
 			})
 		case ispec.MediaTypeImageIndex:
-			var indexContent ispec.Index
-
-			if err := json.Unmarshal(buf, &indexContent); err != nil {
-				log.Error().Err(err).Str("manifest digest", descriptor.Digest.String()).Msg("invalid JSON")
+			indexContent, err := memo.GetIndex(imgStore, repo, descriptor.Digest, log)
+			if err != nil {
+				if skipUnreadable(descriptor, err) {
+					continue
+				}
 
 				return nilIndex, err
 			}
