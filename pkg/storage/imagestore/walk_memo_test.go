@@ -3,11 +3,14 @@ package imagestore_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"sort"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -154,6 +157,100 @@ func TestOverwritingMultiarchTagReadsOtherIndexesConcurrently(t *testing.T) {
 
 	if !slices.Equal(tagsBefore, sortedTags(t, store)) {
 		t.Fatal("tag set changed across an overwrite of an unrelated tag")
+	}
+}
+
+// Listing the referrers of a digest reads every other manifest and index in
+// the repository to find the ones whose subject it is. Those reads are
+// independent, so they must not run one round-trip at a time: every referrers
+// request on a repository with thousands of manifests would pay for all of them
+// in sequence.
+func TestGetReferrersReadsManifestsConcurrently(t *testing.T) {
+	const (
+		otherImages = 64
+		referrers   = 3
+		readDelay   = 5 * time.Millisecond
+	)
+
+	// Every read costs readDelay so overlapping Prefetch calls show up in
+	// maxInFlight (assert concurrency without comparing wall-clock totals).
+	store, counter, ctrl := newCountingStore(t, readDelay)
+
+	subject := testImage.CreateRandomImage()
+	if err := testImage.WriteImageToFileSystem(subject, testRepo, "subject", ctrl); err != nil {
+		t.Fatalf("seeding subject: %v", err)
+	}
+
+	var lastOther testImage.Image
+
+	for i := range otherImages {
+		lastOther = testImage.CreateRandomImage()
+		if err := testImage.WriteImageToFileSystem(lastOther, testRepo, fmt.Sprintf("other-%d", i), ctrl); err != nil {
+			t.Fatalf("seeding image %d: %v", i, err)
+		}
+	}
+
+	want := make([]string, 0, referrers)
+
+	for i := range referrers {
+		ref := testImage.CreateRandomImageWith().Subject(subject.DescriptorRef()).Build()
+		if err := testImage.WriteImageToFileSystem(ref, testRepo, ref.DigestStr(), ctrl); err != nil {
+			t.Fatalf("seeding referrer %d: %v", i, err)
+		}
+
+		want = append(want, ref.DigestStr())
+	}
+
+	sort.Strings(want)
+
+	counter.reads.Store(0)
+	counter.maxInFlight.Store(0)
+
+	index, err := store.GetReferrers(testRepo, subject.Digest(), nil)
+	if err != nil {
+		t.Fatalf("referrers: %v", err)
+	}
+
+	reads := counter.reads.Load()
+	maxInFlight := counter.maxInFlight.Load()
+
+	t.Logf("manifests=%d reads=%d maxInFlight=%d", 1+otherImages+referrers, reads, maxInFlight)
+
+	listed := func(index ispec.Index) []string {
+		digests := make([]string, 0, len(index.Manifests))
+		for _, desc := range index.Manifests {
+			digests = append(digests, desc.Digest.String())
+		}
+
+		sort.Strings(digests)
+
+		return digests
+	}
+
+	if got := listed(index); !slices.Equal(want, got) {
+		t.Fatalf("expected referrers %v, got %v", want, got)
+	}
+
+	if reads != 1+otherImages+referrers {
+		t.Fatalf("expected one read of index.json and one per other manifest, got %d", reads)
+	}
+
+	if maxInFlight < 2 {
+		t.Fatalf("expected concurrent Prefetch reads, maxInFlight=%d", maxInFlight)
+	}
+
+	// A manifest whose blob is gone is skipped, with Prefetch as without it.
+	if err := os.Remove(store.BlobPath(testRepo, lastOther.Digest())); err != nil {
+		t.Fatalf("removing a manifest blob: %v", err)
+	}
+
+	index, err = store.GetReferrers(testRepo, subject.Digest(), nil)
+	if err != nil {
+		t.Fatalf("referrers with a missing manifest: %v", err)
+	}
+
+	if got := listed(index); !slices.Equal(want, got) {
+		t.Fatalf("expected referrers %v with a missing manifest, got %v", want, got)
 	}
 }
 

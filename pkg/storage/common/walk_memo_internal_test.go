@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	zerr "zotregistry.dev/zot/v2/errors"
 	zlog "zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
@@ -729,4 +731,229 @@ func TestGetReferencedBlobsWithMemoReturnsCanceledAfterPrefetch(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("GetReferencedBlobsWithMemo error = %v, want context.Canceled", err)
 	}
+}
+
+// referrersRepo is a repository as GetReferrers reads it: an index.json of
+// image manifests of which only the last refers to subject.
+type referrersRepo struct {
+	digests  []godigest.Digest
+	index    []byte
+	plain    []byte
+	referrer []byte
+}
+
+func newReferrersRepo(t *testing.T, subject godigest.Digest, manifests int) referrersRepo {
+	t.Helper()
+
+	repo := referrersRepo{digests: make([]godigest.Digest, 0, manifests)}
+	index := ispec.Index{MediaType: ispec.MediaTypeImageIndex}
+	index.SchemaVersion = 2
+
+	for i := range manifests {
+		digest := godigest.FromString(fmt.Sprintf("referrers-walk-%d", i))
+		repo.digests = append(repo.digests, digest)
+		index.Manifests = append(index.Manifests, ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    digest,
+		})
+	}
+
+	manifest := ispec.Manifest{MediaType: ispec.MediaTypeImageManifest}
+	manifest.SchemaVersion = 2
+
+	var err error
+
+	if repo.index, err = json.Marshal(index); err != nil {
+		t.Fatalf("marshal index: %v", err)
+	}
+
+	if repo.plain, err = json.Marshal(manifest); err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+
+	manifest.Subject = &ispec.Descriptor{MediaType: ispec.MediaTypeImageManifest, Digest: subject}
+
+	if repo.referrer, err = json.Marshal(manifest); err != nil {
+		t.Fatalf("marshal referrer: %v", err)
+	}
+
+	return repo
+}
+
+func (repo referrersRepo) blob(digest godigest.Digest) []byte {
+	if digest == repo.digests[len(repo.digests)-1] {
+		return repo.referrer
+	}
+
+	return repo.plain
+}
+
+func TestGetReferrersWarmsOneWindowAtATime(t *testing.T) {
+	const manifests = 2*walkReadParallelism + 1
+
+	subject := godigest.FromString("referrers-walk-subject")
+	repo := newReferrersRepo(t, subject, manifests)
+	firstWindow := repo.digests[:walkReadParallelism]
+
+	var (
+		reads atomic.Int64
+		early atomic.Int64
+		held  atomic.Bool
+	)
+
+	held.Store(true)
+
+	started := make(chan struct{}, manifests)
+	release := make(chan struct{})
+
+	store := &concurrentPrefetchStore{}
+	store.GetIndexContentFn = func(string) ([]byte, error) {
+		return repo.index, nil
+	}
+	store.GetBlobContentFn = func(_ string, digest godigest.Digest) ([]byte, error) {
+		reads.Add(1)
+
+		if !slices.Contains(firstWindow, digest) {
+			if held.Load() {
+				early.Add(1)
+			}
+
+			return repo.blob(digest), nil
+		}
+
+		started <- struct{}{}
+
+		// The first read stays in flight, so the first window cannot end.
+		if digest == firstWindow[0] {
+			<-release
+		}
+
+		return repo.blob(digest), nil
+	}
+
+	type listing struct {
+		index ispec.Index
+		err   error
+	}
+
+	done := make(chan listing, 1)
+
+	go func() {
+		index, err := GetReferrers(store, "repo", subject, nil, zlog.NewTestLogger())
+		done <- listing{index, err}
+	}()
+
+	for range firstWindow {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			close(release)
+			<-done
+			t.Fatalf("timed out waiting for the reads of the first window")
+		}
+	}
+
+	// A walk that warmed the whole repository at once would go on reading here.
+	time.Sleep(50 * time.Millisecond)
+
+	if got := early.Load(); got != 0 {
+		t.Errorf("%d manifests past the first window were read while it was in flight, want 0", got)
+	}
+
+	held.Store(false)
+	close(release)
+
+	got := <-done
+	if got.err != nil {
+		t.Fatalf("GetReferrers: %v", got.err)
+	}
+
+	if len(got.index.Manifests) != 1 || got.index.Manifests[0].Digest != repo.digests[manifests-1] {
+		t.Fatalf("GetReferrers returned %v, want the last manifest only", got.index.Manifests)
+	}
+
+	if got := reads.Load(); got != manifests {
+		t.Fatalf("GetReferrers read %d manifests, want one read for each of the %d", got, manifests)
+	}
+}
+
+func TestGetReferrersWarmsEachWindowAfresh(t *testing.T) {
+	const manifests = walkReadParallelism + 1
+
+	subject := godigest.FromString("referrers-walk-subject")
+	repo := newReferrersRepo(t, subject, manifests)
+	first, last := repo.digests[0], repo.digests[manifests-1]
+
+	// newStore fails the first failures reads of first and the first read of last.
+	newStore := func(failures int) (*concurrentPrefetchStore, func(godigest.Digest) int) {
+		var mu sync.Mutex
+
+		reads := map[godigest.Digest]int{}
+
+		store := &concurrentPrefetchStore{}
+		store.GetIndexContentFn = func(string) ([]byte, error) {
+			return repo.index, nil
+		}
+		store.GetBlobContentFn = func(_ string, digest godigest.Digest) ([]byte, error) {
+			mu.Lock()
+			reads[digest]++
+			count := reads[digest]
+			mu.Unlock()
+
+			if (digest == first && count <= failures) || (digest == last && count == 1) {
+				return nil, errclass.MarkTransient(errors.New("backend outage"))
+			}
+
+			// Slow success, so that the failed read is the first to end.
+			time.Sleep(5 * time.Millisecond)
+
+			return repo.blob(digest), nil
+		}
+
+		return store, func(digest godigest.Digest) int {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return reads[digest]
+		}
+	}
+
+	t.Run("an error the walk recovers from", func(t *testing.T) {
+		store, reads := newStore(1)
+
+		index, err := GetReferrers(store, "repo", subject, nil, zlog.NewTestLogger())
+		if err != nil {
+			t.Fatalf("GetReferrers: %v", err)
+		}
+
+		if len(index.Manifests) != 1 || index.Manifests[0].Digest != last {
+			t.Fatalf("GetReferrers returned %v, want the last manifest only", index.Manifests)
+		}
+
+		// The second window is warmed although the first met an error, so
+		// its manifest is read again by the walk like those of the first.
+		for _, digest := range repo.digests {
+			want := 1
+			if digest == first || digest == last {
+				want = 2
+			}
+
+			if got := reads(digest); got != want {
+				t.Fatalf("manifest %s was read %d times, want %d", digest, got, want)
+			}
+		}
+	})
+
+	t.Run("an error the walk stops on", func(t *testing.T) {
+		store, reads := newStore(2)
+
+		_, err := GetReferrers(store, "repo", subject, nil, zlog.NewTestLogger())
+		if !errors.Is(err, zerr.ErrStorageTransient) {
+			t.Fatalf("GetReferrers error = %v, want the transient error of the first manifest", err)
+		}
+
+		if got := reads(last); got != 0 {
+			t.Fatalf("the second window was read %d times after the walk stopped, want 0", got)
+		}
+	})
 }
