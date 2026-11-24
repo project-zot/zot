@@ -210,15 +210,10 @@ jobs:
             sudo rm -rf /tmp/zot
       - name: Download previous benchmark data
         if: steps.bench.outcome == 'success'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: ./.github/actions/restore-benchmark-baseline
         with:
-          path: ./cache
-          # Caches are immutable: an exact-key hit restores the old snapshot and skips the
-          # save, freezing the history at the first run. A per-run key always saves, and the
-          # prefix restores the most recent earlier run's data.
-          key: ${{ runner.os }}-gen1-longrunning-benchmark-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-gen1-longrunning-benchmark-
+          workflow: nightly.yaml
+          artifact-name: benchmark-baseline-longrunning
       - name: Store benchmark result
         if: steps.bench.outcome == 'success'
         uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
@@ -232,6 +227,15 @@ jobs:
           # (and preferably an explicit ref) to resolve commit metadata via the GitHub API.
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.sha }}
+      - name: Upload benchmark baseline
+        if: github.ref == 'refs/heads/main' && steps.bench.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: benchmark-baseline-longrunning
+          path: ./cache/benchmark-data.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 90
 
   docker-image:
     name: Build docker image (for users still using Docker environments)
