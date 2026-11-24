@@ -223,20 +223,20 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		Aliases: []string{"verify"},
 		Short:   "`verify` validates a zot config file",
 		Long:    "`verify` validates a zot config file",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Do not show usage on errors which are not related to command line arguments
+			cmd.SilenceUsage = true
+
 			logger := zlog.NewLogger("info", "")
 
-			if len(args) > 0 {
-				cmd.SilenceUsage = true
+			if err := LoadConfiguration(conf, args[0]); err != nil {
+				logger.Error().Str("config", args[0]).Msg("invalid config file")
 
-				if err := LoadConfiguration(conf, args[0]); err != nil {
-					logger.Error().Str("config", args[0]).Msg("invalid config file")
-
-					return err
-				}
-
-				logger.Info().Str("config", args[0]).Msg("config file is valid")
+				return err
 			}
+
+			logger.Info().Str("config", args[0]).Msg("config file is valid")
 
 			return nil
 		},
