@@ -19,6 +19,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	testimage "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -415,10 +416,12 @@ func TestOnDeleteManifestSignatureMetaFailure(t *testing.T) {
 			name       string
 			restoreErr error
 			retryErr   error
+			noRetry    bool
 		}{
 			{name: "restore succeeds"},
 			{name: "restore fails and retry succeeds", restoreErr: errHookRestore},
 			{name: "restore fails and retry fails", restoreErr: errHookRestore, retryErr: errHookRestore},
+			{name: "restore is not durable", restoreErr: errclass.Wrap(zerr.ErrStorageNotDurable, errHookRestore), noRetry: true},
 		} {
 			Convey(testCase.name, func() {
 				restored := false
@@ -460,11 +463,11 @@ func TestOnDeleteManifestSignatureMetaFailure(t *testing.T) {
 				So(errors.Is(err, errHookInternal), ShouldBeTrue)
 				So(restored, ShouldBeTrue)
 				expectedDeleteCalls := 1
-				if testCase.restoreErr != nil {
+				if testCase.restoreErr != nil && !testCase.noRetry {
 					expectedDeleteCalls++
 				}
 				So(deleteCalls, ShouldEqual, expectedDeleteCalls)
-				So(released, ShouldEqual, testCase.restoreErr != nil && testCase.retryErr == nil)
+				So(released, ShouldEqual, testCase.restoreErr != nil && !testCase.noRetry && testCase.retryErr == nil)
 			})
 		}
 	})

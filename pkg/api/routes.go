@@ -997,6 +997,29 @@ func normalizeManifestExtraTags(raw []string) ([]string, error) {
 	return out, nil
 }
 
+func signatureTagsForDigest(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest) ([]string, error) {
+	tags, err := imgStore.GetImageTags(repo)
+	if err != nil {
+		return nil, err
+	}
+
+	matchingTags := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		_, tagDigest, _, err := imgStore.GetImageManifest(repo, tag)
+		if errors.Is(err, zerr.ErrManifestNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if tagDigest == digest {
+			matchingTags = append(matchingTags, tag)
+		}
+	}
+
+	return matchingTags, nil
+}
+
 // DeleteManifest godoc
 // @Summary Delete image manifest
 // @Description Delete an image's manifest given a reference or a digest
@@ -1076,6 +1099,24 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	var restoreTags []string
+	if rh.c.MetaDB != nil && zcommon.IsDigest(reference) {
+		isSignature, _, _, signatureErr := storage.CheckIsImageSignature(name, manifestBlob, reference)
+		if signatureErr == nil && isSignature {
+			restoreTags, err = signatureTagsForDigest(imgStore, name, manifestDigest)
+			if err != nil {
+				if writeStorageClassError(response, err) {
+					rh.c.Log.Error().Err(err).Msg("failed to snapshot signature tags before delete")
+				} else {
+					rh.c.Log.Error().Err(err).Msg("failed to snapshot signature tags before delete")
+					response.WriteHeader(http.StatusInternalServerError)
+				}
+
+				return
+			}
+		}
+	}
+
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 
 	err = imgStore.DeleteImageManifest(ctx, name, reference, detectCollision)
@@ -1123,7 +1164,7 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 
 	if rh.c.MetaDB != nil {
 		err := meta.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
-			rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+			rh.c.StoreController, rh.c.MetaDB, rh.c.Log, restoreTags...)
 		if err != nil {
 			// The image store manifest may have been restored (or restore may itself have
 			// failed), so this must not report success either way.

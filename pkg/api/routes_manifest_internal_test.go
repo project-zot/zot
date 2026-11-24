@@ -54,6 +54,10 @@ var errSignatureManifestRestoreTransient = errclass.MarkTransient(
 	errors.New("injected signature manifest restore failure"), //nolint:err113 // test
 )
 
+var errSignatureManifestNondurable = errclass.Wrap(
+	zerr.ErrStorageNotDurable, errors.New("injected nondurable signature restore"), //nolint:err113 // test
+)
+
 type failOnceSignatureDeleteMetaDB struct {
 	mTypes.MetaDB
 	deleteErr error
@@ -261,8 +265,9 @@ func TestDeleteManifestRestoresSignatureAfterMetaDBFailure(t *testing.T) {
 		subject.Digest(), subject.ManifestDescriptor.Data, storeController, metaDB, logger))
 
 	signature := image.CreateMockCosignBundleSignature(subject.DescriptorRef())
-	require.NoError(t, image.WriteImageToFileSystem(signature, "repo", signature.DigestStr(), storeController))
-	require.NoError(t, meta.OnUpdateManifest(ctx, "repo", signature.DigestStr(), ispec.MediaTypeImageManifest,
+	signatureTag := "signature-tag"
+	require.NoError(t, image.WriteImageToFileSystem(signature, "repo", signatureTag, storeController))
+	require.NoError(t, meta.OnUpdateManifest(ctx, "repo", signatureTag, ispec.MediaTypeImageManifest,
 		signature.Digest(), signature.ManifestDescriptor.Data, storeController, metaDB, logger))
 
 	failingMetaDB := &failOnceSignatureDeleteMetaDB{
@@ -283,6 +288,9 @@ func TestDeleteManifestRestoresSignatureAfterMetaDBFailure(t *testing.T) {
 	_, storedDigest, _, err := imgStore.GetImageManifest("repo", signature.DigestStr())
 	require.NoError(t, err)
 	require.Equal(t, signature.Digest(), storedDigest)
+	_, restoredTagDigest, _, err := imgStore.GetImageManifest("repo", signatureTag)
+	require.NoError(t, err)
+	require.Equal(t, signature.Digest(), restoredTagDigest)
 
 	repoMeta, err := metaDB.GetRepoMeta(ctx, "repo")
 	require.NoError(t, err)
@@ -347,6 +355,46 @@ func TestDeleteManifestRetriesSignatureMetaDeleteAfterRestoreFailure(t *testing.
 	response := invokeDeleteManifest(t, handler, signature.Digest())
 	require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
 	require.Equal(t, 2, deleteCalls)
+}
+
+func TestDeleteManifestPreservesSignatureMetaAfterNondurableRestore(t *testing.T) {
+	subject := image.CreateDefaultImage()
+	signature := image.CreateMockCosignBundleSignature(subject.DescriptorRef())
+	restored := false
+	deleteCalls := 0
+	store := mocks.MockedImageStore{
+		GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+			return signature.ManifestDescriptor.Data, signature.Digest(), ispec.MediaTypeImageManifest, nil
+		},
+		PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte,
+			extraTags []string,
+		) (godigest.Digest, godigest.Digest, error) {
+			restored = true
+
+			return signature.Digest(), subject.Digest(), errSignatureManifestNondurable
+		},
+	}
+	metaDB := mocks.MetaDBMock{
+		DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
+			sigMeta mTypes.SignatureMetadata,
+		) error {
+			deleteCalls++
+
+			return errSignatureMetaDeleteTransient
+		},
+	}
+	controller := &Controller{
+		Config:          config.New(),
+		Log:             log.NewTestLogger(),
+		MetaDB:          metaDB,
+		StoreController: storage.StoreController{DefaultStore: store},
+	}
+	handler := &RouteHandler{c: controller}
+
+	response := invokeDeleteManifest(t, handler, signature.Digest())
+	require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
+	require.True(t, restored)
+	require.Equal(t, 1, deleteCalls)
 }
 
 func TestDeleteManifestKeepsStateWhenIndexCommitFails(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
 )
 
@@ -269,7 +270,7 @@ func OnUpdateManifestDigestTags(ctx context.Context, repo string, tags []string,
 // of image pushed(normal images, signatures, etc.). In case of any errors, it makes sure to keep
 // consistency between metadb and the image store.
 func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest, manifestBlob []byte,
-	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
+	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger, restoreTags ...string,
 ) error {
 	if zcommon.IsReferrersTag(reference) {
 		// The store already deleted the referrers tag entry, which may have emptied the
@@ -315,17 +316,23 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 
 			// Restore the signature manifest so the caller can retry metadata cleanup after
 			// the MetaDB failure is resolved.
-			_, _, restoreErr := imgStore.PutImageManifest(context.Background(), repo, reference, mediaType, manifestBlob, nil)
+			_, _, restoreErr := imgStore.PutImageManifest(context.Background(), repo, reference, mediaType, manifestBlob,
+				restoreTags)
 			if restoreErr != nil {
 				log.Error().Err(restoreErr).Str("component", "metadb").
 					Msg("failed to restore signature manifest to image store, database is not consistent")
 
-				retryErr := metaDB.DeleteSignature(repo, signedManifestDigest, signatureMeta)
-				if retryErr != nil && !errors.Is(retryErr, zerr.ErrImageMetaNotFound) {
-					log.Error().Err(retryErr).Str("repository", repo).Str("component", "metadb").
-						Msg("failed to retry signature metadata deletion after restore failure")
+				if errclass.IsStorageNotDurable(restoreErr) {
+					log.Warn().Err(restoreErr).Str("repository", repo).Str("component", "metadb").
+						Msg("signature manifest restore may have committed; preserving signature metadata")
 				} else {
-					releaseIdleRepository(repo, storeController, metaDB, log)
+					retryErr := metaDB.DeleteSignature(repo, signedManifestDigest, signatureMeta)
+					if retryErr != nil && !errors.Is(retryErr, zerr.ErrImageMetaNotFound) {
+						log.Error().Err(retryErr).Str("repository", repo).Str("component", "metadb").
+							Msg("failed to retry signature metadata deletion after restore failure")
+					} else {
+						releaseIdleRepository(repo, storeController, metaDB, log)
+					}
 				}
 			}
 
