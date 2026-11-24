@@ -3,8 +3,13 @@
 package api
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -27,6 +32,7 @@ type onDemandInBackgroundMock struct {
 	enabledForRepoFn func(repo string) bool
 	syncImageFn      func(ctx context.Context, repo, reference string) error
 	syncImageCalls   int
+	syncReferrersFn  func(ctx context.Context, repo, subjectDigest string, artifactTypes []string) error
 	// streaming makes IsStreamingEnabledForRepo true, as if a separate stream registry also matched
 	// the repo.
 	streaming           bool
@@ -46,7 +52,13 @@ func (mock *onDemandInBackgroundMock) SyncImage(ctx context.Context, repo, refer
 	return nil
 }
 
-func (mock *onDemandInBackgroundMock) SyncReferrers(context.Context, string, string, []string) error {
+func (mock *onDemandInBackgroundMock) SyncReferrers(ctx context.Context, repo, subjectDigest string,
+	artifactTypes []string,
+) error {
+	if mock.syncReferrersFn != nil {
+		return mock.syncReferrersFn(ctx, repo, subjectDigest, artifactTypes)
+	}
+
 	return nil
 }
 
@@ -585,6 +597,129 @@ func TestGetImageManifestJoinsInFlightStream(t *testing.T) {
 			if !queued || onDemand.fetchForStreamCalls != 0 {
 				t.Fatalf("queued %t, FetchManifestForStream() called %d times: want a queued sync only",
 					queued, onDemand.fetchForStreamCalls)
+			}
+		})
+	}
+}
+
+func TestOnDemandSyncErrorLogLevel(t *testing.T) {
+	t.Parallel()
+
+	const (
+		repo      = "library/test"
+		reference = "latest"
+	)
+
+	subject := godigest.FromString("subject")
+
+	enabled := true
+	appConfig := config.New()
+	appConfig.Extensions = &extconf.ExtensionConfig{
+		Sync: &syncconf.Config{Enable: &enabled},
+	}
+
+	for _, testCase := range []struct {
+		name      string
+		syncErr   error
+		wantLevel string
+	}{
+		{
+			name:      "repository no registry syncs",
+			syncErr:   zerr.ErrSyncImageFilteredOut,
+			wantLevel: "debug",
+		},
+		{
+			name:      "image missing upstream",
+			syncErr:   zerr.ErrManifestNotFound,
+			wantLevel: "debug",
+		},
+		{
+			name:      "hard failure",
+			syncErr:   zerr.ErrSyncInternal,
+			wantLevel: "error",
+		},
+		{
+			name:      "wrapped hard failure",
+			syncErr:   fmt.Errorf("stream: %w", zerr.ErrSyncInternal),
+			wantLevel: "error",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			var logs bytes.Buffer
+
+			onDemand := &onDemandInBackgroundMock{
+				enabledForRepoFn: func(string) bool { return false },
+				syncImageFn:      func(context.Context, string, string) error { return testCase.syncErr },
+				syncReferrersFn: func(context.Context, string, string, []string) error {
+					return testCase.syncErr
+				},
+			}
+			handler := &RouteHandler{c: &Controller{
+				Config:       appConfig,
+				SyncOnDemand: onDemand,
+				Log:          log.NewLoggerWithWriter("debug", &logs),
+			}}
+			store := mocks.MockedImageStore{
+				GetImageManifestFn: func(_, _ string) ([]byte, godigest.Digest, string, error) {
+					return []byte("manifest"), "", "", nil
+				},
+			}
+
+			_, _, _, _, err := getImageManifest(context.Background(), handler, store, repo, reference, nil)
+			if err != nil {
+				t.Fatalf("getImageManifest() error = %v, want nil", err)
+			}
+
+			if _, err := getReferrers(context.Background(), handler, store, repo, subject, nil); err != nil {
+				t.Fatalf("getReferrers() error = %v, want nil", err)
+			}
+
+			type logLine struct {
+				Level      string `json:"level"`
+				Message    string `json:"message"`
+				Error      string `json:"error"`
+				Repository string `json:"repository"`
+				Reference  string `json:"reference"`
+				Func       string `json:"func"`
+			}
+
+			lines := map[string][]logLine{}
+
+			scanner := bufio.NewScanner(&logs)
+			for scanner.Scan() {
+				var line logLine
+
+				if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+					t.Fatalf("log line %q: %v", scanner.Text(), err)
+				}
+
+				lines[line.Message] = append(lines[line.Message], line)
+			}
+
+			for _, want := range []logLine{
+				{Message: "failed to sync image", Reference: reference, Func: "api.getImageManifest"},
+				{Message: "failed to sync image referrers", Reference: subject.String(), Func: "api.getReferrers"},
+			} {
+				got := lines[want.Message]
+				if len(got) != 1 {
+					t.Fatalf("%q logged %d times, want once", want.Message, len(got))
+				}
+
+				if got[0].Level != testCase.wantLevel {
+					t.Errorf("%q logged at level %q, want %q", want.Message, got[0].Level, testCase.wantLevel)
+				}
+
+				if got[0].Error != testCase.syncErr.Error() || got[0].Repository != repo ||
+					got[0].Reference != want.Reference {
+					t.Errorf("%q logged with error %q, repository %q, reference %q", want.Message,
+						got[0].Error, got[0].Repository, got[0].Reference)
+				}
+
+				if !strings.HasSuffix(got[0].Func, want.Func) {
+					t.Errorf("%q logged from %q, want the route function %q", want.Message, got[0].Func, want.Func)
+				}
 			}
 		})
 	}
