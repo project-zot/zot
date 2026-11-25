@@ -135,6 +135,9 @@ EOF
                     ],
                     "onDemand": true,
                     "tlsVerify": false,
+                    "exclude": [
+                        "local/**"
+                    ],
                     "content": [
                         {
                             "prefix": "**"
@@ -851,4 +854,45 @@ EOF
     run regctl artifact list --filter-artifact-type "application/invalid" localhost:${zot_port2}/artifact-ref:demo --format raw-body
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 0 ]
+}
+
+# A repository that no sync registry covers is served from local storage: the
+# on-demand attempt for it is not a failure and must not be logged as one.
+@test "requests for a repository excluded from sync log no sync error" {
+    zot_port2=`cat ${BATS_FILE_TMPDIR}/zot.port2`
+    local zot_log=${BATS_FILE_TMPDIR}/zot-ondemand.log
+
+    # local/golang matches the exclude pattern of the on-demand instance
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:${zot_port2}/local/golang:1.20
+    [ "$status" -eq 0 ]
+
+    # a manifest request by tag is answered from local storage
+    local digest=$(manifest_digest http://127.0.0.1:${zot_port2}/v2/local/golang/manifests/1.20)
+    [ -n "${digest}" ]
+
+    run curl -s -o /dev/null -w "%{http_code}" \
+        http://127.0.0.1:${zot_port2}/v2/local/golang/referrers/${digest}
+    [ "$status" -eq 0 ]
+    [ "$output" = "200" ]
+
+    # each route reports the skipped sync for this repository, and not as an error
+    run jq -Rnr '[
+        inputs
+        | fromjson?
+        | objects
+        | select(.repository == "local/golang" and (.message | startswith("failed to sync image")))
+    ] | [
+        (map(select(.message == "failed to sync image")) | length),
+        (map(select(.message == "failed to sync image referrers")) | length),
+        (map(select(.level == "error")) | length)
+    ] | @tsv' "${zot_log}"
+    [ "$status" -eq 0 ]
+    local manifest_lines=$(echo "${output}" | cut -f1)
+    local referrers_lines=$(echo "${output}" | cut -f2)
+    local error_lines=$(echo "${output}" | cut -f3)
+    [ "${manifest_lines}" -ge 1 ]
+    [ "${referrers_lines}" -ge 1 ]
+    [ "${error_lines}" -eq 0 ]
 }
