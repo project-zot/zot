@@ -272,6 +272,9 @@ type SetRepoReferenceOptions struct {
 	// entry is created (e.g. the manifest blob storage mod time on a storage re-parse). Zero means
 	// unknown and the metaDB falls back to the current time.
 	PushTimestamp time.Time
+	// InitialPullTimestamp gives newly recovered statistics a pull-retention window.
+	// A zero value leaves the new entry's pull time unset.
+	InitialPullTimestamp time.Time
 }
 
 // SetRepoReferenceOption sets an optional hint on SetRepoReferenceOptions.
@@ -282,6 +285,13 @@ type SetRepoReferenceOption func(*SetRepoReferenceOptions)
 func WithPushTimestamp(pushTimestamp time.Time) SetRepoReferenceOption {
 	return func(opts *SetRepoReferenceOptions) {
 		opts.PushTimestamp = pushTimestamp
+	}
+}
+
+// WithInitialPullTimestamp sets a fallback pull time for newly created statistics.
+func WithInitialPullTimestamp(pullTimestamp time.Time) SetRepoReferenceOption {
+	return func(opts *SetRepoReferenceOptions) {
+		opts.InitialPullTimestamp = pullTimestamp
 	}
 }
 

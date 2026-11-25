@@ -21,6 +21,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	"zotregistry.dev/zot/v2/pkg/api/config"
 	rediscfg "zotregistry.dev/zot/v2/pkg/api/config/redis"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
@@ -31,6 +32,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/meta/redis"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/gc"
 	"zotregistry.dev/zot/v2/pkg/storage/local"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 	tcommon "zotregistry.dev/zot/v2/pkg/test/common"
@@ -450,6 +452,88 @@ func TestParseStorageWithRedisDB(t *testing.T) {
 	})
 }
 
+func TestParseStoragePullRetention(t *testing.T) {
+	Convey("pulledWithin retains an old tag after Redis loses its pull history", t, func() {
+		ctx := context.Background()
+		miniRedis := miniredis.RunT(t)
+		logger := log.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		imageStore := local.NewImageStore(t.TempDir(), false, false, logger, metrics, nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imageStore}
+		client, err := rediscfg.GetRedisClient(map[string]any{"url": "redis://" + miniRedis.Addr()}, logger)
+		So(err, ShouldBeNil)
+		metaDB, err := redis.New(client, redis.DBDriverParameters{KeyPrefix: "zot"}, logger)
+		So(err, ShouldBeNil)
+
+		const tag = "old"
+		image := CreateRandomImage()
+		So(WriteImageToFileSystem(image, repo, tag, storeController), ShouldBeNil)
+		body, digest, mediaType, err := imageStore.GetImageManifest(repo, tag)
+		So(err, ShouldBeNil)
+		So(meta.OnUpdateManifest(ctx, repo, tag, mediaType, digest, body, storeController, metaDB, logger), ShouldBeNil)
+		repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		unpulled := repoMeta.Statistics[digest.String()]
+		So(unpulled.LastPullTimestamp.Equal(time.Unix(0, 0)), ShouldBeTrue)
+		So(meta.ParseRepo(repo, metaDB, storeController, logger), ShouldBeNil)
+		repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		So(repoMeta.Statistics[digest.String()], ShouldResemble, unpulled)
+
+		pulledWithin := 7 * 24 * time.Hour
+		pushedAt := time.Now().Add(-2 * pulledWithin)
+		So(os.Chtimes(imageStore.BlobPath(repo, digest), pushedAt, pushedAt), ShouldBeNil)
+		So(meta.OnGetManifest(repo, tag, mediaType, body, storeController, metaDB, logger), ShouldBeNil)
+		repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		So(repoMeta.Statistics[digest.String()].DownloadCount, ShouldEqual, 1)
+
+		miniRedis.FlushAll()
+		_, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldEqual, zerr.ErrRepoMetaNotFound)
+		parseStarted := time.Now()
+		So(meta.MaybeParseStorage(metaDB, storeController, true, "v1", logger), ShouldBeNil)
+		parseFinished := time.Now()
+		repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		recovered := repoMeta.Statistics[digest.String()]
+		So(recovered.PushTimestamp, ShouldHappenWithin, time.Minute, pushedAt)
+		So(recovered.DownloadCount, ShouldEqual, 0)
+		So(repoMeta.DownloadCount, ShouldEqual, 0)
+
+		collector := gc.NewGarbageCollect(imageStore, metaDB, gc.Options{
+			ImageRetention: config.ImageRetention{
+				Policies: []config.RetentionPolicy{{
+					Repositories: []string{repo},
+					KeepTags:     []config.KeepTagsPolicy{{Patterns: []string{".*"}, PulledWithin: &pulledWithin}},
+				}},
+			},
+		}, &logger, logger, metrics)
+		So(collector.CleanRepo(ctx, repo), ShouldBeNil)
+		_, retainedDigest, _, err := imageStore.GetImageManifest(repo, tag)
+		So(err, ShouldBeNil)
+		So(retainedDigest, ShouldEqual, digest)
+		So(recovered.LastPullTimestamp.Before(parseStarted), ShouldBeFalse)
+		So(recovered.LastPullTimestamp.After(parseFinished), ShouldBeFalse)
+
+		So(meta.ParseRepo(repo, metaDB, storeController, logger), ShouldBeNil)
+		repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		So(repoMeta.Statistics[digest.String()], ShouldResemble, recovered)
+
+		So(meta.OnGetManifest(repo, tag, mediaType, body, storeController, metaDB, logger), ShouldBeNil)
+		repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		pulled := repoMeta.Statistics[digest.String()]
+		So(pulled.DownloadCount, ShouldEqual, 1)
+		So(pulled.LastPullTimestamp, ShouldHappenAfter, recovered.LastPullTimestamp)
+		So(meta.ParseRepo(repo, metaDB, storeController, logger), ShouldBeNil)
+		repoMeta, err = metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		So(repoMeta.Statistics[digest.String()], ShouldResemble, pulled)
+	})
+}
+
 func TestParseStorageDynamoWrapper(t *testing.T) {
 	tskip.SkipDynamo(t)
 
@@ -519,6 +603,7 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		err = os.Chtimes(blobPath, pushedAt, pushedAt)
 		So(err, ShouldBeNil)
 
+		parseStarted := time.Now()
 		err = meta.ParseStorage(metaDB, storeController, log) //nolint: contextcheck
 		So(err, ShouldBeNil)
 
@@ -528,6 +613,8 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		stats, ok := repoMeta.Statistics[manifestDigest.String()]
 		So(ok, ShouldBeTrue)
 		So(stats.PushTimestamp, ShouldHappenWithin, time.Minute, pushedAt)
+		So(stats.LastPullTimestamp, ShouldHappenWithin, time.Minute, parseStarted)
+		So(stats.DownloadCount, ShouldEqual, 0)
 		So(repoMeta.Tags["tag1"].TaggedTimestamp.IsZero(), ShouldBeTrue)
 	})
 

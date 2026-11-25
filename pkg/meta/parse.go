@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -290,6 +291,10 @@ func parseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 			return err
 		}
 
+		// Storage has no pull history. Give newly recovered statistics one full
+		// pull-retention window, using the same timestamp for every image in the repo.
+		initialPullTimestamp := mTypes.WithInitialPullTimestamp(time.Now())
+
 		for _, manifest := range indexContent.Manifests {
 			tag := manifest.Annotations[ispec.AnnotationRefName]
 
@@ -326,7 +331,7 @@ func parseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 			// mod time is the closest remaining record of when the image was pushed. Pass it as a
 			// hint so a metaDB rebuild doesn't stamp every image with the current time. StatBlob
 			// requires the repo lock, which this function already holds.
-			setOpts := []mTypes.SetRepoReferenceOption{}
+			setOpts := []mTypes.SetRepoReferenceOption{initialPullTimestamp}
 			if found, _, modTime, err := imageStore.StatBlob(repo, manifest.Digest); err == nil && found {
 				setOpts = append(setOpts, mTypes.WithPushTimestamp(modTime))
 			}

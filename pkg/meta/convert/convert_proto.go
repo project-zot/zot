@@ -164,6 +164,15 @@ func GetProtoPushTimestamp(pushTimestamp time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(pushTimestamp)
 }
 
+// GetProtoInitialPullTimestamp preserves the unset pull time when no hint is given.
+func GetProtoInitialPullTimestamp(pullTimestamp time.Time) *timestamppb.Timestamp {
+	if pullTimestamp.IsZero() {
+		return &timestamppb.Timestamp{}
+	}
+
+	return timestamppb.New(pullTimestamp)
+}
+
 func GetProtoPlatforms(platforms []ispec.Platform) []*proto_go.Platform {
 	result := []*proto_go.Platform{}
 
