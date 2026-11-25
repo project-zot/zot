@@ -48,6 +48,23 @@ func TestMaxTimeoutFailuresFlag(t *testing.T) {
 	})
 }
 
+func TestOutputFormatFlag(t *testing.T) {
+	Convey("documented output formats are accepted", t, func() {
+		for _, format := range []string{"", "stdout", "json", "ci-cd"} {
+			So(validOutputFormat(format), ShouldBeTrue)
+		}
+	})
+
+	Convey("an unknown output format fails before any test runs", t, func() {
+		So(validOutputFormat("ci-cd-tls"), ShouldBeFalse)
+
+		cl := NewPerfRootCmd()
+		cl.SetArgs([]string{"-o", "ci-cd-tls", "http://127.0.0.1:1"})
+		So(func() { _ = cl.Execute() }, ShouldPanicWith,
+			`unknown output format "ci-cd-tls": want stdout, json or ci-cd`)
+	})
+}
+
 func TestCreateWorkDir(t *testing.T) {
 	Convey("with an explicit base dir, blobs live in a zb-* subdir and only that subdir is removed", t, func() {
 		baseDir := t.TempDir()

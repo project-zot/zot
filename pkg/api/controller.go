@@ -8,6 +8,7 @@ import (
 	goerrors "errors"
 	"fmt"
 	"maps"
+	"net"
 	"net/http"
 	"os"
 	"slices"
@@ -27,6 +28,7 @@ import (
 	ext "zotregistry.dev/zot/v2/pkg/extensions"
 	events "zotregistry.dev/zot/v2/pkg/extensions/events"
 	monitoring "zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	"zotregistry.dev/zot/v2/pkg/ktls"
 	log "zotregistry.dev/zot/v2/pkg/log"
 	meta "zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
@@ -314,6 +316,16 @@ func (c *Controller) Run() error {
 		// Set GetCertificate callback for dynamic certificate reloading
 		server.TLSConfig.GetCertificate = watcher.GetCertificate
 
+		if tlsConfig.Offload {
+			if ktlsListener := c.newKTLSListener(listener, server); ktlsListener != nil {
+				c.markReady()
+
+				// The listener returns established connections (kTLS or *tls.Conn), so
+				// plain Serve; net/http reads Request.TLS through ConnectionState.
+				return server.Serve(ktlsListener)
+			}
+		}
+
 		c.markReady()
 
 		// Pass empty strings to ServeTLS since GetCertificate handles certificate loading
@@ -323,6 +335,74 @@ func (c *Controller) Run() error {
 	c.markReady()
 
 	return server.Serve(listener)
+}
+
+// newKTLSListener wraps listener so TLS 1.3 connections are offloaded to the
+// kernel after the handshake. It returns nil when kTLS must not be used.
+func (c *Controller) newKTLSListener(listener net.Listener, server *http.Server) net.Listener {
+	// The kernel's AES-GCM is not the Go FIPS 140 module zot was validated with.
+	if fips140.Enabled() {
+		c.Log.Warn().Msg("kernel TLS offload disabled in FIPS 140 mode, using userspace TLS")
+
+		return nil
+	}
+
+	// Client certificates change the handshake record layout; the listener
+	// would fall back on every connection, so do not wrap at all.
+	if server.TLSConfig.ClientAuth != tls.NoClientCert {
+		c.Log.Warn().Msg("kernel TLS offload is not supported with mTLS (tls.cacert), using userspace TLS")
+
+		return nil
+	}
+
+	if !ktls.Available() {
+		// Still wrap: the listener falls back per connection, and the observer
+		// reports why. Loading the module later needs a restart.
+		c.Log.Warn().Msg("kernel TLS offload requested but unavailable (is the tls module loaded?), " +
+			"connections will use userspace TLS")
+	} else {
+		c.Log.Info().Msg("kernel TLS offload enabled for TLS 1.3 HTTP/1.1 connections")
+	}
+
+	// ServeTLS would add these itself. Serve configures HTTP/2 only when
+	// NextProtos already lists h2, and h2 connections stay *tls.Conn.
+	server.TLSConfig.NextProtos = []string{"h2", "http/1.1"}
+
+	// NewListener clones TLSConfig; the clone keeps the GetCertificate callback,
+	// so dynamic certificate reloading still applies to kTLS connections.
+	return ktls.NewListener(listener, server.TLSConfig,
+		ktls.WithHandshakeTimeout(tlsHandshakeTimeout(server)),
+		ktls.WithObserver(func(reason string, remoteAddr net.Addr, state tls.ConnectionState, err error) {
+			switch reason {
+			case ktls.ReasonOffloaded:
+				c.Log.Debug().Str("remote", remoteAddr.String()).Msg("kernel TLS offload active")
+			case ktls.ReasonConnUnusable, ktls.ReasonPanic:
+				c.Log.Error().Err(err).Str("reason", reason).Str("remote", remoteAddr.String()).
+					Msg("kernel TLS offload failed, connection closed")
+			default:
+				c.Log.Debug().Err(err).Str("reason", reason).Str("remote", remoteAddr.String()).
+					Str("tlsVersion", tls.VersionName(state.Version)).
+					Msg("kernel TLS offload not used, using userspace TLS")
+			}
+		}))
+}
+
+// tlsHandshakeTimeout mirrors net/http's: the smallest non-zero of the read
+// header, read and write timeouts.
+func tlsHandshakeTimeout(server *http.Server) time.Duration {
+	var timeout time.Duration
+
+	for _, d := range []time.Duration{server.ReadHeaderTimeout, server.ReadTimeout, server.WriteTimeout} {
+		if d > 0 && (timeout == 0 || d < timeout) {
+			timeout = d
+		}
+	}
+
+	if timeout == 0 {
+		timeout = readHeaderTimeout
+	}
+
+	return timeout
 }
 
 func (c *Controller) markReady() {

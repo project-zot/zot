@@ -90,6 +90,11 @@ type TLSConfig struct {
 	Cert   string
 	Key    string
 	CACert string
+	// Offload hands TLS 1.3 record encryption to the Linux kernel after the
+	// handshake, so blob GETs can use sendfile over HTTPS too. Needs the tls
+	// kernel module; connections that cannot be offloaded (TLS 1.2, h2, mTLS,
+	// FIPS mode, no kernel support) keep using userspace TLS.
+	Offload bool `json:"offload,omitempty" mapstructure:"offload,omitempty"`
 }
 
 type MTLSConfig struct {

@@ -40,6 +40,8 @@ const (
 	largeBlob            = 100 * MiB
 	superLargeBlob       = 1 * GiB
 	cicdFmt              = "ci-cd"
+	stdoutFmt            = "stdout"
+	jsonFmt              = "json"
 	secureProtocol       = "https"
 	httpKeepAlive        = 30 * time.Second
 	maxSourceIPs         = 1000
