@@ -182,3 +182,27 @@ dex_session () {
     local attached=$(printf '%s\n' "${signature_digest}" "${sbom_digest}" | sort)
     [ "${listed}" = "${attached}" ]
 }
+
+# A manifest and the oci-layout file are each written to the bucket in one request.
+# S3 reports the ETag of an object written by a multipart upload as <md5>-<parts>.
+# index.json is left out: zot copies it into place, and S3 gives a copy a plain ETag.
+@test "write the small files of a repository in one request" {
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        docker://ghcr.io/project-zot/test-images/busybox:1.38 docker://127.0.0.1:8080/busybox:1.38
+    [ "$status" -eq 0 ]
+
+    local manifest=$(skopeo inspect --tls-verify=false docker://127.0.0.1:8080/busybox:1.38 | jq -r '.Digest')
+    [ -n "${manifest}" ]
+
+    run skopeo --insecure-policy copy --src-tls-verify=false \
+        docker://127.0.0.1:8080/busybox:1.38 oci:${BATS_FILE_TMPDIR}/busybox:1.38
+    [ "$status" -eq 0 ]
+    [ "$(skopeo inspect oci:${BATS_FILE_TMPDIR}/busybox:1.38 | jq -r '.Digest')" = "${manifest}" ]
+
+    for file in busybox/blobs/sha256/${manifest#sha256:} busybox/oci-layout; do
+        local etag=$(awslocal s3api list-objects-v2 --bucket zot-storage \
+            --query "Contents[?ends_with(Key, '/${file}')].ETag" --output text 2>/dev/null)
+        echo "${file} ${etag}" >&3
+        [[ "${etag}" =~ ^\"[0-9a-f]{32}\"$ ]]
+    done
+}
