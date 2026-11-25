@@ -134,3 +134,51 @@ dex_session () {
         [[ "$line" =~ .*metadata.* || "$line" =~ .*trivy.* ]]
     done
 }
+
+# The referrers of an image are found among the other manifests of its
+# repository, and nothing else is listed.
+@test "list the referrers of an image among unrelated manifests" {
+    local repo=127.0.0.1:8080/busybox
+    local signature=${BATS_FILE_TMPDIR}/signature.json
+    local sbom=${BATS_FILE_TMPDIR}/sbom.json
+    local unrelated=${BATS_FILE_TMPDIR}/unrelated.txt
+
+    run skopeo --insecure-policy copy --dest-tls-verify=false \
+        docker://ghcr.io/project-zot/test-images/busybox:1.38 docker://${repo}:1.38
+    [ "$status" -eq 0 ]
+
+    echo '{"artifact": "signature"}' > ${signature}
+    echo '{"artifact": "sbom"}' > ${sbom}
+
+    run oras attach --disable-path-validation --plain-http ${repo}:1.38 \
+        --artifact-type 'signature/example' ${signature}:application/json
+    [ "$status" -eq 0 ]
+    local signature_digest=$(echo "$output" | sed -n 's/^Digest: //p')
+    [ -n "${signature_digest}" ]
+
+    # enough manifests for the listing to read them in more than one batch
+    for i in $(seq 1 40); do
+        echo "unrelated ${i}" > ${unrelated}
+        run oras push --disable-path-validation --plain-http ${repo}:unrelated-${i} \
+            ${unrelated}:text/plain
+        [ "$status" -eq 0 ]
+    done
+
+    # a referrer of another manifest of the repository
+    run oras attach --disable-path-validation --plain-http ${repo}:unrelated-1 \
+        --artifact-type 'signature/example' ${signature}:application/json
+    [ "$status" -eq 0 ]
+
+    run oras attach --disable-path-validation --plain-http ${repo}:1.38 \
+        --artifact-type 'sbom/example' ${sbom}:application/json
+    [ "$status" -eq 0 ]
+    local sbom_digest=$(echo "$output" | sed -n 's/^Digest: //p')
+    [ -n "${sbom_digest}" ]
+
+    local subject=$(skopeo inspect --tls-verify=false docker://${repo}:1.38 | jq -r '.Digest')
+    run curl -s -f http://127.0.0.1:8080/v2/busybox/referrers/${subject}
+    [ "$status" -eq 0 ]
+    local listed=$(echo "$output" | jq -r '.manifests[].digest' | sort)
+    local attached=$(printf '%s\n' "${signature_digest}" "${sbom_digest}" | sort)
+    [ "${listed}" = "${attached}" ]
+}
