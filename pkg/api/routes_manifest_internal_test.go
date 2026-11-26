@@ -166,6 +166,64 @@ func invokeDeleteManifest(t *testing.T, handler *RouteHandler, digest godigest.D
 	return response
 }
 
+func TestSignatureTagsForDigest(t *testing.T) {
+	digest := godigest.FromString("signature")
+	indexContent, err := json.Marshal(ispec.Index{
+		SchemaVersion: 2,
+		Manifests: []ispec.Descriptor{
+			{Digest: digest, Annotations: map[string]string{ispec.AnnotationRefName: "signature-tag"}},
+			{Digest: digest},
+			{Digest: godigest.FromString("other"), Annotations: map[string]string{ispec.AnnotationRefName: "other-tag"}},
+		},
+	})
+	require.NoError(t, err)
+
+	t.Run("reads index once without fetching manifests", func(t *testing.T) {
+		indexReads := 0
+		manifestReads := 0
+		store := mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				indexReads++
+
+				return indexContent, nil
+			},
+			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+				manifestReads++
+
+				return nil, "", "", nil
+			},
+		}
+
+		tags, err := signatureTagsForDigest(store, "repo", digest)
+		require.NoError(t, err)
+		require.Equal(t, []string{"signature-tag"}, tags)
+		require.Equal(t, 1, indexReads)
+		require.Zero(t, manifestReads)
+	})
+
+	t.Run("propagates index read error", func(t *testing.T) {
+		store := mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return nil, errSignatureManifestRestoreTransient
+			},
+		}
+
+		_, err := signatureTagsForDigest(store, "repo", digest)
+		require.ErrorIs(t, err, errSignatureManifestRestoreTransient)
+	})
+
+	t.Run("rejects invalid index", func(t *testing.T) {
+		store := mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return []byte("not-json"), nil
+			},
+		}
+
+		_, err := signatureTagsForDigest(store, "repo", digest)
+		require.Error(t, err)
+	})
+}
+
 func TestDeleteManifestCompletesMetaDBCleanupAfterBlobDeleteError(t *testing.T) {
 	for _, testCase := range []struct {
 		name              string
@@ -321,8 +379,13 @@ func TestDeleteManifestRestoresSignatureAfterMetaDBFailure(t *testing.T) {
 func TestDeleteManifestRetriesSignatureMetaDeleteAfterRestoreFailure(t *testing.T) {
 	subject := image.CreateDefaultImage()
 	signature := image.CreateMockCosignBundleSignature(subject.DescriptorRef())
+	indexContent, err := json.Marshal(ispec.Index{SchemaVersion: 2})
+	require.NoError(t, err)
 	deleteCalls := 0
 	store := mocks.MockedImageStore{
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return indexContent, nil
+		},
 		GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
 			return signature.ManifestDescriptor.Data, signature.Digest(), ispec.MediaTypeImageManifest, nil
 		},
@@ -360,9 +423,14 @@ func TestDeleteManifestRetriesSignatureMetaDeleteAfterRestoreFailure(t *testing.
 func TestDeleteManifestPreservesSignatureMetaAfterNondurableRestore(t *testing.T) {
 	subject := image.CreateDefaultImage()
 	signature := image.CreateMockCosignBundleSignature(subject.DescriptorRef())
+	indexContent, err := json.Marshal(ispec.Index{SchemaVersion: 2})
+	require.NoError(t, err)
 	restored := false
 	deleteCalls := 0
 	store := mocks.MockedImageStore{
+		GetIndexContentFn: func(repo string) ([]byte, error) {
+			return indexContent, nil
+		},
 		GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
 			return signature.ManifestDescriptor.Data, signature.Digest(), ispec.MediaTypeImageManifest, nil
 		},

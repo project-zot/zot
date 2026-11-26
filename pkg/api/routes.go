@@ -998,21 +998,25 @@ func normalizeManifestExtraTags(raw []string) ([]string, error) {
 }
 
 func signatureTagsForDigest(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest) ([]string, error) {
-	tags, err := imgStore.GetImageTags(repo)
-	if err != nil {
+	var index ispec.Index
+	if err := imgStore.WithRepoReadLock(repo, func() error {
+		indexContent, err := imgStore.GetIndexContent(repo)
+		if err != nil {
+			return err
+		}
+
+		return json.Unmarshal(indexContent, &index)
+	}); err != nil {
 		return nil, err
 	}
 
-	matchingTags := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		_, tagDigest, _, err := imgStore.GetImageManifest(repo, tag)
-		if errors.Is(err, zerr.ErrManifestNotFound) {
+	matchingTags := make([]string, 0, len(index.Manifests))
+	for _, manifest := range index.Manifests {
+		if manifest.Digest != digest {
 			continue
 		}
-		if err != nil {
-			return nil, err
-		}
-		if tagDigest == digest {
+
+		if tag, ok := manifest.Annotations[ispec.AnnotationRefName]; ok {
 			matchingTags = append(matchingTags, tag)
 		}
 	}

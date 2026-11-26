@@ -411,23 +411,37 @@ func TestOnDeleteManifestSignatureMetaFailure(t *testing.T) {
 		referrerBody, err := json.Marshal(referrer)
 		So(err, ShouldBeNil)
 		referrerDigest := godigest.FromBytes(referrerBody)
+		emptyIndex, err := json.Marshal(ispec.Index{SchemaVersion: 2})
+		So(err, ShouldBeNil)
+		restoredIndex, err := json.Marshal(ispec.Index{
+			SchemaVersion: 2,
+			Manifests:     []ispec.Descriptor{{Digest: referrerDigest}},
+		})
+		So(err, ShouldBeNil)
 
 		for _, testCase := range []struct {
-			name       string
-			restoreErr error
-			retryErr   error
-			noRetry    bool
+			name         string
+			restoreErr   error
+			retryErr     error
+			indexContent []byte
+			indexErr     error
+			noRetry      bool
 		}{
 			{name: "restore succeeds"},
-			{name: "restore fails and retry succeeds", restoreErr: errHookRestore},
-			{name: "restore fails and retry fails", restoreErr: errHookRestore, retryErr: errHookRestore},
+			{name: "restore fails and retry succeeds", restoreErr: errHookRestore, indexContent: emptyIndex},
+			{name: "restore fails and retry fails", restoreErr: errHookRestore, retryErr: errHookRestore, indexContent: emptyIndex},
 			{name: "restore is not durable", restoreErr: errclass.Wrap(zerr.ErrStorageNotDurable, errHookRestore), noRetry: true},
+			{name: "restore may have committed", restoreErr: errHookRestore, indexContent: restoredIndex, noRetry: true},
+			{name: "restore state is unknown", restoreErr: errHookRestore, indexErr: errHookRestore, noRetry: true},
 		} {
 			Convey(testCase.name, func() {
 				restored := false
 				released := false
 				deleteCalls := 0
 				imgStore := mocks.MockedImageStore{
+					GetIndexContentFn: func(repo string) ([]byte, error) {
+						return testCase.indexContent, testCase.indexErr
+					},
 					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte,
 						extraTags []string,
 					) (godigest.Digest, godigest.Digest, error) {
