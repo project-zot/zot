@@ -891,7 +891,7 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 		if !ok {
 			stats = &proto_go.DescriptorStatistics{
 				DownloadCount:     0,
-				LastPullTimestamp: &timestamppb.Timestamp{},
+				LastPullTimestamp: mConvert.GetProtoInitialPullTimestamp(options.InitialPullTimestamp),
 				PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
 				PushedBy:          userid,
 			}

@@ -499,7 +499,7 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 	if !ok {
 		stats = &proto_go.DescriptorStatistics{
 			DownloadCount:     0,
-			LastPullTimestamp: &timestamppb.Timestamp{},
+			LastPullTimestamp: mConvert.GetProtoInitialPullTimestamp(options.InitialPullTimestamp),
 			PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
 			PushedBy:          userid,
 		}
