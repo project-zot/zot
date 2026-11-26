@@ -118,8 +118,8 @@ func parseStorage(metaDB mTypes.MetaDB, storeController stypes.StoreController, 
 	return stats, nil
 }
 
-// parseStorageRepo parses repo into the metaDB unless the metaDB is already newer than its
-// index.json. Errors are logged here, and partial is reported the same way parseRepo does.
+// parseStorageRepo parses repo into the metaDB unless its metadata is newer than its
+// index.json and covers all its manifests. Errors are logged here.
 func parseStorageRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger,
 ) (bool, error) {
 	imgStore := storeController.GetImageStore(repo)
@@ -133,14 +133,9 @@ func parseStorageRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.
 	}
 
 	metaLastUpdated := metaDB.GetRepoLastUpdated(repo)
+	checkMetadata := !metaLastUpdated.IsZero() && storageLastUpdated.Before(metaLastUpdated)
 
-	// If repo metadata doesn't exist (zero time), always parse it
-	// Otherwise, only parse if storage is newer than metadata
-	if !metaLastUpdated.IsZero() && storageLastUpdated.Before(metaLastUpdated) {
-		return false, nil
-	}
-
-	partial, err := parseRepo(repo, metaDB, storeController, log)
+	partial, err := parseRepo(repo, metaDB, storeController, log, checkMetadata)
 	if err != nil {
 		log.Error().Err(err).Str("repo", repo).Str("rootDir", imgStore.RootDir()).Msg("failed to sync repo")
 
@@ -242,15 +237,15 @@ func getReposToBeDeleted(allStorageRepos []string, allMetaDBRepos []string) []st
 
 // ParseRepo reads the contents of a repo and syncs all images and signatures found.
 func ParseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger) error {
-	_, err := parseRepo(repo, metaDB, storeController, log)
+	_, err := parseRepo(repo, metaDB, storeController, log, false)
 
 	return err
 }
 
-// parseRepo syncs all images and signatures in a repo. It returns partial=true
-// when a manifest was skipped because its blob is missing, so the caller knows
-// the metaDB is incomplete even though no error was returned.
+// parseRepo syncs images and signatures in a repo. With checkMetadata set, it skips the sync
+// if the metaDB already covers the index. It returns partial=true if a manifest blob was missing.
 func parseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreController, log log.Logger,
+	checkMetadata bool,
 ) (bool, error) {
 	imageStore := storeController.GetImageStore(repo)
 
@@ -271,6 +266,17 @@ func parseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 			log.Error().Err(err).Str("repository", repo).Msg("failed to unmarshal index.json for repo")
 
 			return err
+		}
+
+		if checkMetadata {
+			repoMeta, err := metaDB.GetRepoMeta(context.Background(), repo)
+			if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+				return err
+			}
+
+			if err == nil && repoMetadataCoversIndex(repoMeta, indexContent.Manifests) {
+				return nil
+			}
 		}
 
 		// Collect tags that exist in storage to preserve them
@@ -345,6 +351,39 @@ func parseRepo(repo string, metaDB mTypes.MetaDB, storeController stypes.StoreCo
 	})
 
 	return partial, err
+}
+
+func repoMetadataCoversIndex(repoMeta mTypes.RepoMeta, manifests []ispec.Descriptor) bool {
+	// Signature manifests are recorded separately from image tags and statistics.
+	signatures := make(map[string]struct{})
+
+	for _, byType := range repoMeta.Signatures {
+		for _, entries := range byType {
+			for _, signature := range entries {
+				signatures[signature.SignatureManifestDigest] = struct{}{}
+			}
+		}
+	}
+
+	for _, manifest := range manifests {
+		tag := manifest.Annotations[ispec.AnnotationRefName]
+		if zcommon.IsReferrersTag(tag) ||
+			(!compat.IsImageManifestMediaType(manifest.MediaType) && !compat.IsImageIndexMediaType(manifest.MediaType)) {
+			continue
+		}
+
+		digest := manifest.Digest.String()
+		_, hasStats := repoMeta.Statistics[digest]
+		if _, signed := signatures[digest]; signed && (!hasStats || zcommon.IsCosignSignature(tag)) {
+			continue
+		}
+
+		if !hasStats || (tag != "" && repoMeta.Tags[tag].Digest != digest) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func getAllRepos(storeController stypes.StoreController, log log.Logger) ([]string, error) {
