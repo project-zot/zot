@@ -75,8 +75,6 @@ if [ -z "${input_file}" ]; then
 fi
 
 function verify_prerequisites {
-    mkdir -p ${data_dir}
-
     command -v regctl
     if [ $? -ne 0 ]; then
         echo "you need to install regctl as a prerequisite"
@@ -92,6 +90,10 @@ function verify_prerequisites {
     return 0
 }
 
+verify_prerequisites || exit 1
+
+regctl_cmd="regctl"
+
 if [ ${debug} -eq 1 ]; then
     set -x
     regctl_cmd="${regctl_cmd} -v debug"
@@ -99,8 +101,6 @@ fi
 
 target_repo=$(jq -r -c ".target_repo" ${input_file})
 source_repos=$(jq -r -c '.source_repos[]' ${input_file})
-
-regctl_cmd="regctl"
 
 digest_params=""
 for repo in ${source_repos[@]}; do
