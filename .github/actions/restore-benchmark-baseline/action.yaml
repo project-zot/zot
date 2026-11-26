@@ -1,0 +1,58 @@
+name: Restore benchmark baseline
+description: Restore an artifact from the latest earlier successful main run with benchmark data.
+inputs:
+  workflow:
+    description: Workflow filename containing the benchmark
+    required: true
+  artifact-name:
+    description: Baseline artifact name (unique per benchmark and backend)
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Find baseline run
+      id: baseline
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        WORKFLOW: ${{ inputs.workflow }}
+        ARTIFACT_NAME: ${{ inputs.artifact-name }}
+      run: |
+        # Skip PRs, failed runs, this run (including retries), and expired artifacts.
+        # Artifacts are listed newest artifact first, not newest run first: re-running an
+        # older main run re-uploads its baseline, so collect candidates from every page and
+        # check them by descending run ID (run IDs increase with run creation time).
+        candidates=()
+        page=1
+        while true; do
+          artifacts=$(gh api --method GET "repos/$GH_REPO/actions/artifacts" \
+            -f name="$ARTIFACT_NAME" -f per_page=100 -f page="$page")
+          mapfile -t -O "${#candidates[@]}" candidates < <(jq -r --argjson current "$GITHUB_RUN_ID" '
+            .artifacts[] | select(.expired == false and .workflow_run.head_branch == "main") |
+            select(.workflow_run.id < $current) | .workflow_run.id' <<< "$artifacts")
+          if [ "$(jq '.artifacts | length' <<< "$artifacts")" -lt 100 ]; then
+            break
+          fi
+          page=$((page + 1))
+        done
+        for run_id in $(printf '%s\n' "${candidates[@]}" | sort -rnu); do
+          run=$(gh api "repos/$GH_REPO/actions/runs/$run_id")
+          if jq -e --arg workflow "$WORKFLOW" '
+            .path == (".github/workflows/" + $workflow) and
+            .head_branch == "main" and .conclusion == "success" and
+            (.event == "push" or .event == "schedule" or .event == "workflow_dispatch")' \
+            <<< "$run" > /dev/null; then
+            echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+        done
+        echo "::warning::No successful main run has an unexpired $ARTIFACT_NAME baseline; starting a new history."
+    - name: Download baseline
+      if: steps.baseline.outputs.run-id != ''
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ./cache
+        github-token: ${{ github.token }}
+        run-id: ${{ steps.baseline.outputs.run-id }}

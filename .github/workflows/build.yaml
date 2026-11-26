@@ -34,18 +34,20 @@ jobs:
           cache: false
           check-latest: true
           go-version-file: .go-version
-      - name: Cache go dependencies
+      - name: Restore go dependencies
         id: cache-go-dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-mod-
-      - name: Cache go build output
+      # Eight ~1.4 GB build caches exceed the repository quota. Keep only Linux targets.
+      - name: Restore go build output
+        if: matrix.os == 'linux'
         id: cache-go-build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -81,6 +83,20 @@ jobs:
         env:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
+
+      # Only main pushes populate caches; PR-scoped copies compete with main for quota.
+      - name: Save go dependencies
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ steps.cache-go-dependencies.outputs.cache-primary-key }}
+      - name: Save go build output
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.os == 'linux' && steps.cache-go-build.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: ${{ steps.cache-go-build.outputs.cache-primary-key }}
 
       - name: Generate GraphQL Introspection JSON on Release
         if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'
