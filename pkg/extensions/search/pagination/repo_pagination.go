@@ -1,6 +1,7 @@
 package pagination
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"sync"
@@ -68,7 +69,12 @@ func (pf *RepoSummariesPageFinder) Page() ([]*gql_gen.RepoSummary, zcommon.PageI
 		// Fallback to default (should not happen due to validation in NewRepoSumPageFinder)
 		sortFn = sortFuncs[AlphabeticAsc]
 	}
-	slices.SortFunc(pf.pageBuffer, sortFn)
+
+	// The buffer order depends on map iteration in MetaDB, so ties have to be broken
+	// for every request to page through the same order.
+	slices.SortFunc(pf.pageBuffer, func(a, b *gql_gen.RepoSummary) int {
+		return cmp.Or(sortFn(a, b), RepoSortByAlphabeticAsc(a, b))
+	})
 
 	// the offset and limit are calculated in terms of repos counted
 	start := pf.offset
