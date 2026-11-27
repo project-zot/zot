@@ -1010,6 +1010,130 @@ func TestParseRepoRereadsSignatureBlobWhenApplying(t *testing.T) {
 	})
 }
 
+func TestParseRepoSignatureReadsTakeReadSlot(t *testing.T) {
+	logger := log.NewTestLogger()
+	fixture := newParseFixture(t)
+
+	var signatureManifest ispec.Manifest
+	if err := json.Unmarshal(fixture.manifestBlob, &signatureManifest); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+
+	layerDigests := map[godigest.Digest]struct{}{}
+	for _, layer := range signatureManifest.Layers {
+		layerDigests[layer.Digest] = struct{}{}
+	}
+
+	storeModes(func(mode string, wrap func(mocks.MockedImageStore) storage.StoreController) {
+		Convey("the signature reads wait for a shared read slot and hold one each, "+mode+" store", t, func() {
+			signed := fixture.manifestDigest("signed", 0)
+			signatureDigest := fixture.manifestDigest("signature", 0)
+			entries := []indexEntry{
+				{fixture.manifestDigest("image", 0), "image"},
+				{signatureDigest, "sha256-" + signed.Encoded() + ".sig"},
+			}
+
+			var (
+				signatureReads  atomic.Int32
+				slotsHeldByTest atomic.Int32
+				allHeld         = make(chan struct{})
+				reReadStarted   = make(chan struct{})
+				done            = make(chan error, 1)
+				mu              sync.Mutex
+				slotsAtRead     []int
+				holdOnce        sync.Once
+			)
+
+			// the slots a read sees taken: the test holds 31, so a read holding its own slot sees 32
+			recordSlots := func() {
+				mu.Lock()
+				defer mu.Unlock()
+
+				slotsAtRead = append(slotsAtRead, len(parseReadSlots))
+			}
+
+			metaDB := mocks.MetaDBMock{
+				SetRepoReferencesFn: func(context.Context, string, []mTypes.RepoReference) error {
+					holdOnce.Do(func() {
+						for range parseReadParallelism {
+							parseReadSlots <- struct{}{}
+							slotsHeldByTest.Add(1)
+						}
+
+						close(allHeld)
+					})
+
+					return nil
+				},
+			}
+
+			controller := wrap(mocks.MockedImageStore{
+				GetIndexContentFn: func(string) ([]byte, error) { return indexBlobOf(entries), nil },
+				GetBlobContentFn: func(_ string, digest godigest.Digest) ([]byte, error) {
+					if digest == signatureDigest && signatureReads.Add(1) == 2 {
+						recordSlots()
+						close(reReadStarted)
+					}
+
+					return fixture.blob(digest)
+				},
+				StatBlobFn: func(_ string, digest godigest.Digest) (bool, int64, time.Time, error) {
+					if _, isLayer := layerDigests[digest]; isLayer {
+						recordSlots()
+					}
+
+					return true, 0, time.Time{}, nil
+				},
+			})
+
+			defer func() {
+				for slotsHeldByTest.Load() > 0 {
+					<-parseReadSlots
+					slotsHeldByTest.Add(-1)
+				}
+
+				<-done
+			}()
+
+			go func() {
+				_, err := parseRepo("repo", metaDB, controller, logger)
+				done <- err
+			}()
+
+			select {
+			case <-allHeld:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the references were never written")
+			}
+
+			select {
+			case <-reReadStarted:
+				t.Fatal("the signature blob was read while every read slot was held")
+			case <-time.After(probeSettle):
+			}
+
+			<-parseReadSlots
+			slotsHeldByTest.Add(-1)
+
+			var err error
+
+			select {
+			case err = <-done:
+				done <- err
+			case <-time.After(5 * time.Second):
+				t.Fatal("the signature phase did not finish with one free read slot")
+			}
+
+			So(err, ShouldBeNil)
+			So(slotsAtRead, ShouldHaveLength, 1+len(layerDigests))
+
+			for _, slots := range slotsAtRead {
+				So(slots, ShouldEqual, parseReadParallelism)
+			}
+		})
+	})
+}
+
 func TestParseRepoReturnsSignatureError(t *testing.T) {
 	logger := log.NewTestLogger()
 	fixture := newParseFixture(t)
@@ -1116,6 +1240,7 @@ type budgetScenario struct {
 	configSizes        []int64 // size StatBlob reports for the config of each entry
 	failManifest       int     // entry whose manifest read fails, -1 for none
 	statFailure        *configStatFailure
+	sharedConfig       bool // every manifest points to the config of entry 0
 }
 
 // configStatFailure makes the StatBlob of one entry's config fail with an error, or report it as not found.
@@ -1151,8 +1276,16 @@ func runBudgetScenario(t *testing.T, fixture parseFixture, controller func(mocks
 
 		entryManifest := manifest
 		entryManifest.Config.Digest = godigest.FromString(fmt.Sprintf("budget-config-%d", i))
+		if scenario.sharedConfig {
+			entryManifest.Config.Digest = godigest.FromString("budget-config-0")
+		}
+
 		entryManifest.Config.Size = scenario.manifestConfigSize
-		configIndex[entryManifest.Config.Digest] = i
+
+		if _, shared := configIndex[entryManifest.Config.Digest]; !shared {
+			configIndex[entryManifest.Config.Digest] = i
+		}
+
 		manifestIndex[entry.digest] = i
 
 		blob, err := json.Marshal(entryManifest)
@@ -1344,6 +1477,27 @@ func TestParseRepoChunkBudgetCountsManifests(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestParseRepoChargesSharedConfigPerEntry(t *testing.T) {
+	fixture := newParseFixture(t)
+
+	storeModes(func(mode string, wrap func(mocks.MockedImageStore) storage.StoreController) {
+		Convey("every entry is charged the size of the config it shares, "+mode+" store", t, func() {
+			run := runBudgetScenario(t, fixture, wrap, budgetScenario{
+				configSizes:  repeatSize(10*mebibyte, 10),
+				failManifest: -1,
+				sharedConfig: true,
+			})
+
+			So(run.err, ShouldBeNil)
+			So(batchSizes(run.batches), ShouldResemble, []int{3, 3, 3, 1})
+
+			for _, reads := range run.configReadsPerBatch {
+				So(len(reads), ShouldBeLessThanOrEqualTo, 1)
+			}
+		})
+	})
 }
 
 func TestParseRepoReadErrorBeyondChunkCut(t *testing.T) {

@@ -385,9 +385,33 @@ func setRepoReferences(repo string, metaDB mTypes.MetaDB, references []mTypes.Re
 	return nil
 }
 
-func applySignatures(repo string, metaDB mTypes.MetaDB, signatures []signatureRef, imageStore stypes.ImageStore,
+// slottedReader takes a slot of parseReadSlots for each blob read and releases it right after, so that the
+// signature phase honours the same read bound as the chunk reads without holding a slot between reads.
+type slottedReader struct {
+	stypes.ImageStore
+}
+
+func (r slottedReader) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
+	parseReadSlots <- struct{}{}
+
+	defer func() { <-parseReadSlots }()
+
+	return r.ImageStore.GetBlobContent(repo, digest)
+}
+
+func (r slottedReader) StatBlob(repo string, digest godigest.Digest) (bool, int64, time.Time, error) {
+	parseReadSlots <- struct{}{}
+
+	defer func() { <-parseReadSlots }()
+
+	return r.ImageStore.StatBlob(repo, digest)
+}
+
+func applySignatures(repo string, metaDB mTypes.MetaDB, signatures []signatureRef, rawStore stypes.ImageStore,
 	log log.Logger,
 ) error {
+	imageStore := slottedReader{rawStore}
+
 	for _, sig := range signatures {
 		// the blob is read again instead of kept from the chunk read, so that a repo with many
 		// signatures does not hold all their manifests in memory until the last chunk is written
@@ -707,11 +731,10 @@ func manifestWindow(entries []ispec.Descriptor) []ispec.Descriptor {
 }
 
 // cutChunk returns the leading entries of window whose configs stay within parseConfigBudget, and at least
-// one. A config shared by several entries is held once, so it is charged once.
+// one. Every entry is charged its config, also when entries share it: the metaDB buffers one image meta per
+// entry before it writes.
 func cutChunk(window []ispec.Descriptor, reads map[blobKey]*blobRead) []ispec.Descriptor {
 	var bytes int64
-
-	charged := map[godigest.Digest]struct{}{}
 
 	for i, descriptor := range window {
 		key, ok := blobKeyOf(descriptor)
@@ -724,15 +747,10 @@ func cutChunk(window []ispec.Descriptor, reads map[blobKey]*blobRead) []ispec.De
 			continue
 		}
 
-		if _, done := charged[read.configDigest]; done {
-			continue
-		}
-
 		if i > 0 && read.configBytes > parseConfigBudget-bytes {
 			return window[:i]
 		}
 
-		charged[read.configDigest] = struct{}{}
 		bytes += read.configBytes
 	}
 
