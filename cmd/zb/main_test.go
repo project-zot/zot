@@ -232,3 +232,21 @@ func TestUpdateStatsTimeoutCount(t *testing.T) {
 		So(summary.timeoutErrorCount, ShouldEqual, 1)
 	})
 }
+
+func TestGetRandomClientIPsAuthCreds(t *testing.T) {
+	Convey("The password of the auth creds may contain colons", t, func() {
+		client, err := getRandomClientIPs("user:pass:word", "http://127.0.0.1:8080", nil)
+		So(err, ShouldBeNil)
+		So(client.UserInfo, ShouldNotBeNil)
+		So(client.UserInfo.Username, ShouldEqual, "user")
+		So(client.UserInfo.Password, ShouldEqual, "pass:word")
+	})
+
+	Convey("Auth creds without a colon do not panic", t, func() {
+		client, err := getRandomClientIPs("user", "http://127.0.0.1:8080", nil)
+		So(err, ShouldBeNil)
+		So(client.UserInfo, ShouldNotBeNil)
+		So(client.UserInfo.Username, ShouldEqual, "user")
+		So(client.UserInfo.Password, ShouldEqual, "")
+	})
+}

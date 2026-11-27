@@ -1103,8 +1103,9 @@ func getRandomClientIPs(auth string, url string, ips []string) (*resty.Client, e
 	client := resty.New()
 
 	if auth != "" {
-		creds := strings.Split(auth, ":")
-		client.SetBasicAuth(creds[0], creds[1])
+		// Only the first colon separates the user name from the password, which may contain colons.
+		username, password, _ := strings.Cut(auth, ":")
+		client.SetBasicAuth(username, password)
 	}
 
 	// get random ip client
