@@ -2115,6 +2115,112 @@ func TestInitRemovesStreamTempFiles(t *testing.T) {
 	})
 }
 
+func TestStartupPrunesEmptyNamespaces(t *testing.T) {
+	Convey("Init removes empty namespace directories and leaves live storage in place", t, func() {
+		conf := config.New()
+		rootDir := t.TempDir()
+		subDir := t.TempDir()
+		outside := t.TempDir()
+
+		// Dedupe opens cache.db for the life of the store. A second Init must not wait on that lock.
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.Dedupe = false
+		conf.Storage.SubPaths = map[string]config.StorageConfig{
+			"/sub": {RootDirectory: subDir, Dedupe: false},
+		}
+
+		So(os.MkdirAll(filepath.Join(rootDir, "user", "foo"), 0o755), ShouldBeNil)
+		So(os.MkdirAll(filepath.Join(subDir, "org", "repo"), 0o755), ShouldBeNil)
+
+		layout := []byte(`{"imageLayoutVersion":"1.0.0"}`)
+		index := []byte(`{"schemaVersion":2}`)
+		sibling := filepath.Join(rootDir, "sibling")
+		nested := filepath.Join(sibling, "nested")
+
+		So(os.MkdirAll(filepath.Join(sibling, ispec.ImageBlobsDir, "sha256"), 0o755), ShouldBeNil)
+		So(os.WriteFile(filepath.Join(sibling, ispec.ImageLayoutFile), layout, 0o600), ShouldBeNil)
+		So(os.WriteFile(filepath.Join(sibling, ispec.ImageIndexFile), index, 0o600), ShouldBeNil)
+		So(os.MkdirAll(nested, 0o755), ShouldBeNil)
+		So(os.WriteFile(filepath.Join(nested, ispec.ImageLayoutFile), layout, 0o600), ShouldBeNil)
+		So(os.WriteFile(filepath.Join(nested, ispec.ImageIndexFile), index, 0o600), ShouldBeNil)
+
+		reserved := filepath.Join(rootDir, storageConstants.BlobUploadDir)
+		So(os.MkdirAll(reserved, 0o755), ShouldBeNil)
+
+		// An empty namespace outside the root must stay if the only path to it is a symlink.
+		So(os.MkdirAll(filepath.Join(outside, "user", "foo"), 0o755), ShouldBeNil)
+		So(os.WriteFile(filepath.Join(outside, "keep"), []byte("keep"), 0o600), ShouldBeNil)
+
+		link := filepath.Join(rootDir, "linked")
+		So(os.Symlink(outside, link), ShouldBeNil)
+
+		ctlr := api.NewController(conf)
+		So(ctlr.Init(), ShouldBeNil)
+
+		_, err := os.Stat(filepath.Join(rootDir, "user", "foo"))
+		So(os.IsNotExist(err), ShouldBeTrue)
+		_, err = os.Stat(filepath.Join(rootDir, "user"))
+		So(os.IsNotExist(err), ShouldBeTrue)
+		_, err = os.Stat(filepath.Join(subDir, "org", "repo"))
+		So(os.IsNotExist(err), ShouldBeTrue)
+		_, err = os.Stat(filepath.Join(subDir, "org"))
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		gotLayout, err := os.ReadFile(filepath.Join(sibling, ispec.ImageLayoutFile))
+		So(err, ShouldBeNil)
+		So(gotLayout, ShouldResemble, layout)
+		gotIndex, err := os.ReadFile(filepath.Join(sibling, ispec.ImageIndexFile))
+		So(err, ShouldBeNil)
+		So(gotIndex, ShouldResemble, index)
+
+		blobAlg := filepath.Join(sibling, ispec.ImageBlobsDir, "sha256")
+		info, err := os.Stat(blobAlg)
+		So(err, ShouldBeNil)
+		So(info.IsDir(), ShouldBeTrue)
+
+		entries, err := os.ReadDir(blobAlg)
+		So(err, ShouldBeNil)
+		So(entries, ShouldBeEmpty)
+		entries, err = os.ReadDir(reserved)
+		So(err, ShouldBeNil)
+		So(entries, ShouldBeEmpty)
+
+		gotNested, err := os.ReadFile(filepath.Join(nested, ispec.ImageLayoutFile))
+		So(err, ShouldBeNil)
+		So(gotNested, ShouldResemble, layout)
+
+		gotLink, err := os.Readlink(link)
+		So(err, ShouldBeNil)
+		So(gotLink, ShouldEqual, outside)
+		_, err = os.Stat(filepath.Join(outside, "user", "foo"))
+		So(err, ShouldBeNil)
+
+		kept, err := os.ReadFile(filepath.Join(outside, "keep"))
+		So(err, ShouldBeNil)
+		So(kept, ShouldResemble, []byte("keep"))
+
+		rootInfo, err := os.Stat(rootDir)
+		So(err, ShouldBeNil)
+		So(rootInfo.IsDir(), ShouldBeTrue)
+		subInfo, err := os.Stat(subDir)
+		So(err, ShouldBeNil)
+		So(subInfo.IsDir(), ShouldBeTrue)
+
+		So(ctlr.Init(), ShouldBeNil)
+
+		_, err = os.Stat(rootDir)
+		So(err, ShouldBeNil)
+		_, err = os.Stat(subDir)
+		So(err, ShouldBeNil)
+		_, err = os.Stat(filepath.Join(rootDir, "user"))
+		So(os.IsNotExist(err), ShouldBeTrue)
+		_, err = os.Stat(filepath.Join(sibling, ispec.ImageLayoutFile))
+		So(err, ShouldBeNil)
+		_, err = os.Stat(filepath.Join(outside, "user", "foo"))
+		So(err, ShouldBeNil)
+	})
+}
+
 func TestTLSWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		_, serverCertPath, serverKeyPath, _, _, caCertPEM := setupTestCerts(t)

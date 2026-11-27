@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/api/config"
@@ -31,9 +33,12 @@ import (
 	meta "zotregistry.dev/zot/v2/pkg/meta"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	version "zotregistry.dev/zot/v2/pkg/meta/version"
+	zreg "zotregistry.dev/zot/v2/pkg/regexp"
 	scheduler "zotregistry.dev/zot/v2/pkg/scheduler"
 	storage "zotregistry.dev/zot/v2/pkg/storage"
+	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	gc "zotregistry.dev/zot/v2/pkg/storage/gc"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 const (
@@ -391,6 +396,11 @@ func (c *Controller) Init() error {
 		return err
 	}
 
+	// GC removes a repository directory and stops. Ancestors such as user/foo have no OCI
+	// layout, so later passes never visit them. Drop those empty namespace directories once
+	// at startup, before requests, where a non-recursive remove cannot race a live push.
+	c.pruneEmptyNamespaceDirs()
+
 	// Once per process, before Run enables sync: a config reload re-enables sync with streams
 	// still live, so this can't move into StartBackgroundTasks.
 	gc.RemoveStreamTempDirs(c.StoreController, c.Log)
@@ -428,6 +438,126 @@ func (c *Controller) InitImageStore() error {
 	c.StoreController = storeController
 
 	return nil
+}
+
+// pruneEmptyNamespaceDirs removes empty namespace directories under every local
+// filesystem root. Remote stores and symlinks are skipped. Configured roots,
+// reserved internal paths, and OCI layout contents stay. Nested repository names
+// under a live repository are walked the same way. Filesystem errors are logged
+// and do not fail startup.
+func (c *Controller) pruneEmptyNamespaceDirs() {
+	seen := make(map[string]struct{})
+
+	pruneRoot := func(imgStore storageTypes.ImageStore) {
+		if imgStore == nil || imgStore.Name() != storageConstants.LocalStorageDriverName {
+			return
+		}
+
+		root := filepath.Clean(imgStore.RootDir())
+		if root == "." {
+			return
+		}
+
+		if _, ok := seen[root]; ok {
+			return
+		}
+
+		seen[root] = struct{}{}
+
+		pruneEmptyNamespaceDir(root, true, c.Log)
+	}
+
+	pruneRoot(c.StoreController.DefaultStore)
+
+	for _, imgStore := range c.StoreController.SubStore {
+		pruneRoot(imgStore)
+	}
+}
+
+// isNamespaceComponent reports whether name can be a repository path component.
+// OCI layout names match that grammar but are internal paths, not namespaces.
+// Names that cannot be a component (".uploads", "_sessions", "_trivy") are reserved.
+func isNamespaceComponent(name string) bool {
+	switch name {
+	case ispec.ImageBlobsDir, ispec.ImageIndexFile, ispec.ImageLayoutFile:
+		return false
+	default:
+		return zreg.FullNameRegexp.MatchString(name)
+	}
+}
+
+// pruneEmptyNamespaceDir walks dir bottom-up and removes namespace directories
+// that are empty after their children are pruned. preserveRoot keeps a configured
+// storage root. Symlinks are not followed and not removed.
+func pruneEmptyNamespaceDir(dir string, preserveRoot bool, logger log.Logger) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.Error().Err(err).Str("dir", dir).Msg("failed to list namespace directory")
+		}
+
+		return
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if !isNamespaceComponent(name) {
+			continue
+		}
+
+		child := filepath.Join(dir, name)
+
+		info, statErr := os.Lstat(child)
+		if statErr != nil {
+			if !os.IsNotExist(statErr) {
+				logger.Error().Err(statErr).Str("path", child).Msg("failed to stat namespace path")
+			}
+
+			continue
+		}
+
+		// A symlink can point outside this root. Leave it in place.
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			continue
+		}
+
+		pruneEmptyNamespaceDir(child, false, logger)
+	}
+
+	if preserveRoot {
+		return
+	}
+
+	removeEmptyNamespaceDir(dir, logger)
+}
+
+// removeEmptyNamespaceDir deletes dir only when it is empty. os.Remove does not
+// recurse, so an entry that appears after the listing is left in place.
+func removeEmptyNamespaceDir(dir string, logger log.Logger) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.Error().Err(err).Str("dir", dir).Msg("failed to list namespace directory")
+		}
+
+		return
+	}
+
+	if len(entries) > 0 {
+		return
+	}
+
+	if err := os.Remove(dir); err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+
+		logger.Error().Err(err).Str("dir", dir).Msg("failed to remove empty namespace directory")
+
+		return
+	}
+
+	logger.Info().Str("dir", dir).Msg("removed empty namespace directory")
 }
 
 func (c *Controller) initCookieStore() error {
