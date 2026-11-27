@@ -454,9 +454,6 @@ func (c *Controller) pruneEmptyNamespaceDirs() {
 		}
 
 		root := filepath.Clean(imgStore.RootDir())
-		if root == "." {
-			return
-		}
 
 		if _, ok := seen[root]; ok {
 			return

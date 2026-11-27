@@ -2221,6 +2221,29 @@ func TestStartupPrunesEmptyNamespaces(t *testing.T) {
 	})
 }
 
+func TestStartupPrunesEmptyNamespacesRelativeRoot(t *testing.T) {
+	Convey("Init prunes empty namespaces when the root is the working directory", t, func() {
+		rootDir := t.TempDir()
+		t.Chdir(rootDir)
+
+		conf := config.New()
+		conf.Storage.RootDirectory = "."
+		conf.Storage.Dedupe = false
+
+		So(os.MkdirAll(filepath.Join(rootDir, "user", "foo"), 0o755), ShouldBeNil)
+
+		ctlr := api.NewController(conf)
+		So(ctlr.Init(), ShouldBeNil)
+
+		_, err := os.Stat(filepath.Join(rootDir, "user"))
+		So(os.IsNotExist(err), ShouldBeTrue)
+
+		rootInfo, err := os.Stat(rootDir)
+		So(err, ShouldBeNil)
+		So(rootInfo.IsDir(), ShouldBeTrue)
+	})
+}
+
 func TestTLSWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		_, serverCertPath, serverKeyPath, _, _, caCertPEM := setupTestCerts(t)
