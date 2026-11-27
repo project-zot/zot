@@ -33,11 +33,18 @@ build:
     mkdir -p /zotcopy/.build/${{REPO_NAME}}
     cd /zotcopy/.build/${{REPO_NAME}}
 
-    mkdir -p binary/ cert/ config/
+    mkdir -p binary/ config/ registrylink/var/lib
 
     cp /go/src/github.com/project-zot/zot/bin/zot-${{OS}}-${{ARCH}}${{EXT:}} binary/
     cp /go/src/github.com/project-zot/zot/config.json config/
-    cp /etc/ssl/certs/ca-certificates.crt cert/
+    # Distroless static has no shell, and overlay_dirs records the builder uid.
+    # On Linux, /home/nonroot is already uid 65532 mode 0700, so point the
+    # default storage path at it. FreeBSD stays root and gets a real directory.
+    if [ "${{OS}}" = "linux" ]; then
+      ln -s /home/nonroot registrylink/var/lib/registry
+    else
+      mkdir -p registrylink/var/lib/registry
+    fi
   build_only: true
 
 "${{REPO_NAME:zot}}":
@@ -52,10 +59,11 @@ build:
   overlay_dirs:
     - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin
-    - source: ../.build/${{REPO_NAME}}/cert
-      dest: /etc/ssl/certs
     - source: ../.build/${{REPO_NAME}}/config
       dest: /etc/zot
+    - source: ../.build/${{REPO_NAME}}/registrylink
+      dest: /
+  runtime_user: ${{RUNTIME_USER}}
   entrypoint:
     - /usr/local/bin/zot-${{OS}}-${{ARCH}}${{EXT:}}
   cmd:

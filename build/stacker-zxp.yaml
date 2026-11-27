@@ -53,6 +53,7 @@ build:
       dest: /usr/local/bin
     - source: ../.build/${{REPO_NAME}}/config
       dest: /etc/zxp
+  runtime_user: ${{RUNTIME_USER}}
   entrypoint:
     - /usr/local/bin/zxp-${{OS}}-${{ARCH}}
   cmd:

@@ -90,7 +90,8 @@ jobs:
             ARCH=amd64
             EXT=${{ matrix.ext }}
             REPO_NAME=${{ matrix.repo_name }}
-            BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-amd64
+            BASE_IMAGE=gcr.io/distroless/static-debian13:nonroot-amd64
+            RUNTIME_USER=65532:65532
       - name: Install skopeo and podman
         run: |
           sudo apt-get update

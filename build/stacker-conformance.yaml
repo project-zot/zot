@@ -34,11 +34,16 @@ build:
     cat config.json
 
     mkdir -p /zotcopy/.build/${{REPO_NAME}}/binary
-    mkdir -p /zotcopy/.build/${{REPO_NAME}}/cert
     mkdir -p /zotcopy/.build/${{REPO_NAME}}/config
+    mkdir -p /zotcopy/.build/${{REPO_NAME}}/registrylink/var/lib
     cp /go/src/github.com/project-zot/zot/bin/zot-linux-amd64 /zotcopy/.build/${{REPO_NAME}}/binary
     cp /go/src/github.com/project-zot/zot/config.json /zotcopy/.build/${{REPO_NAME}}/config
-    cp /etc/ssl/certs/ca-certificates.crt /zotcopy/.build/${{REPO_NAME}}/cert
+    # Linux images run as uid 65532. /home/nonroot is that user's home.
+    if [ "${{OS}}" = "linux" ]; then
+      ln -s /home/nonroot /zotcopy/.build/${{REPO_NAME}}/registrylink/var/lib/registry
+    else
+      mkdir -p /zotcopy/.build/${{REPO_NAME}}/registrylink/var/lib/registry
+    fi
   build_only: true
 
 "${{REPO_NAME:zot}}":
@@ -53,10 +58,11 @@ build:
   overlay_dirs:
     - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin
-    - source: ../.build/${{REPO_NAME}}/cert
-      dest: /etc/ssl/certs
     - source: ../.build/${{REPO_NAME}}/config
       dest: /etc/zot
+    - source: ../.build/${{REPO_NAME}}/registrylink
+      dest: /
+  runtime_user: ${{RUNTIME_USER}}
   entrypoint:
     - /usr/bin/zot-linux-amd64
   cmd:

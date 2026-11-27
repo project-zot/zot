@@ -22,9 +22,11 @@ jobs:
         run: |
           if [ ${{ matrix.os }} = 'freebsd' ]; then
             echo "BASE_IMAGE=freebsd/freebsd-static:14.3" >> "$GITHUB_ENV"
+            echo "RUNTIME_USER=0:0" >> "$GITHUB_ENV"
           else
             ARCH=${{ matrix.arch }}
-            echo "BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-${ARCH}" >> "$GITHUB_ENV"
+            echo "BASE_IMAGE=gcr.io/distroless/static-debian13:nonroot-${ARCH}" >> "$GITHUB_ENV"
+            echo "RUNTIME_USER=65532:65532" >> "$GITHUB_ENV"
           fi
       - name: Check out the repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,6 +50,7 @@ jobs:
             ARCH=${{ matrix.arch }}
             REPO_NAME=zot-${{ matrix.os }}-${{ matrix.arch }}
             BASE_IMAGE=${{ env.BASE_IMAGE }}
+            RUNTIME_USER=${{ env.RUNTIME_USER }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -65,6 +68,7 @@ jobs:
             EXT=-minimal
             REPO_NAME=zot-minimal-${{ matrix.os }}-${{ matrix.arch }}
             BASE_IMAGE=${{ env.BASE_IMAGE }}
+            RUNTIME_USER=${{ env.RUNTIME_USER }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -81,6 +85,7 @@ jobs:
             ARCH=${{ matrix.arch }}
             REPO_NAME=zxp-${{ matrix.os }}-${{ matrix.arch }}
             BASE_IMAGE=${{ env.BASE_IMAGE }}
+            RUNTIME_USER=${{ env.RUNTIME_USER }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -97,6 +102,7 @@ jobs:
             ARCH=${{ matrix.arch }}
             REPO_NAME=zb-${{ matrix.os }}-${{ matrix.arch }}
             BASE_IMAGE=${{ env.BASE_IMAGE }}
+            RUNTIME_USER=${{ env.RUNTIME_USER }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}

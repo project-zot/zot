@@ -6,10 +6,10 @@
 #   FROM argument 'BASE_IMAGE' is not declared
 # Podman: Error: determining starting point for build: no FROM statement found
 # ---
-ARG BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest
+ARG BASE_IMAGE=gcr.io/distroless/static-debian13:nonroot
 
 # ---
-# Stage 1: Install certs, build binary, create default config file
+# Stage 1: Build binary, create default config file and data directory
 # ---
 FROM --platform=$BUILDPLATFORM ghcr.io/project-zot/golang:1.27 AS builder
 
@@ -33,16 +33,18 @@ RUN echo '{\n\
         "level": "debug"\n\
     }\n\
 }\n' > config.json && cat config.json
+RUN mkdir -p /var/lib/registry && chown 65532:65532 /var/lib/registry
 
 # ---
-# Stage 2: Final image with nothing but certs, binary, and default config file
+# Stage 2: Final image with the binary, default config, and a data directory
 # ---
 FROM $BASE_IMAGE AS final
 ARG TARGETOS
 ARG TARGETARCH
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=builder --chown=65532:65532 /var/lib/registry /var/lib/registry
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-$TARGETOS-$TARGETARCH-minimal /usr/bin/zot
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/config.json
+USER 65532:65532
 ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
 CMD ["serve", "/etc/zot/config.json"]

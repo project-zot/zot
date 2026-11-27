@@ -6,7 +6,7 @@
 #   FROM argument 'BASE_IMAGE' is not declared
 # Podman: Error: determining starting point for build: no FROM statement found
 # ---
-ARG BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest
+ARG BASE_IMAGE=gcr.io/distroless/static-debian13:nonroot
 
 # ---
 # Stage 1: Build binary, create default config file
@@ -43,6 +43,7 @@ ARG TARGETOS
 ARG TARGETARCH
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zxp-$TARGETOS-$TARGETARCH /zxp
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zxp/config.json
+USER 65532:65532
 ENTRYPOINT ["/zxp"]
 EXPOSE 5001
 CMD ["config", "/etc/zxp/config.json"]

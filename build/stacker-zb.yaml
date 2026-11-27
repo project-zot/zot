@@ -31,5 +31,6 @@ build:
   overlay_dirs:
     - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin
+  runtime_user: ${{RUNTIME_USER}}
   entrypoint:
     - /usr/local/bin/zb-${{OS}}-${{ARCH}}

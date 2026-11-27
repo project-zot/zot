@@ -94,10 +94,14 @@ UI_DEPENDENCIES := search,mgmt,userprefs
 # freebsd is not supported for pie builds if CGO is disabled
 # see supported platforms at https://cs.opensource.google/go/go/+/master:src/internal/platform/supported.go;l=222-231;drc=d7fcb5cf80953f1d63246f1ae9defa60c5ce2d76
 BUILDMODE_FLAGS := -buildmode=pie
-BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-$(ARCH)
+BASE_IMAGE=gcr.io/distroless/static-debian13:nonroot-$(ARCH)
+# uid:gid of the Distroless "nonroot" account. NONROOT is 65532, used as both:
+# https://github.com/GoogleContainerTools/distroless/blob/main/common/variables.bzl
+RUNTIME_USER=65532:65532
 ifeq ($(OS),freebsd)
 	BUILDMODE_FLAGS=
 	BASE_IMAGE=freebsd/freebsd-static:14.3
+	RUNTIME_USER=0:0
 endif
 BIN_EXT :=
 ifeq ($(OS),windows)
@@ -549,7 +553,8 @@ oci-image: $(STACKER)
 		--substitute OS=$(OS) \
 		--substitute RELEASE_TAG=$(RELEASE_TAG) \
 		--substitute REPO_NAME=zot-$(OS)-$(ARCH) \
-		--substitute BASE_IMAGE=$(BASE_IMAGE)
+		--substitute BASE_IMAGE=$(BASE_IMAGE) \
+		--substitute RUNTIME_USER=$(RUNTIME_USER)
 
 .PHONY: docker-image
 docker-image:
