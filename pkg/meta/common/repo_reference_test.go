@@ -217,3 +217,23 @@ func TestPerReferenceUpdateStatisticsAndTagTimestamps(t *testing.T) {
 		}
 	})
 }
+
+func TestPerReferenceUpdateCountsReferrerAppliedTwice(t *testing.T) {
+	subject := image.CreateRandomImage()
+	referrer := image.CreateImageWith().RandomLayers(1, 20).DefaultConfig().Subject(subject.DescriptorRef()).Build()
+	referrerMeta := referrer.AsImageMeta()
+
+	repoMeta, repoBlobs := newRepoMeta(), newRepoBlobs()
+
+	applyReference(repoMeta, repoBlobs, referrer.DigestStr(), referrerMeta, "")
+	applyReference(repoMeta, repoBlobs, "tagged-referrer", referrerMeta, "")
+
+	list := repoMeta.Referrers[subject.DigestStr()].GetList()
+	if len(list) != 1 {
+		t.Fatalf("referrers of the subject = %v, want one entry", list)
+	}
+
+	if list[0].Digest != referrer.DigestStr() || list[0].Count != 2 {
+		t.Errorf("referrer entry = %v, want digest %s with count 2", list[0], referrer.DigestStr())
+	}
+}

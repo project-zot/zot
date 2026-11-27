@@ -1,6 +1,7 @@
 package boltdb_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"path"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
 	"go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 
@@ -261,4 +263,209 @@ func TestSetRepoReferencesLastUpdatedAndValidation(t *testing.T) {
 			t.Errorf("RepoMeta was written, got: %v", err)
 		}
 	})
+}
+
+type rawValues struct {
+	repoMeta   []byte
+	repoBlobs  []byte
+	imageCount int
+}
+
+func readRawValues(t *testing.T, wrapper *boltdb.BoltDB, repo string) rawValues {
+	t.Helper()
+
+	var values rawValues
+
+	err := wrapper.DB.View(func(transaction *bbolt.Tx) error {
+		values.repoMeta = bytes.Clone(transaction.Bucket([]byte(boltdb.RepoMetaBuck)).Get([]byte(repo)))
+		values.repoBlobs = bytes.Clone(transaction.Bucket([]byte(boltdb.RepoBlobsBuck)).Get([]byte(repo)))
+		values.imageCount = transaction.Bucket([]byte(boltdb.ImageMetaBuck)).Stats().KeyN
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to read raw values: %v", err)
+	}
+
+	return values
+}
+
+func TestSetRepoReferencesStorageErrorsRollBack(t *testing.T) {
+	const (
+		oversizedKeyLength = 40000
+		invalidUTF8        = "\xff"
+		corruptBlob        = "\x0f"
+	)
+
+	pushTime := time.Date(2024, 3, 1, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name    string
+		repo    string
+		seed    func(transaction *bbolt.Tx, repo string) error
+		change  func(refs []mTypes.RepoReference)
+		wantErr func(err error) bool
+	}{
+		{
+			name: "ImageMeta key is too large",
+			repo: batchRepo,
+			change: func(refs []mTypes.RepoReference) {
+				refs[0].ImageMeta.Digest = godigest.Digest(strings.Repeat("a", oversizedKeyLength))
+			},
+			wantErr: func(err error) bool { return errors.Is(err, bbolt.ErrKeyTooLarge) },
+		},
+		{
+			name: "ImageMeta cannot be marshaled",
+			repo: batchRepo,
+			change: func(refs []mTypes.RepoReference) {
+				refs[0].ImageMeta.Manifests[0].Manifest.Annotations = map[string]string{"key": invalidUTF8}
+			},
+			wantErr: func(err error) bool { return err != nil && strings.Contains(err.Error(), "invalid UTF-8") },
+		},
+		{
+			name: "stored RepoMeta is corrupt",
+			repo: batchRepo,
+			seed: func(transaction *bbolt.Tx, repo string) error {
+				return transaction.Bucket([]byte(boltdb.RepoMetaBuck)).Put([]byte(repo), []byte(corruptBlob))
+			},
+			wantErr: func(err error) bool { return err != nil && strings.Contains(err.Error(), "wire-format") },
+		},
+		{
+			name: "stored RepoBlobs is corrupt",
+			repo: batchRepo,
+			seed: func(transaction *bbolt.Tx, repo string) error {
+				return transaction.Bucket([]byte(boltdb.RepoBlobsBuck)).Put([]byte(repo), []byte(corruptBlob))
+			},
+			wantErr: func(err error) bool { return err != nil && strings.Contains(err.Error(), "wire-format") },
+		},
+		{
+			name: "repo key collides with a bucket inside RepoLastUpdated",
+			repo: batchRepo,
+			seed: func(transaction *bbolt.Tx, repo string) error {
+				lastUpdated := transaction.Bucket([]byte(boltdb.RepoBlobsBuck)).Bucket([]byte(boltdb.RepoLastUpdatedBuck))
+
+				_, err := lastUpdated.CreateBucket([]byte(repo))
+
+				return err
+			},
+			wantErr: func(err error) bool { return errors.Is(err, bbolt.ErrIncompatibleValue) },
+		},
+		{
+			name:    "repo key collides with the RepoLastUpdated bucket",
+			repo:    boltdb.RepoLastUpdatedBuck,
+			wantErr: func(err error) bool { return errors.Is(err, bbolt.ErrIncompatibleValue) },
+		},
+		{
+			// a stored RepoMeta keeps its own valid name, so that only the RepoBlobs carry the invalid repo name
+			name: "RepoBlobs cannot be marshaled",
+			repo: batchRepo + invalidUTF8,
+			seed: func(transaction *bbolt.Tx, repo string) error {
+				storedMeta, err := proto.Marshal(&proto_go.RepoMeta{Name: batchRepo})
+				if err != nil {
+					return err
+				}
+
+				return transaction.Bucket([]byte(boltdb.RepoMetaBuck)).Put([]byte(repo), storedMeta)
+			},
+			wantErr: func(err error) bool { return err != nil && strings.Contains(err.Error(), "invalid UTF-8") },
+		},
+		{
+			name: "RepoMeta cannot be marshaled",
+			repo: batchRepo,
+			change: func(refs []mTypes.RepoReference) {
+				refs[1].Reference = "tag" + invalidUTF8
+			},
+			wantErr: func(err error) bool { return err != nil && strings.Contains(err.Error(), "invalid UTF-8") },
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			wrapper := newBoltWrapper(t, t.TempDir())
+			refs := batchFixture(pushTime)[:2]
+
+			if testCase.change != nil {
+				testCase.change(refs)
+			}
+
+			if testCase.seed != nil {
+				err := wrapper.DB.Update(func(transaction *bbolt.Tx) error {
+					return testCase.seed(transaction, testCase.repo)
+				})
+				if err != nil {
+					t.Fatalf("failed to seed: %v", err)
+				}
+			}
+
+			before := readRawValues(t, wrapper, testCase.repo)
+
+			if err := wrapper.SetRepoReferences(context.Background(), testCase.repo, refs); !testCase.wantErr(err) {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			after := readRawValues(t, wrapper, testCase.repo)
+
+			if after.imageCount != 0 {
+				t.Errorf("%d ImageMeta records survived the failed transaction", after.imageCount)
+			}
+
+			if !bytes.Equal(before.repoMeta, after.repoMeta) || !bytes.Equal(before.repoBlobs, after.repoBlobs) {
+				t.Errorf("the repo state changed although the transaction failed")
+			}
+		})
+	}
+}
+
+func TestSetRepoReferenceStorageErrorsRollBack(t *testing.T) {
+	cases := []struct {
+		name string
+		repo string
+		seed func(transaction *bbolt.Tx, repo string) error
+	}{
+		{
+			name: "repo key collides with a bucket inside RepoLastUpdated",
+			repo: batchRepo,
+			seed: func(transaction *bbolt.Tx, repo string) error {
+				lastUpdated := transaction.Bucket([]byte(boltdb.RepoBlobsBuck)).Bucket([]byte(boltdb.RepoLastUpdatedBuck))
+
+				_, err := lastUpdated.CreateBucket([]byte(repo))
+
+				return err
+			},
+		},
+		{name: "repo key collides with the RepoLastUpdated bucket", repo: boltdb.RepoLastUpdatedBuck},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			wrapper := newBoltWrapper(t, t.TempDir())
+			imageMeta := batchFixture(time.Now())[0].ImageMeta
+
+			if testCase.seed != nil {
+				err := wrapper.DB.Update(func(transaction *bbolt.Tx) error {
+					return testCase.seed(transaction, testCase.repo)
+				})
+				if err != nil {
+					t.Fatalf("failed to seed: %v", err)
+				}
+			}
+
+			before := readRawValues(t, wrapper, testCase.repo)
+
+			err := wrapper.SetRepoReference(context.Background(), testCase.repo, "tag", imageMeta)
+			if !errors.Is(err, bbolt.ErrIncompatibleValue) {
+				t.Fatalf("expected ErrIncompatibleValue, got: %v", err)
+			}
+
+			after := readRawValues(t, wrapper, testCase.repo)
+
+			if after.imageCount != 0 {
+				t.Errorf("%d ImageMeta records survived the failed transaction", after.imageCount)
+			}
+
+			if !bytes.Equal(before.repoMeta, after.repoMeta) || !bytes.Equal(before.repoBlobs, after.repoBlobs) {
+				t.Errorf("the repo state changed although the transaction failed")
+			}
+		})
+	}
 }
