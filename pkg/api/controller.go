@@ -705,8 +705,12 @@ func (c *Controller) StartBackgroundTasks() {
 	c.gcOnDemand = gcOnDemand
 	c.gcOnDemandLock.Unlock()
 
-	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
-	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
+	/* Enable running dedupe blobs both ways (dedupe or restore deduped blobs). Submitted after
+	GC, as it always was: the scheduler then runs GC's first pass at startup, before anything is
+	pushed, and submitting the walk first moves that pass after the first pushes. The walk sets
+	its gates on GC deletes and the reclaim sweep as it is submitted, so a GC task would have to
+	be generated and run within these few statements to get ahead of them. */
+	RunDedupeTasks(c.StoreController, c.taskScheduler)
 
 	// Always call EnableSearchExtension to ensure proper logging, even when search is disabled
 	ext.EnableSearchExtension(c.Config, c.StoreController, c.MetaDB, c.taskScheduler,
@@ -727,14 +731,9 @@ func (c *Controller) StartBackgroundTasks() {
 			// Enable extensions if extension config is provided for subImageStore
 			ext.EnableMetricsExtension(c.Config, c.Log, subStorageConfig.RootDirectory)
 
-			// Enable running dedupe blobs both ways (dedupe or restore deduped blobs) for subpaths
 			substore := c.StoreController.SubStore[route]
-			if substore != nil {
-				substore.RunDedupeBlobs(time.Duration(0), c.taskScheduler)
-
-				if extensionsConfig.IsMetricsEnabled() && storageConfig.StorageDriver == nil {
-					substore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
-				}
+			if substore != nil && extensionsConfig.IsMetricsEnabled() && storageConfig.StorageDriver == nil {
+				substore.PopulateStorageMetrics(time.Duration(0), c.taskScheduler)
 			}
 		}
 	}
@@ -781,6 +780,22 @@ func (c *Controller) GCOnDemand(store string) (*gc.OnDemand, bool) {
 	return c.gcOnDemand[store], true
 }
 
+/*
+RunDedupeTasks starts the dedupe walk, both ways (dedupe or restore deduped blobs), on every
+store. Besides deduping, the walk rebuilds the blob reference index: until it completes, GC
+defers deletes that could destroy shared content, and the reclaim sweep RunGCTasks schedules
+skips. So anything running GC without the full controller must start it too.
+*/
+func RunDedupeTasks(storeController storage.StoreController, taskScheduler *scheduler.Scheduler) {
+	storeController.DefaultStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+	for _, subStore := range storeController.SubStore {
+		if subStore != nil {
+			subStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+		}
+	}
+}
+
 // RunGCTasks runs minimal GC and retention tasks without full controller.
 // It returns the on-demand GC of each store with GC enabled, keyed by route ("/" for the default store).
 func RunGCTasks(conf *config.Config, storeController storage.StoreController, metaDB mTypes.MetaDB,
@@ -792,6 +807,11 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 
 	// Enable running garbage-collect periodically for DefaultStore
 	storageConfig := conf.CopyStorageConfig()
+
+	// not gated on GC: blobs deleted through the API need their shared payload reclaimed too
+	gc.RunGlobalBlobReclaimPeriodically(storeController.DefaultStore, storageConfig.GCDelay,
+		storageConfig.GCInterval, taskScheduler, logger)
+
 	if storageConfig.GC {
 		gc := gc.NewGarbageCollect(storeController.DefaultStore, metaDB, gc.Options{
 			Delay:             storageConfig.GCDelay,
@@ -808,6 +828,9 @@ func RunGCTasks(conf *config.Config, storeController storage.StoreController, me
 	// Handle subpaths
 	if storageConfig.SubPaths != nil {
 		for route, subStorageConfig := range storageConfig.SubPaths {
+			gc.RunGlobalBlobReclaimPeriodically(storeController.SubStore[route], subStorageConfig.GCDelay,
+				subStorageConfig.GCInterval, taskScheduler, logger)
+
 			// Enable running garbage-collect periodically for subImageStore
 			if subStorageConfig.GC {
 				gc := gc.NewGarbageCollect(storeController.SubStore[route], metaDB,

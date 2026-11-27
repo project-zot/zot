@@ -7,6 +7,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 type CacheMock struct {
@@ -31,6 +32,15 @@ type CacheMock struct {
 	SetOriginFn func(digest godigest.Digest, path string) error
 
 	UsesRelativePathsFn func() bool
+
+	// The blob reference index (types.BlobRefIndex).
+	AddReferenceFn    func(digest godigest.Digest, path string) error
+	RemoveReferenceFn func(digest godigest.Digest, path string) (bool, error)
+	GetReferencesFn   func(digest godigest.Digest) ([]string, error)
+	RecordGlobalFn    func(digest godigest.Digest) error
+	ClaimReclaimFn    func(digest godigest.Digest) (storageTypes.ReclaimClaim, error)
+	FinishReclaimFn   func(claim storageTypes.ReclaimClaim) error
+	AbandonReclaimFn  func(claim storageTypes.ReclaimClaim) error
 }
 
 func (cacheMock CacheMock) UsesRelativePaths() bool {
@@ -119,4 +129,60 @@ func (cacheMock CacheMock) GetAllBlobs(digest godigest.Digest) ([]string, error)
 	}
 
 	return []string{}, nil
+}
+
+func (cacheMock CacheMock) AddReference(digest godigest.Digest, path string) error {
+	if cacheMock.AddReferenceFn != nil {
+		return cacheMock.AddReferenceFn(digest, path)
+	}
+
+	return nil
+}
+
+func (cacheMock CacheMock) RemoveReference(digest godigest.Digest, path string) (bool, error) {
+	if cacheMock.RemoveReferenceFn != nil {
+		return cacheMock.RemoveReferenceFn(digest, path)
+	}
+
+	return false, nil
+}
+
+func (cacheMock CacheMock) GetReferences(digest godigest.Digest) ([]string, error) {
+	if cacheMock.GetReferencesFn != nil {
+		return cacheMock.GetReferencesFn(digest)
+	}
+
+	return []string{}, nil
+}
+
+func (cacheMock CacheMock) RecordGlobal(digest godigest.Digest) error {
+	if cacheMock.RecordGlobalFn != nil {
+		return cacheMock.RecordGlobalFn(digest)
+	}
+
+	return nil
+}
+
+func (cacheMock CacheMock) ClaimReclaim(digest godigest.Digest) (storageTypes.ReclaimClaim, error) {
+	if cacheMock.ClaimReclaimFn != nil {
+		return cacheMock.ClaimReclaimFn(digest)
+	}
+
+	return storageTypes.ReclaimClaim{Digest: digest}, nil
+}
+
+func (cacheMock CacheMock) FinishReclaim(claim storageTypes.ReclaimClaim) error {
+	if cacheMock.FinishReclaimFn != nil {
+		return cacheMock.FinishReclaimFn(claim)
+	}
+
+	return nil
+}
+
+func (cacheMock CacheMock) AbandonReclaim(claim storageTypes.ReclaimClaim) error {
+	if cacheMock.AbandonReclaimFn != nil {
+		return cacheMock.AbandonReclaimFn(claim)
+	}
+
+	return nil
 }

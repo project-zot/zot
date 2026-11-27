@@ -36,6 +36,8 @@ type Service interface { //nolint:interfacebloat
 	/* Returns if service has retry option set.
 	Is used by ondemand to decide if it retries pulling an image in background or not. */
 	CanRetryOnError() bool // used by sync on demand to retry in background
+	// Returns how many times, and how far apart, on-demand sync retries an image in background.
+	GetRetryOptions() (maxRetries int, delay time.Duration)
 	// Get the sync timeout configured for this service
 	GetSyncTimeout() time.Duration
 	// Returns whether an upstream manifest check is due for repo:reference.

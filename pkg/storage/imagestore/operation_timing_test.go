@@ -7,7 +7,6 @@ import (
 	"context"
 	"slices"
 	"testing"
-	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
@@ -22,20 +21,21 @@ import (
 
 const storageOperationTimeMetric = "zot.storage.operation.time.seconds"
 
-func operationTime(metrics monitoring.MetricServer, operation, part string) (int, float64) {
+// operationTimeCount returns how many times part of operation was recorded.
+func operationTimeCount(metrics monitoring.MetricServer, operation, part string) int {
 	metricsCopy, ok := metrics.ReceiveMetrics().(monitoring.MetricsCopy)
 	if !ok {
-		return 0, 0
+		return 0
 	}
 
 	for _, histogram := range metricsCopy.Histograms {
 		if histogram.Name == storageOperationTimeMetric &&
 			slices.Equal(histogram.LabelValues, []string{operation, part}) {
-			return histogram.Count, histogram.Sum
+			return histogram.Count
 		}
 	}
 
-	return 0, 0
+	return 0
 }
 
 func blobCheckParts(metrics monitoring.MetricServer) map[string]int {
@@ -193,7 +193,9 @@ func TestCheckBlobOperationTime(t *testing.T) {
 }
 
 func TestGetNextRepositoryOperationTime(t *testing.T) {
-	Convey("GetNextRepository records the lock wait and the scan as the lock hold", t, func() {
+	// GetNextRepository takes no store lock (a listing of every repo cannot be atomic
+	// across repos), so it must not wait behind the blobstore lock or report lock time.
+	Convey("GetNextRepository neither waits for the blobstore lock nor records lock time", t, func() {
 		log := zlog.NewTestLogger()
 		metrics := monitoring.NewMetricsServer(true, log)
 		defer metrics.Stop()
@@ -202,17 +204,15 @@ func TestGetNextRepositoryOperationTime(t *testing.T) {
 		So(imgStore.InitRepo(context.Background(), "repo"), ShouldBeNil)
 
 		held := make(chan struct{})
+		release := make(chan struct{})
 		released := make(chan struct{})
-
-		var releasedAt time.Time
 
 		go func() {
 			defer close(released)
 
 			_ = imgStore.WithBlobstoreLock(func() error {
 				close(held)
-				time.Sleep(30 * time.Millisecond)
-				releasedAt = time.Now()
+				<-release
 
 				return nil
 			})
@@ -221,22 +221,19 @@ func TestGetNextRepositoryOperationTime(t *testing.T) {
 		<-held
 
 		repo, err := imgStore.GetNextRepository(map[string]struct{}{"done": {}})
-		finished := time.Now()
 
+		close(release)
 		<-released
 
 		So(err, ShouldBeNil)
 		So(repo, ShouldEqual, "repo")
-		So(finished.Before(releasedAt), ShouldBeFalse)
 
-		waitCount, waitSum := operationTime(metrics,
+		waitCount := operationTimeCount(metrics,
 			storageConstants.StorageOpGetNextRepository, storageConstants.StoragePartLockWait)
-		So(waitCount, ShouldEqual, 1)
-		So(waitSum, ShouldBeGreaterThan, 0)
+		So(waitCount, ShouldEqual, 0)
 
-		holdCount, holdSum := operationTime(metrics,
+		holdCount := operationTimeCount(metrics,
 			storageConstants.StorageOpGetNextRepository, storageConstants.StoragePartLockHold)
-		So(holdCount, ShouldEqual, 1)
-		So(holdSum, ShouldBeGreaterThan, 0)
+		So(holdCount, ShouldEqual, 0)
 	})
 }

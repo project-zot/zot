@@ -331,7 +331,8 @@ func TestDedupeBlobNeverRepairsFromAChangedUpload(t *testing.T) {
 				_, _, err = imgStore.FullBlobUpload(ctx, "repo-origin", bytes.NewReader(content), digest)
 				So(err, ShouldBeNil)
 
-				origin := imgStore.BlobPath("repo-origin", digest)
+				// the payload every copy shares, in the global blobstore on either backend
+				origin := imgStore.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 
 				// what a chunk upload racing the finalization leaves: the verified bytes, then more
 				So(imgStore.InitRepo(ctx, "repo-push"), ShouldBeNil)

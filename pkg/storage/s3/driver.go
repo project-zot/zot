@@ -69,18 +69,25 @@ func (driver *Driver) Delete(path string) error {
 	// Not idempotent today: PathNotFound / Missing is returned to the caller
 	// (unlike GCS/Azure). Making S3 Delete idempotent like those wrappers is a
 	// planned follow-up; local stays non-idempotent.
+	return driver.DeleteContext(context.Background(), path)
+}
+
+// DeleteContext is Delete bounded by ctx, for callers that must not have a delete (or the
+// SDK's retries of one) land after a deadline. The multipart abort for an upload path
+// runs under the same ctx.
+func (driver *Driver) DeleteContext(ctx context.Context, path string) error {
 	aborted := false
 
 	if isBlobUploadPath(path) {
 		var err error
 
-		aborted, err = driver.abortExactMultipart(path)
+		aborted, err = driver.abortExactMultipart(ctx, path)
 		if err != nil {
 			return err
 		}
 	}
 
-	err := driver.formatErr(driver.store.Delete(context.Background(), path), path)
+	err := driver.formatErr(driver.store.Delete(ctx, path), path)
 	if aborted && errclass.IsStorageObjectMissing(err) {
 		return nil
 	}
@@ -97,8 +104,8 @@ func isBlobUploadPath(path string) bool {
 // abortExactMultipart cancels an in-progress multipart upload stored at path itself.
 // A directory is left alone: Delete removes the objects under that prefix.
 // A failed multipart list is returned so the object is not deleted over it.
-func (driver *Driver) abortExactMultipart(path string) (bool, error) {
-	info, err := driver.store.Stat(context.Background(), path)
+func (driver *Driver) abortExactMultipart(ctx context.Context, path string) (bool, error) {
+	info, err := driver.store.Stat(ctx, path)
 	if err != nil && !isPathNotFound(err) {
 		return false, driver.formatErr(err, path)
 	}
@@ -107,7 +114,7 @@ func (driver *Driver) abortExactMultipart(path string) (bool, error) {
 		return false, nil
 	}
 
-	writer, err := driver.store.Writer(context.Background(), path, true)
+	writer, err := driver.store.Writer(ctx, path, true)
 	if err != nil {
 		if isPathNotFound(err) || isAppendUnsupported(err) {
 			return false, nil
@@ -116,7 +123,7 @@ func (driver *Driver) abortExactMultipart(path string) (bool, error) {
 		return false, driver.formatErr(err, path)
 	}
 
-	cancelErr := writer.Cancel(context.Background())
+	cancelErr := writer.Cancel(ctx)
 	closeErr := writer.Close()
 
 	if cancelErr != nil {

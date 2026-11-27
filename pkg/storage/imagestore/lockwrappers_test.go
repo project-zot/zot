@@ -14,51 +14,65 @@ import (
 
 var errWrapped = errors.New("wrapped func failed") //nolint: gochecknoglobals
 
-// The repo and blobstore lock wrappers all take the store's single lock. These tests pin
-// that down from the outside: every wrapper runs its function and returns its error, and
-// which wrappers exclude each other is what one read-write lock gives.
-func TestLockWrappersShareTheStoreLock(t *testing.T) {
-	const repo = "repo"
+// lockMode is what a wrapper takes in one lock domain.
+type lockMode int
 
+const (
+	noLock lockMode = iota
+	readLock
+	writeLock
+)
+
+// conflicts reports whether two holders of one lock domain exclude each other.
+func conflicts(a, b lockMode) bool {
+	return a != noLock && b != noLock && (a == writeLock || b == writeLock)
+}
+
+// The lock wrappers take the global blobstore's lock and a lock per repo. These tests pin that
+// down from the outside: every wrapper runs its function and returns its error, and two wrappers
+// exclude each other exactly when they collide in one domain, the blobstore's or, for the same
+// repo, the repo's.
+func TestLockWrappers(t *testing.T) {
 	log := zlog.NewTestLogger()
 	store := local.NewImageStore(t.TempDir(), false, false, log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
 
 	type wrapper struct {
-		name  string
-		write bool
-		with  func(wrappedFunc func() error) error
+		name      string
+		blobstore lockMode
+		repo      lockMode
+		with      func(repo string, wrappedFunc func() error) error
 	}
 
 	wrappers := []wrapper{
-		{"WithRepoLock", true, func(f func() error) error { return store.WithRepoLock(repo, f) }},
-		{"WithRepoReadLock", false, func(f func() error) error { return store.WithRepoReadLock(repo, f) }},
-		{"WithBlobstoreLock", true, store.WithBlobstoreLock},
-		{"WithBlobstoreReadLock", false, store.WithBlobstoreReadLock},
-		{"WithBlobstoreAndRepoLock", true, func(f func() error) error {
-			return store.WithBlobstoreAndRepoLock(repo, f)
+		{"WithRepoLock", noLock, writeLock, store.WithRepoLock},
+		{"WithRepoReadLock", noLock, readLock, store.WithRepoReadLock},
+		{"WithBlobstoreLock", writeLock, noLock, func(_ string, f func() error) error {
+			return store.WithBlobstoreLock(f)
 		}},
-		{"WithBlobstoreReadAndRepoLock", true, func(f func() error) error {
-			return store.WithBlobstoreReadAndRepoLock(repo, f)
+		{"WithBlobstoreReadLock", readLock, noLock, func(_ string, f func() error) error {
+			return store.WithBlobstoreReadLock(f)
 		}},
-		{"WithRepoCleanupLock", true, func(f func() error) error { return store.WithRepoCleanupLock(repo, f) }},
+		{"WithBlobstoreAndRepoLock", writeLock, writeLock, store.WithBlobstoreAndRepoLock},
+		{"WithBlobstoreReadAndRepoLock", readLock, writeLock, store.WithBlobstoreReadAndRepoLock},
+		{"WithRepoCleanupLock", writeLock, writeLock, store.WithRepoCleanupLock},
 	}
 
-	// acquiredWhileHeld reports whether inner got its lock while outer was holding its own.
-	// A pair expected to exclude each other is given a short wait, since the wait is spent in
-	// full; a pair expected to share the lock is given a long one, since it ends at once.
-	acquiredWhileHeld := func(outer, inner wrapper) bool {
+	// acquiredWhileHeld reports whether inner, on innerRepo, got its locks while outer was holding
+	// its own on repo "a". A pair expected to exclude each other is given a short wait, since the
+	// wait is spent in full; a pair expected not to is given a long one, since it ends at once.
+	acquiredWhileHeld := func(outer, inner wrapper, innerRepo string, excluded bool) bool {
 		acquired := false
 
-		wait := 100 * time.Millisecond
-		if !outer.write && !inner.write {
-			wait = 10 * time.Second
+		wait := 10 * time.Second
+		if excluded {
+			wait = 100 * time.Millisecond
 		}
 
 		done := make(chan struct{})
 
-		_ = outer.with(func() error {
+		_ = outer.with("a", func() error {
 			go func() {
-				_ = inner.with(func() error { return nil })
+				_ = inner.with(innerRepo, func() error { return nil })
 
 				close(done)
 			}()
@@ -72,7 +86,7 @@ func TestLockWrappersShareTheStoreLock(t *testing.T) {
 			return nil
 		})
 
-		// An inner wrapper that timed out is still queued for the lock. Wait for it, or a
+		// An inner wrapper that timed out is still queued for its locks. Wait for it, or a
 		// queued writer would hold up the readers of the next pair.
 		<-done
 
@@ -83,7 +97,7 @@ func TestLockWrappersShareTheStoreLock(t *testing.T) {
 		for _, lock := range wrappers {
 			ran := false
 
-			err := lock.with(func() error {
+			err := lock.with("a", func() error {
 				ran = true
 
 				return errWrapped
@@ -93,13 +107,23 @@ func TestLockWrappersShareTheStoreLock(t *testing.T) {
 		}
 	})
 
-	Convey("Two wrappers run together only if both take the lock for reading", t, func() {
-		for _, outer := range wrappers {
-			for _, inner := range wrappers {
-				Convey(outer.name+" then "+inner.name, func() {
-					So(acquiredWhileHeld(outer, inner), ShouldEqual, !outer.write && !inner.write)
-				})
-			}
+	for _, sameRepo := range []bool{true, false} {
+		innerRepo, title := "a", "Two wrappers on one repo exclude each other only if they collide in a domain"
+		if !sameRepo {
+			innerRepo, title = "b", "Two wrappers on different repos exclude each other only over the blobstore"
 		}
-	})
+
+		Convey(title, t, func() {
+			for _, outer := range wrappers {
+				for _, inner := range wrappers {
+					excluded := conflicts(outer.blobstore, inner.blobstore) ||
+						(sameRepo && conflicts(outer.repo, inner.repo))
+
+					Convey(outer.name+" then "+inner.name, func() {
+						So(acquiredWhileHeld(outer, inner, innerRepo, excluded), ShouldEqual, !excluded)
+					})
+				}
+			}
+		})
+	}
 }

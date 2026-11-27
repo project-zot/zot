@@ -3,9 +3,13 @@ package imagestore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path"
+	"reflect"
+	"time"
 
 	"github.com/distribution/distribution/v3/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
@@ -13,6 +17,7 @@ import (
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
+	zlog "zotregistry.dev/zot/v2/pkg/log"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
 	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
@@ -33,13 +38,15 @@ import (
 // The lifecycle owns the placeholder model, so the image store never assumes it:
 //   - IsPlaceholder decides whether a read has to go through the cache to find the content,
 //     and which copies the dedupe and restore walks treat as placeholders.
-//   - HandOffContent keeps the content alive when the copy holding it is deleted.
+//   - HandOffContent keeps the content alive when the copy holding it is deleted, which only a
+//     store an earlier release wrote, opened with dedupe off and so never upgraded to the global
+//     blobstore, still has: there a repo's copy is the origin until the restore walk is done.
 //   - RepairSharedContent replaces wrong shared content with a verified upload.
 //   - DeletesCanDestroySharedContent decides whether deletes wait for the dedupe walk.
 //
 // What stays in the image store is the driver-independent integrity rule: a zero-byte file
 // for a digest that is not the empty one is never served, and never used as a dedupe origin.
-type blobLifecycle interface {
+type blobLifecycle interface { //nolint:interfacebloat
 	// IsPlaceholder reports whether the file at a copy of digest, as already stat'd, is a
 	// dedupe placeholder whose content is at the path the cache records.
 	// Local: never, since a hardlink holds the content. Remote: a zero-byte file for a
@@ -80,7 +87,9 @@ type blobLifecycle interface {
 
 	// DeletesCanDestroySharedContent reports whether deleting a blob the cache does not know
 	// about can remove content other repos still use, so that such deletes have to wait for
-	// the dedupe walk to have recorded every blob (see RunDedupeBlobs and deleteBlob).
+	// the dedupe walk to have recorded every blob (see RunDedupeBlobs and deleteBlob). Only a
+	// store an earlier release wrote, opened with dedupe off, can still have such a blob: an
+	// upgraded store keeps shared content in the global blobstore, never in a repo copy.
 	// Local: no, an inode with several hard links outlives any one of them. Remote: yes, a
 	// placeholder does not hold the content, which is stored once.
 	DeletesCanDestroySharedContent() bool
@@ -96,16 +105,102 @@ type blobLifecycle interface {
 	// error reaches the client, so a retry repeats the repair.
 	// Remote: placeholders resolve to originPath, so uploadPath is moved onto it.
 	RepairSharedContent(uploadPath, originPath string) error
+
+	// The methods below serve the global blobstore (GlobalBlobsRepo), which holds the one
+	// copy of each deduped blob.
+
+	// PromoteCandidate makes the global blobstore copy at dstPath out of a repo's copy at
+	// srcPath, expected to hold size bytes of digest, making it the canonical copy for that
+	// digest. Local: hardlink (cheap, same inode), which never empties a copy, so the other
+	// arguments go unused. Remote: the bytes are streamed to stagingPath and published onto
+	// dstPath only once they match size and digest, and never over a dstPath that already
+	// holds size bytes: another instance's upgrade pass may have published it and replaced
+	// srcPath with a placeholder since srcPath was chosen. A source that no longer matches
+	// is then no error.
+	PromoteCandidate(digest godigest.Digest, size int64, srcPath, stagingPath, dstPath string) error
+
+	// RemoveMigratedRepoBlob runs once per pre-existing repo copy during the one-time
+	// upgrade to the global blobstore, after PromoteCandidate has made the canonical copy and
+	// the repo copy is recorded as an owner: every repo copy that holds the content itself
+	// must give it up, so the content exists once. Local: no-op, repo copies are hardlinks of
+	// the canonical copy's inode. Remote: a copy with content is replaced by a placeholder;
+	// one already a placeholder, or gone, is left as it is.
+	RemoveMigratedRepoBlob(globalBlobPath, repoBlobPath string) error
+
+	// ShouldDeleteGlobalBlob reports whether the global blobstore copy of digest at
+	// globalBlobPath is to be deleted now, once a repo's copy is gone and DeleteBlobRef has run.
+	// Local: when no repo uses it, by the copy's hardlink count, which is 1 when only the
+	// blobstore's own link remains; where the platform does not report one,
+	// isDigestReferenced (a cache-based scan) decides. Remote: never, since another instance
+	// may be linking the digest; the reclaim sweep deletes it under a claim. A copy already
+	// gone is never to be deleted again.
+	ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
+		isDigestReferenced func(godigest.Digest) (bool, error),
+	) (bool, error)
+
+	// IncludeRepoInMountCandidates reports whether repo may be a source for cross-repo blob
+	// mounts. Both exclude the global blobstore, which is never a repository.
+	IncludeRepoInMountCandidates(repo string) bool
+
+	// PutBlobRef records blobPath in the reference index for the global blobstore payload of
+	// digest. For the payload's own path, it records that the payload is there, which a reclaim
+	// sweep requires before it deletes one. For a repo copy, it records that repo as an owner;
+	// this runs before anything relies on the payload, so that from then on no sweep deletes
+	// it, and while a sweep holds a claim on digest it waits for the claim to clear, up to
+	// linkerClaimWait, then fails with a transient error for the client to retry.
+	// Local: nothing to record, a hardlink keeps the payload.
+	PutBlobRef(digest godigest.Digest, blobPath string) error
+
+	// ReclaimGlobalBlobs deletes the global blobstore payloads no repo has owned for at least
+	// delay. Local: nothing to do, a payload goes with its last repo copy. Remote: the reclaim
+	// sweep (see reclaim.go).
+	ReclaimGlobalBlobs(ctx context.Context, delay time.Duration) error
+
+	// DeleteBlobRef drops repoPath's ownership of the global blobstore payload of digest, once its
+	// repo copy is gone. Local: nothing to drop, the hardlink went with the copy. Remote: the
+	// reference is removed, and once nothing owns digest, a reclaim marker tells the sweep to
+	// look at the payload.
+	DeleteBlobRef(digest godigest.Digest, repoPath string) error
+
+	// withRefs returns a lifecycle like this one whose reference index is refs, a batch of the
+	// cache it was made with (see ImageStore.withCacheBatch). Local: itself, it keeps no index.
+	// A wrapper embedding a lifecycle gets the embedded one's, so the batch bypasses the wrapper.
+	withRefs(refs storageTypes.Cache) blobLifecycle
 }
 
-func newBlobLifecycle(storeDriver storageTypes.Driver, rootDir string,
-	metrics monitoring.MetricServer,
-) blobLifecycle {
-	if storeDriver.Name() == storageConstants.LocalStorageDriverName {
-		return &localHardlinkBlobLifecycle{storeDriver: storeDriver, rootDir: rootDir, metrics: metrics}
+const (
+	// linkerClaimWait bounds how long PutBlobRef waits for a reclaim sweep's claim to clear. A sweep
+	// holds one for as long as its payload delete may take, which is well under this.
+	linkerClaimWait = 30 * time.Second
+	// linkerClaimPoll is how often PutBlobRef retries meanwhile.
+	linkerClaimPoll = 250 * time.Millisecond
+)
+
+// blobLifecycleDeps is what a blob lifecycle is built with.
+type blobLifecycleDeps struct {
+	storeDriver storageTypes.Driver
+	rootDir     string
+	metrics     monitoring.MetricServer
+	log         zlog.Logger
+	// refs is the store's cache, nil without one. Only the remote lifecycle uses it: there a
+	// repo copy is a placeholder, so ownership of a payload is recorded in the cache's reference
+	// index, and the reclaim sweep forgets a payload it deleted.
+	refs storageTypes.Cache
+}
+
+// newBlobLifecycle picks the lifecycle for the store's driver, once, when the store is created.
+func newBlobLifecycle(deps blobLifecycleDeps) blobLifecycle {
+	if deps.storeDriver.Name() == storageConstants.LocalStorageDriverName {
+		return &localHardlinkBlobLifecycle{
+			storeDriver: deps.storeDriver, rootDir: deps.rootDir, metrics: deps.metrics, statFn: os.Stat,
+		}
 	}
 
-	return &remoteSharedBlobLifecycle{storeDriver: storeDriver}
+	return &remoteSharedBlobLifecycle{
+		storeDriver: deps.storeDriver, rootDir: deps.rootDir, log: deps.log, refs: deps.refs,
+		claimWait:      linkerClaimWait,
+		deleteDeadline: reclaimDeleteDeadline,
+	}
 }
 
 // isEmptyContentDigest reports whether digest is the algorithm's hash of zero bytes.
@@ -128,6 +223,9 @@ type localHardlinkBlobLifecycle struct {
 	storeDriver storageTypes.Driver
 	rootDir     string
 	metrics     monitoring.MetricServer
+	// statFn reads the hardlink count; os.Stat, overridable in tests so the fallback for
+	// platforms that report no count can be driven.
+	statFn func(name string) (os.FileInfo, error)
 }
 
 func (l *localHardlinkBlobLifecycle) IsPlaceholder(_ godigest.Digest, _ driver.FileInfo) bool {
@@ -198,6 +296,81 @@ func (l *localHardlinkBlobLifecycle) rewriteInPlace(srcPath, dstPath string) err
 	return writer.Close()
 }
 
+func (l *localHardlinkBlobLifecycle) PromoteCandidate(_ godigest.Digest, _ int64, srcPath, _, dstPath string) error {
+	return linkDistinct(l.storeDriver, srcPath, dstPath)
+}
+
+func (l *localHardlinkBlobLifecycle) RemoveMigratedRepoBlob(_, _ string) error {
+	// repo copies are hardlinks of the canonical copy's inode: nothing to remove
+	return nil
+}
+
+func (l *localHardlinkBlobLifecycle) ShouldDeleteGlobalBlob(globalBlobPath string, digest godigest.Digest,
+	isDigestReferenced func(godigest.Digest) (bool, error),
+) (bool, error) {
+	fileInfo, err := l.statFn(globalBlobPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	if nLink, ok := hardLinkCount(fileInfo); ok {
+		// the blobstore's own link is the last one left
+		return nLink <= 1, nil
+	}
+
+	if isDigestReferenced == nil {
+		return false, nil
+	}
+
+	referenced, err := isDigestReferenced(digest)
+	if err != nil {
+		return false, err
+	}
+
+	return !referenced, nil
+}
+
+func (l *localHardlinkBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
+	return repo != storageConstants.GlobalBlobsRepo
+}
+
+func (l *localHardlinkBlobLifecycle) withRefs(_ storageTypes.Cache) blobLifecycle {
+	return l
+}
+
+func (l *localHardlinkBlobLifecycle) PutBlobRef(_ godigest.Digest, _ string) error {
+	return nil
+}
+
+func (l *localHardlinkBlobLifecycle) DeleteBlobRef(_ godigest.Digest, _ string) error {
+	return nil
+}
+
+func (l *localHardlinkBlobLifecycle) ReclaimGlobalBlobs(_ context.Context, _ time.Duration) error {
+	return nil
+}
+
+// hardLinkCount returns a file's hardlink count where the platform reports one. It reads the
+// Nlink field of the platform's stat structure by reflection, so it builds everywhere; where
+// there is no such field (Windows) it reports none, and callers fall back to the cache.
+func hardLinkCount(fileInfo os.FileInfo) (uint64, bool) {
+	stat := reflect.Indirect(reflect.ValueOf(fileInfo.Sys()))
+	if !stat.IsValid() || stat.Kind() != reflect.Struct {
+		return 0, false
+	}
+
+	nLink := stat.FieldByName("Nlink")
+	if !nLink.IsValid() || !nLink.CanUint() {
+		return 0, false
+	}
+
+	return nLink.Uint(), true
+}
+
 func (l *localHardlinkBlobLifecycle) ValidateBlobsDir(repoDir string) (bool, error) {
 	// Stat, not DirExists: DirExists collapses Transient/Permanent into false, which would
 	// soft-skip a live repo from inventory walks as (false, nil).
@@ -231,7 +404,12 @@ func (l *localHardlinkBlobLifecycle) DeletesCanDestroySharedContent() bool {
 }
 
 type remoteSharedBlobLifecycle struct {
-	storeDriver storageTypes.Driver
+	storeDriver    storageTypes.Driver
+	rootDir        string
+	log            zlog.Logger
+	refs           storageTypes.Cache
+	claimWait      time.Duration // linkerClaimWait, shorter in tests
+	deleteDeadline time.Duration // reclaimDeleteDeadline, shorter in tests
 }
 
 func (r *remoteSharedBlobLifecycle) IsPlaceholder(digest godigest.Digest, binfo driver.FileInfo) bool {
@@ -266,6 +444,217 @@ func (r *remoteSharedBlobLifecycle) HandOffContent(_ godigest.Digest, fromPath s
 func (r *remoteSharedBlobLifecycle) RepairSharedContent(uploadPath, originPath string) error {
 	// every placeholder resolves to originPath through the cache, so replacing it repairs them all
 	return r.storeDriver.Move(uploadPath, originPath)
+}
+
+func (r *remoteSharedBlobLifecycle) PromoteCandidate(digest godigest.Digest, size int64,
+	srcPath, stagingPath, dstPath string,
+) error {
+	/* Upgrade passes of instances starting together on one store each choose their candidates
+	before any of them replaces a repo copy with a placeholder, so a pass can come here with a
+	srcPath emptied since. Copying it straight onto dstPath would replace the payload another
+	pass published with nothing, and every copy left would then be empty. So a payload already
+	published is kept, and a copy is published only once it matches. */
+	if published, err := r.holdsPromotedPayload(dstPath, size); err != nil || published {
+		return err
+	}
+
+	copied, copiedDigest, err := r.copyToStaging(digest, srcPath, stagingPath)
+	if err != nil {
+		return err
+	}
+
+	// A digest with no content to find has nothing to verify, and nothing to lose. An invalid
+	// one, which a stray file in a repo's blobs could be named, cannot be hashed.
+	if !lacksContent(digest, size) &&
+		(copied != size || (digest.Validate() == nil && copiedDigest != digest)) {
+		if err := r.storeDriver.Delete(stagingPath); err != nil && !errclass.IsStorageObjectMissing(err) {
+			r.log.Error().Err(err).Str("path", stagingPath).Msg("failed to delete staged blob")
+		}
+
+		// the source was emptied by another pass, which published the payload first
+		if published, err := r.holdsPromotedPayload(dstPath, size); err != nil || published {
+			return err
+		}
+
+		r.log.Error().Str("digest", digest.String()).Str("src", srcPath).Int64("size", copied).
+			Int64("expected", size).Msg("blob to promote does not match its digest")
+
+		return zerr.ErrBadBlob
+	}
+
+	// another pass may publish dstPath meanwhile; both copies are verified, so either can stand
+	return r.storeDriver.Move(stagingPath, dstPath)
+}
+
+// holdsPromotedPayload reports whether dstPath already holds the size bytes being promoted.
+func (r *remoteSharedBlobLifecycle) holdsPromotedPayload(dstPath string, size int64) (bool, error) {
+	binfo, err := r.storeDriver.Stat(dstPath)
+	if err != nil {
+		if errclass.IsStorageObjectMissing(err) {
+			return false, nil
+		}
+
+		if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return binfo.Size() == size, nil
+}
+
+// copyToStaging copies srcPath to stagingPath, returning the number of bytes copied and, for a
+// valid digest, their digest under its algorithm.
+func (r *remoteSharedBlobLifecycle) copyToStaging(digest godigest.Digest, srcPath, stagingPath string,
+) (int64, godigest.Digest, error) {
+	// a copy, not a Move: the repo copy at srcPath is still served until it is replaced
+	blobReader, err := r.storeDriver.Reader(srcPath, 0)
+	if err != nil {
+		return 0, "", err
+	}
+
+	blobWriter, err := r.storeDriver.Writer(stagingPath, false)
+	if err != nil {
+		if closeErr := blobReader.Close(); closeErr != nil {
+			r.log.Error().Err(closeErr).Msg("failed to close blob reader")
+		}
+
+		return 0, "", err
+	}
+
+	var (
+		dst      io.Writer = blobWriter
+		digester godigest.Digester
+	)
+
+	if digest.Validate() == nil {
+		digester = digest.Algorithm().Digester()
+		dst = io.MultiWriter(blobWriter, digester.Hash())
+	}
+
+	copied, err := io.Copy(dst, blobReader)
+	if err != nil {
+		r.abortWrite(blobWriter, blobReader)
+
+		return 0, "", err
+	}
+
+	if err := blobWriter.Commit(context.Background()); err != nil {
+		r.abortWrite(blobWriter, blobReader)
+
+		return 0, "", err
+	}
+
+	if err := blobReader.Close(); err != nil {
+		if closeErr := blobWriter.Close(); closeErr != nil {
+			r.log.Error().Err(closeErr).Msg("failed to close blob writer")
+		}
+
+		return 0, "", err
+	}
+
+	if err := blobWriter.Close(); err != nil {
+		return 0, "", err
+	}
+
+	var copiedDigest godigest.Digest
+	if digester != nil {
+		copiedDigest = digester.Digest()
+	}
+
+	return copied, copiedDigest, nil
+}
+
+// abortWrite cleans up after copyToStaging's copy or commit failed. Every step is best
+// effort, but a failure is logged, since it can leave a partial object behind.
+func (r *remoteSharedBlobLifecycle) abortWrite(blobWriter driver.FileWriter, blobReader io.ReadCloser) {
+	if err := blobWriter.Cancel(context.Background()); err != nil {
+		r.log.Error().Err(err).Msg("failed to cancel blob writer")
+	}
+
+	if err := blobReader.Close(); err != nil {
+		r.log.Error().Err(err).Msg("failed to close blob reader")
+	}
+
+	if err := blobWriter.Close(); err != nil {
+		r.log.Error().Err(err).Msg("failed to close blob writer")
+	}
+}
+
+func (r *remoteSharedBlobLifecycle) RemoveMigratedRepoBlob(globalBlobPath, repoBlobPath string) error {
+	binfo, err := r.storeDriver.Stat(repoBlobPath)
+	if err != nil {
+		// A migration re-run after a crash, or a repo deleted meanwhile, may find the copy gone,
+		// which a driver may report as a plain PathNotFoundError: there is nothing to give up.
+		if errclass.IsStorageObjectMissing(err) {
+			return nil
+		}
+
+		if _, ok := errors.AsType[driver.PathNotFoundError](err); ok {
+			return nil
+		}
+
+		return err
+	}
+
+	// already a placeholder, as later copies of an earlier release, or a re-run, left it
+	if binfo.Size() == 0 {
+		return nil
+	}
+
+	// a remote Link writes an empty object: the copy becomes a placeholder of the payload
+	return linkDistinct(r.storeDriver, globalBlobPath, repoBlobPath)
+}
+
+// ShouldDeleteGlobalBlob never says yes remotely: other instances may be linking the payload,
+// so only the reclaim sweep deletes it.
+func (r *remoteSharedBlobLifecycle) ShouldDeleteGlobalBlob(_ string, _ godigest.Digest,
+	_ func(godigest.Digest) (bool, error),
+) (bool, error) {
+	return false, nil
+}
+
+func (r *remoteSharedBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
+	return repo != storageConstants.GlobalBlobsRepo
+}
+
+func (r *remoteSharedBlobLifecycle) withRefs(refs storageTypes.Cache) blobLifecycle {
+	batched := *r
+	batched.refs = refs
+
+	return &batched
+}
+
+func (r *remoteSharedBlobLifecycle) PutBlobRef(digest godigest.Digest, blobPath string) error {
+	// without a cache there is no index, and no other instance to coordinate with
+	if r.refs == nil {
+		return nil
+	}
+
+	if blobPath == path.Join(r.rootDir, storageConstants.GlobalBlobsRepo, ispec.ImageBlobsDir,
+		digest.Algorithm().String(), digest.Encoded()) {
+		// the payload itself is recorded as present, not as an owner
+		return r.refs.RecordGlobal(digest)
+	}
+
+	// Known limitation, scale-out only: an instance deleting this same path can still remove the
+	// reference added here, since a reference names only a path. See DeleteBlobRef.
+	deadline := time.Now().Add(r.claimWait)
+
+	for {
+		err := r.refs.AddReference(digest, blobPath)
+		if !errors.Is(err, zerr.ErrDigestClaimed) {
+			return err
+		}
+
+		// a sweep is deleting the payload: once it finishes, the push promotes its own upload
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%w: %w", zerr.ErrStorageTransient, err)
+		}
+
+		time.Sleep(linkerClaimPoll)
+	}
 }
 
 func (r *remoteSharedBlobLifecycle) ValidateBlobsDir(_ string) (bool, error) {
