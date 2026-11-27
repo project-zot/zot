@@ -6,7 +6,7 @@
 #   FROM argument 'BASE_IMAGE' is not declared
 # Podman: Error: determining starting point for build: no FROM statement found
 # ---
-ARG BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest
+ARG BASE_IMAGE=gcr.io/distroless/static-debian13:latest
 
 # ---
 # Stage 1: Install certs, build binary, create default config file
@@ -17,7 +17,7 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG COMMIT
 
-RUN apt-get update && apt-get install -y git make ca-certificates
+RUN apt-get update && apt-get install -y git make
 RUN mkdir -p /go/src/github.com/project-zot/zot
 WORKDIR /go/src/github.com/project-zot/zot
 COPY . .
@@ -32,12 +32,11 @@ storage:\n\
   dedupe: false' > config.yaml && cat config.yaml
 
 # ---
-# Stage 2: Final image with nothing but certs, binary, and default config file
+# Stage 2: Final image with the binary and default config file
 # ---
 FROM $BASE_IMAGE AS final
 ARG TARGETOS
 ARG TARGETARCH
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-$TARGETOS-$TARGETARCH /usr/bin/zot
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/config.json
 ENTRYPOINT ["/usr/bin/zot"]

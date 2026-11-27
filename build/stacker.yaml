@@ -48,11 +48,10 @@ build:
     mkdir -p /zotcopy/.build/${{REPO_NAME}}
     cd /zotcopy/.build/${{REPO_NAME}}
 
-    mkdir -p binary/ cert/ config/
+    mkdir -p binary/ config/
 
     cp /go/src/github.com/project-zot/zot/bin/zot-${{OS}}-${{ARCH}} binary/
     cp /go/src/github.com/project-zot/zot/config.json config/
-    cp /etc/ssl/certs/ca-certificates.crt cert/
   build_only: true
 
 "${{REPO_NAME:zot}}":
@@ -67,8 +66,6 @@ build:
   overlay_dirs:
     - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin
-    - source: ../.build/${{REPO_NAME}}/cert
-      dest: /etc/ssl/certs
     - source: ../.build/${{REPO_NAME}}/config
       dest: /etc/zot
   entrypoint:
