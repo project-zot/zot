@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -40,7 +41,12 @@ type DynamoDB struct {
 	Patches            []func(client *dynamodb.Client, tableNames map[string]string) error
 	imgTrustStore      mTypes.ImageTrustStore
 	Log                log.Logger
+
+	// imageMetaWriteSlots bounds the concurrent ImageMeta writes of SetRepoReferences across all callers.
+	imageMetaWriteSlots chan struct{}
 }
+
+const maxConcurrentImageMetaWrites = 32
 
 func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger,
 ) (*DynamoDB, error) {
@@ -55,6 +61,8 @@ func New(client *dynamodb.Client, params DBDriverParameters, log log.Logger,
 		Patches:            version.GetDynamoDBPatches(),
 		imgTrustStore:      nil,
 		Log:                log,
+
+		imageMetaWriteSlots: make(chan struct{}, maxConcurrentImageMetaWrites),
 	}
 
 	err := dynamoWrapper.createVersionTable()
@@ -433,108 +441,172 @@ func (dwr *DynamoDB) SetRepoReference(ctx context.Context, repo string, referenc
 		return err
 	}
 
-	repoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
-	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		return err
-	}
-
-	// 2. Referrers
-	if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
-		refInfo := &proto_go.ReferrersInfo{}
-		if repoMeta.Referrers[subject.Digest.String()] != nil {
-			refInfo = repoMeta.Referrers[subject.Digest.String()]
-		}
-
-		foundReferrer := false
-
-		for i := range refInfo.List {
-			if refInfo.List[i].Digest == mConvert.GetImageDigestStr(protoImageMeta) {
-				foundReferrer = true
-				refInfo.List[i].Count += 1
-
-				break
-			}
-		}
-
-		if !foundReferrer {
-			refInfo.List = append(refInfo.List, &proto_go.ReferrerInfo{
-				Count:        1,
-				MediaType:    protoImageMeta.MediaType,
-				Digest:       mConvert.GetImageDigestStr(protoImageMeta),
-				ArtifactType: mConvert.GetImageArtifactType(protoImageMeta),
-				Size:         mConvert.GetImageManifestSize(protoImageMeta),
-				Annotations:  mConvert.GetImageAnnotations(protoImageMeta),
-			})
-		}
-
-		repoMeta.Referrers[subject.Digest.String()] = refInfo
-	}
-
-	// 3. Update tag
-	if !common.ReferenceIsDigest(reference) {
-		// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
-		// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
-		var taggedTimestamp *timestamppb.Timestamp
-		if existingTag, exists := repoMeta.Tags[reference]; exists {
-			// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
-			if existingTag.GetTaggedTimestamp() != nil {
-				taggedTimestamp = existingTag.GetTaggedTimestamp()
-			}
-			// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
-		} else if options.PushTimestamp.IsZero() {
-			// Live push records the current time. A re-parse sets PushTimestamp from the manifest
-			// blob mod time, shared by every tag of the digest, so leave TaggedTimestamp unset.
-			taggedTimestamp = timestamppb.Now()
-		}
-		repoMeta.Tags[reference] = &proto_go.TagDescriptor{
-			Digest:          imageMeta.Digest.String(),
-			MediaType:       imageMeta.MediaType,
-			TaggedTimestamp: taggedTimestamp,
-		}
-	}
-
-	digestStr := imageMeta.Digest.String()
-	stats, ok := repoMeta.Statistics[digestStr]
-
-	if !ok {
-		stats = &proto_go.DescriptorStatistics{
-			DownloadCount:     0,
-			LastPullTimestamp: mConvert.GetProtoInitialPullTimestamp(options.InitialPullTimestamp),
-			PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
-			PushedBy:          userid,
-		}
-		repoMeta.Statistics[digestStr] = stats
-	} else {
-		if stats.PushTimestamp.AsTime().IsZero() {
-			stats.PushTimestamp = mConvert.GetProtoPushTimestamp(options.PushTimestamp)
-		}
-
-		if userid != "" && stats.PushedBy == "" {
-			stats.PushedBy = userid
-		}
-	}
-
-	if _, ok := repoMeta.Signatures[imageMeta.Digest.String()]; !ok {
-		repoMeta.Signatures[imageMeta.Digest.String()] = &proto_go.ManifestSignatures{
-			Map: map[string]*proto_go.SignaturesInfo{"": {}},
-		}
-	}
-
-	if _, ok := repoMeta.Referrers[imageMeta.Digest.String()]; !ok {
-		repoMeta.Referrers[imageMeta.Digest.String()] = &proto_go.ReferrersInfo{
-			List: []*proto_go.ReferrerInfo{},
-		}
-	}
-
-	// 4. Blobs
-	repoBlobs, err := dwr.getProtoRepoBlobs(ctx, repo)
+	repoMeta, repoBlobs, err := dwr.loadRepoState(ctx, repo)
 	if err != nil {
 		return err
 	}
 
-	repoMeta, repoBlobs = common.AddImageMetaToRepoMeta(repoMeta, repoBlobs, reference, imageMeta)
+	if common.ApplyReferenceToRepoMeta(repoMeta, repoBlobs, reference, imageMeta, protoImageMeta, userid, options) {
+		common.RecalculateRepoAggregates(repoMeta, repoBlobs)
+	}
 
-	err = dwr.setRepoBlobsInfo(repo, repoBlobs) //nolint: contextcheck
+	return dwr.storeRepoState(repo, repoMeta, repoBlobs)
+}
+
+// SetRepoReferences applies the given references to the repo in order. Every ImageMeta is written first, the
+// repo metadata is then loaded, updated and stored once.
+func (dwr *DynamoDB) SetRepoReferences(ctx context.Context, repo string, refs []mTypes.RepoReference) error {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	for _, ref := range refs {
+		if err := common.ValidateRepoReferenceInput(repo, ref.Reference, ref.ImageMeta.Digest); err != nil {
+			return err
+		}
+	}
+
+	var userid string
+
+	userAc, err := reqCtx.UserAcFromContext(ctx)
+	if err == nil {
+		userid = userAc.GetUsername()
+	}
+
+	protoImageMetas := make([]*proto_go.ImageMeta, len(refs))
+	imageMetaWrites := make([]imageMetaWrite, 0, len(refs))
+	writeIndexByDigest := make(map[godigest.Digest]int, len(refs))
+
+	for i, ref := range refs {
+		protoImageMetas[i] = mConvert.GetProtoImageMeta(ref.ImageMeta)
+
+		// The last reference of a digest decides the stored ImageMeta, as in a sequential run.
+		if index, seen := writeIndexByDigest[ref.ImageMeta.Digest]; seen {
+			imageMetaWrites[index].protoImageMeta = protoImageMetas[i]
+
+			continue
+		}
+
+		writeIndexByDigest[ref.ImageMeta.Digest] = len(imageMetaWrites)
+		imageMetaWrites = append(imageMetaWrites,
+			imageMetaWrite{digest: ref.ImageMeta.Digest, protoImageMeta: protoImageMetas[i]})
+	}
+
+	if err := dwr.setProtoImageMetas(ctx, imageMetaWrites); err != nil {
+		return err
+	}
+
+	repoMeta, repoBlobs, err := dwr.loadRepoState(ctx, repo)
+	if err != nil {
+		return err
+	}
+
+	recalcNeeded := false
+
+	for i, ref := range refs {
+		options := mTypes.ApplySetRepoReferenceOptions(ref.Opts...)
+
+		if common.ApplyReferenceToRepoMeta(repoMeta, repoBlobs, ref.Reference, ref.ImageMeta,
+			protoImageMetas[i], userid, options) {
+			recalcNeeded = true
+		}
+	}
+
+	if recalcNeeded {
+		common.RecalculateRepoAggregates(repoMeta, repoBlobs)
+	}
+
+	return dwr.storeRepoState(repo, repoMeta, repoBlobs)
+}
+
+type imageMetaWrite struct {
+	digest         godigest.Digest
+	protoImageMeta *proto_go.ImageMeta
+}
+
+// setProtoImageMetas stores the ImageMeta items concurrently. The number of writes in flight is bounded per
+// DynamoDB instance, so concurrent calls share the bound. It waits for all started writes and returns the first error.
+func (dwr *DynamoDB) setProtoImageMetas(ctx context.Context, writes []imageMetaWrite) error {
+	var (
+		waitGroup sync.WaitGroup
+		errMutex  sync.Mutex
+		firstErr  error
+	)
+
+	recordErr := func(err error) {
+		errMutex.Lock()
+		defer errMutex.Unlock()
+
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	hasFailed := func() bool {
+		errMutex.Lock()
+		defer errMutex.Unlock()
+
+		return firstErr != nil
+	}
+
+	// a value built without New has no shared bound, which would block forever on a nil channel
+	slots := dwr.imageMetaWriteSlots
+	if slots == nil {
+		slots = make(chan struct{}, maxConcurrentImageMetaWrites)
+	}
+
+	acquireSlot := func() bool {
+		select {
+		case slots <- struct{}{}:
+			return true
+		case <-ctx.Done():
+			recordErr(ctx.Err())
+
+			return false
+		}
+	}
+
+	for _, write := range writes {
+		if hasFailed() {
+			break
+		}
+
+		if !acquireSlot() {
+			break
+		}
+
+		waitGroup.Go(func() {
+			defer func() { <-slots }()
+
+			if err := dwr.SetProtoImageMeta(write.digest, write.protoImageMeta); err != nil { //nolint: contextcheck
+				recordErr(err)
+			}
+		})
+	}
+
+	waitGroup.Wait()
+
+	return firstErr
+}
+
+// loadRepoState reads the RepoMeta and RepoBlobs of the repo, empty ones if the repo has none yet.
+func (dwr *DynamoDB) loadRepoState(ctx context.Context, repo string) (*proto_go.RepoMeta, *proto_go.RepoBlobs, error) {
+	repoMeta, err := dwr.getProtoRepoMeta(ctx, repo)
+	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+		return nil, nil, err
+	}
+
+	repoBlobs, err := dwr.getProtoRepoBlobs(ctx, repo)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return repoMeta, repoBlobs, nil
+}
+
+// storeRepoState writes the RepoBlobs (stamping RepoLastUpdated) and the RepoMeta of the repo.
+func (dwr *DynamoDB) storeRepoState(repo string, repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs) error {
+	err := dwr.setRepoBlobsInfo(repo, repoBlobs) //nolint: contextcheck
 	if err != nil {
 		return err
 	}

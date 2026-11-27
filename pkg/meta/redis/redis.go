@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-redsync/redsync/v4"
@@ -29,6 +30,8 @@ import (
 	"zotregistry.dev/zot/v2/pkg/meta/version"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 )
+
+const maxConcurrentImageMetaWrites = 32
 
 const (
 	ImageMetaBucket       = "ImageMeta"
@@ -57,6 +60,9 @@ type RedisDB struct {
 	FastRestartStampKey string
 	UserAPIKeysKey      string
 	LocksKey            string
+
+	// imageMetaWriteSlots bounds the concurrent ImageMeta writes of SetRepoReferences across all callers.
+	imageMetaWriteSlots chan struct{}
 }
 
 type DBDriverParameters struct {
@@ -79,6 +85,8 @@ func New(client redis.UniversalClient, params DBDriverParameters, log log.Logger
 		FastRestartStampKey: join(params.KeyPrefix, mTypes.FastRestartStampKey),
 		UserAPIKeysKey:      join(params.KeyPrefix, UserAPIKeysBucket),
 		LocksKey:            join(params.KeyPrefix, LocksBucket),
+
+		imageMetaWriteSlots: make(chan struct{}, maxConcurrentImageMetaWrites),
 	}
 
 	if err := client.Ping(context.Background()).Err(); err != nil {
@@ -783,8 +791,6 @@ func (rc *RedisDB) SetImageMeta(digest godigest.Digest, imageMeta mTypes.ImageMe
 }
 
 // SetRepoReference sets the given image data to the repo metadata.
-//
-//nolint:gocyclo // Complex function handling multiple metadata updates (referrers, tags, statistics, signatures, blobs)
 func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 	reference string, imageMeta mTypes.ImageMeta, opts ...mTypes.SetRepoReferenceOption,
 ) error {
@@ -809,173 +815,248 @@ func (rc *RedisDB) SetRepoReference(ctx context.Context, repo string,
 		return err
 	}
 
-	err = rc.withRSLocks(ctx, []string{rc.getImageLockKey(imageMeta.Digest.String())}, func() error {
-		err := rc.Client.HSet(ctx, rc.ImageMetaKey, imageMeta.Digest.String(), imageMetaBlob).Err()
-		if err != nil {
-			rc.Log.Error().Err(err).Str("hset", rc.ImageMetaKey).Str("digest", imageMeta.Digest.String()).
-				Msg("failed to set image meta record")
-
-			return fmt.Errorf("failed to set image meta record for digest %s: %w", imageMeta.Digest.String(), err)
-		}
-
-		return nil
-	})
+	err = rc.setImageMetaRecord(ctx, imageMeta.Digest, imageMetaBlob)
 	if err != nil {
 		return err
 	}
 
-	err = rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
-		protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
-		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-			return err
-		}
-
-		// 2. Referrers
-		if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
-			refInfo := &proto_go.ReferrersInfo{}
-			if protoRepoMeta.Referrers[subject.Digest.String()] != nil {
-				refInfo = protoRepoMeta.Referrers[subject.Digest.String()]
-			}
-
-			foundReferrer := false
-
-			for i := range refInfo.List {
-				if refInfo.List[i].Digest == mConvert.GetImageDigestStr(protoImageMeta) {
-					foundReferrer = true
-					refInfo.List[i].Count += 1
-
-					break
-				}
-			}
-
-			if !foundReferrer {
-				refInfo.List = append(refInfo.List, &proto_go.ReferrerInfo{
-					Count:        1,
-					MediaType:    protoImageMeta.MediaType,
-					Digest:       mConvert.GetImageDigestStr(protoImageMeta),
-					ArtifactType: mConvert.GetImageArtifactType(protoImageMeta),
-					Size:         mConvert.GetImageManifestSize(protoImageMeta),
-					Annotations:  mConvert.GetImageAnnotations(protoImageMeta),
-				})
-			}
-
-			protoRepoMeta.Referrers[subject.Digest.String()] = refInfo
-		}
-
-		// 3. Update tag
-		if !common.ReferenceIsDigest(reference) {
-			// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
-			// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
-			var taggedTimestamp *timestamppb.Timestamp
-			if existingTag, exists := protoRepoMeta.Tags[reference]; exists {
-				// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
-				if existingTag.GetTaggedTimestamp() != nil {
-					taggedTimestamp = existingTag.GetTaggedTimestamp()
-				}
-				// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
-			} else if options.PushTimestamp.IsZero() {
-				// Live push records the current time. A re-parse sets PushTimestamp from the manifest
-				// blob mod time, shared by every tag of the digest, so leave TaggedTimestamp unset.
-				taggedTimestamp = timestamppb.Now()
-			}
-			protoRepoMeta.Tags[reference] = &proto_go.TagDescriptor{
-				Digest:          imageMeta.Digest.String(),
-				MediaType:       imageMeta.MediaType,
-				TaggedTimestamp: taggedTimestamp,
-			}
-		}
-
-		digestStr := imageMeta.Digest.String()
-		stats, ok := protoRepoMeta.Statistics[digestStr]
-
-		if !ok {
-			stats = &proto_go.DescriptorStatistics{
-				DownloadCount:     0,
-				LastPullTimestamp: mConvert.GetProtoInitialPullTimestamp(options.InitialPullTimestamp),
-				PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
-				PushedBy:          userid,
-			}
-			protoRepoMeta.Statistics[digestStr] = stats
-		} else {
-			if stats.PushTimestamp.AsTime().IsZero() {
-				stats.PushTimestamp = mConvert.GetProtoPushTimestamp(options.PushTimestamp)
-			}
-
-			if userid != "" && stats.PushedBy == "" {
-				stats.PushedBy = userid
-			}
-		}
-
-		if _, ok := protoRepoMeta.Signatures[imageMeta.Digest.String()]; !ok {
-			protoRepoMeta.Signatures[imageMeta.Digest.String()] = &proto_go.ManifestSignatures{
-				Map: map[string]*proto_go.SignaturesInfo{"": {}},
-			}
-		}
-
-		if _, ok := protoRepoMeta.Referrers[imageMeta.Digest.String()]; !ok {
-			protoRepoMeta.Referrers[imageMeta.Digest.String()] = &proto_go.ReferrersInfo{
-				List: []*proto_go.ReferrerInfo{},
-			}
-		}
-
-		// 4. Blobs
-		repoBlobsBytes, err := rc.Client.HGet(ctx, rc.RepoBlobsKey, repo).Bytes()
-		if err != nil && !errors.Is(err, redis.Nil) {
-			rc.Log.Error().Err(err).Str("hget", rc.RepoBlobsKey).Str("repo", repo).
-				Msg("failed to get repo blobs record")
-
-			return fmt.Errorf("failed to get repo blobs record for repo %s: %w", repo, err)
-		}
-
-		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+	return rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
+		protoRepoMeta, repoBlobs, err := rc.loadRepoState(ctx, repo)
 		if err != nil {
 			return err
 		}
 
-		protoRepoMeta, repoBlobs = common.AddImageMetaToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta)
-		protoTime := timestamppb.New(time.Now())
+		if common.ApplyReferenceToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta, protoImageMeta, userid,
+			options) {
+			common.RecalculateRepoAggregates(protoRepoMeta, repoBlobs)
+		}
 
-		protoTimeBlob, err := proto.Marshal(protoTime)
+		return rc.storeRepoState(ctx, repo, protoRepoMeta, repoBlobs)
+	})
+}
+
+// SetRepoReferences applies the given references to the repo in order. Every ImageMeta is written first, the
+// repo metadata is then loaded, updated and stored once.
+func (rc *RedisDB) SetRepoReferences(ctx context.Context, repo string, refs []mTypes.RepoReference) error {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	for _, ref := range refs {
+		if err := common.ValidateRepoReferenceInput(repo, ref.Reference, ref.ImageMeta.Digest); err != nil {
+			return err
+		}
+	}
+
+	var userid string
+
+	userAc, err := reqCtx.UserAcFromContext(ctx)
+	if err == nil {
+		userid = userAc.GetUsername()
+	}
+
+	protoImageMetas := make([]*proto_go.ImageMeta, len(refs))
+	imageMetaWrites := make([]imageMetaWrite, 0, len(refs))
+	writeIndexByDigest := make(map[godigest.Digest]int, len(refs))
+
+	for i, ref := range refs {
+		protoImageMetas[i] = mConvert.GetProtoImageMeta(ref.ImageMeta)
+
+		blob, err := proto.Marshal(protoImageMetas[i])
 		if err != nil {
 			return err
 		}
 
-		repoBlobsBytes, err = proto.Marshal(repoBlobs)
-		if err != nil {
-			return err
+		// The last reference of a digest decides the stored ImageMeta, as in a sequential run.
+		if index, seen := writeIndexByDigest[ref.ImageMeta.Digest]; seen {
+			imageMetaWrites[index].blob = blob
+
+			continue
 		}
 
-		repoMetaBlob, err := proto.Marshal(protoRepoMeta)
-		if err != nil {
-			return err
-		}
+		writeIndexByDigest[ref.ImageMeta.Digest] = len(imageMetaWrites)
+		imageMetaWrites = append(imageMetaWrites, imageMetaWrite{digest: ref.ImageMeta.Digest, blob: blob})
+	}
 
-		_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
-			if err := txrp.HSet(ctx, rc.RepoLastUpdatedKey, repo, protoTimeBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", rc.RepoLastUpdatedKey).Str("repo", repo).
-					Msg("failed to put repo last updated timestamp")
-
-				return fmt.Errorf("failed to put repo last updated record for repo %s: %w", repo, err)
-			}
-
-			if err := txrp.HSet(ctx, rc.RepoBlobsKey, repo, repoBlobsBytes).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", rc.RepoBlobsKey).Str("repo", repo).
-					Msg("failed to put repo blobs record")
-
-				return fmt.Errorf("failed to set repo blobs record for repo %s: %w", repo, err)
-			}
-
-			if err := txrp.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
-				rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
-					Msg("failed to put repo meta record")
-
-				return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
-			}
-
-			return nil
-		})
-
+	if err := rc.setImageMetaRecords(ctx, imageMetaWrites); err != nil {
 		return err
+	}
+
+	return rc.withRSLocks(ctx, []string{rc.getRepoLockKey(repo)}, func() error {
+		protoRepoMeta, repoBlobs, err := rc.loadRepoState(ctx, repo)
+		if err != nil {
+			return err
+		}
+
+		recalcNeeded := false
+
+		for i, ref := range refs {
+			options := mTypes.ApplySetRepoReferenceOptions(ref.Opts...)
+
+			if common.ApplyReferenceToRepoMeta(protoRepoMeta, repoBlobs, ref.Reference, ref.ImageMeta,
+				protoImageMetas[i], userid, options) {
+				recalcNeeded = true
+			}
+		}
+
+		if recalcNeeded {
+			common.RecalculateRepoAggregates(protoRepoMeta, repoBlobs)
+		}
+
+		return rc.storeRepoState(ctx, repo, protoRepoMeta, repoBlobs)
+	})
+}
+
+type imageMetaWrite struct {
+	digest godigest.Digest
+	blob   []byte
+}
+
+// setImageMetaRecord stores one ImageMeta blob under the lock of its digest.
+func (rc *RedisDB) setImageMetaRecord(ctx context.Context, digest godigest.Digest, imageMetaBlob []byte) error {
+	return rc.withRSLocks(ctx, []string{rc.getImageLockKey(digest.String())}, func() error {
+		err := rc.Client.HSet(ctx, rc.ImageMetaKey, digest.String(), imageMetaBlob).Err()
+		if err != nil {
+			rc.Log.Error().Err(err).Str("hset", rc.ImageMetaKey).Str("digest", digest.String()).
+				Msg("failed to set image meta record")
+
+			return fmt.Errorf("failed to set image meta record for digest %s: %w", digest.String(), err)
+		}
+
+		return nil
+	})
+}
+
+// setImageMetaRecords stores the ImageMeta blobs concurrently. The number of writes in flight is bounded per
+// RedisDB instance, so concurrent calls share the bound. It waits for all started writes and returns the first error.
+func (rc *RedisDB) setImageMetaRecords(ctx context.Context, writes []imageMetaWrite) error {
+	var (
+		waitGroup sync.WaitGroup
+		errMutex  sync.Mutex
+		firstErr  error
+	)
+
+	recordErr := func(err error) {
+		errMutex.Lock()
+		defer errMutex.Unlock()
+
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	hasFailed := func() bool {
+		errMutex.Lock()
+		defer errMutex.Unlock()
+
+		return firstErr != nil
+	}
+
+	// a value built without New has no shared bound, which would block forever on a nil channel
+	slots := rc.imageMetaWriteSlots
+	if slots == nil {
+		slots = make(chan struct{}, maxConcurrentImageMetaWrites)
+	}
+
+	acquireSlot := func() bool {
+		select {
+		case slots <- struct{}{}:
+			return true
+		case <-ctx.Done():
+			recordErr(ctx.Err())
+
+			return false
+		}
+	}
+
+	for _, write := range writes {
+		if hasFailed() {
+			break
+		}
+
+		if !acquireSlot() {
+			break
+		}
+
+		waitGroup.Go(func() {
+			defer func() { <-slots }()
+
+			if err := rc.setImageMetaRecord(ctx, write.digest, write.blob); err != nil {
+				recordErr(err)
+			}
+		})
+	}
+
+	waitGroup.Wait()
+
+	return firstErr
+}
+
+// loadRepoState reads the RepoMeta and RepoBlobs of the repo, empty ones if the repo has none yet.
+func (rc *RedisDB) loadRepoState(ctx context.Context, repo string) (*proto_go.RepoMeta, *proto_go.RepoBlobs, error) {
+	protoRepoMeta, err := rc.getProtoRepoMeta(ctx, repo)
+	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+		return nil, nil, err
+	}
+
+	repoBlobsBytes, err := rc.Client.HGet(ctx, rc.RepoBlobsKey, repo).Bytes()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		rc.Log.Error().Err(err).Str("hget", rc.RepoBlobsKey).Str("repo", repo).
+			Msg("failed to get repo blobs record")
+
+		return nil, nil, fmt.Errorf("failed to get repo blobs record for repo %s: %w", repo, err)
+	}
+
+	repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return protoRepoMeta, repoBlobs, nil
+}
+
+// storeRepoState writes the RepoLastUpdated, RepoBlobs and RepoMeta of the repo in one transaction.
+func (rc *RedisDB) storeRepoState(ctx context.Context, repo string, protoRepoMeta *proto_go.RepoMeta,
+	repoBlobs *proto_go.RepoBlobs,
+) error {
+	protoTimeBlob, err := proto.Marshal(timestamppb.New(time.Now()))
+	if err != nil {
+		return err
+	}
+
+	repoBlobsBytes, err := proto.Marshal(repoBlobs)
+	if err != nil {
+		return err
+	}
+
+	repoMetaBlob, err := proto.Marshal(protoRepoMeta)
+	if err != nil {
+		return err
+	}
+
+	_, err = rc.Client.TxPipelined(ctx, func(txrp redis.Pipeliner) error {
+		if err := txrp.HSet(ctx, rc.RepoLastUpdatedKey, repo, protoTimeBlob).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("hset", rc.RepoLastUpdatedKey).Str("repo", repo).
+				Msg("failed to put repo last updated timestamp")
+
+			return fmt.Errorf("failed to put repo last updated record for repo %s: %w", repo, err)
+		}
+
+		if err := txrp.HSet(ctx, rc.RepoBlobsKey, repo, repoBlobsBytes).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("hset", rc.RepoBlobsKey).Str("repo", repo).
+				Msg("failed to put repo blobs record")
+
+			return fmt.Errorf("failed to set repo blobs record for repo %s: %w", repo, err)
+		}
+
+		if err := txrp.HSet(ctx, rc.RepoMetaKey, repo, repoMetaBlob).Err(); err != nil {
+			rc.Log.Error().Err(err).Str("hset", rc.RepoMetaKey).Str("repo", repo).
+				Msg("failed to put repo meta record")
+
+			return fmt.Errorf("failed to put repometa record for repo %s: %w", repo, err)
+		}
+
+		return nil
 	})
 
 	return err

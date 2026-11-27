@@ -76,6 +76,10 @@ type MetaDB interface { //nolint:interfacebloat
 	SetRepoReference(ctx context.Context, repo string, reference string, imageMeta ImageMeta,
 		opts ...SetRepoReferenceOption) error
 
+	// SetRepoReferences applies refs to the repo metadata in order and leaves the same result as calling
+	// SetRepoReference once per ref.
+	SetRepoReferences(ctx context.Context, repo string, refs []RepoReference) error
+
 	// SearchRepos searches for repos given a search string
 	SearchRepos(ctx context.Context, searchText string) ([]RepoMeta, error)
 
@@ -304,6 +308,14 @@ func ApplySetRepoReferenceOptions(opts ...SetRepoReferenceOption) SetRepoReferen
 	}
 
 	return options
+}
+
+// RepoReference is one reference of a repo together with the image it points to and the options
+// SetRepoReference would take for it.
+type RepoReference struct {
+	Reference string
+	ImageMeta ImageMeta
+	Opts      []SetRepoReferenceOption
 }
 
 // ManifestMeta represents all data related to an image manifests (found from the image contents itself).

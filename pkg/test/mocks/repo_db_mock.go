@@ -58,6 +58,8 @@ type MetaDBMock struct {
 
 	SetRepoReferenceFn func(ctx context.Context, repo string, reference string, imageMeta mTypes.ImageMeta) error
 
+	SetRepoReferencesFn func(ctx context.Context, repo string, refs []mTypes.RepoReference) error
+
 	SearchReposFn func(ctx context.Context, searchText string,
 	) ([]mTypes.RepoMeta, error)
 
@@ -340,6 +342,20 @@ func (sdm MetaDBMock) SetRepoReference(ctx context.Context, repo string, referen
 ) error {
 	if sdm.SetRepoReferenceFn != nil {
 		return sdm.SetRepoReferenceFn(ctx, repo, reference, imageMeta)
+	}
+
+	return nil
+}
+
+func (sdm MetaDBMock) SetRepoReferences(ctx context.Context, repo string, refs []mTypes.RepoReference) error {
+	if sdm.SetRepoReferencesFn != nil {
+		return sdm.SetRepoReferencesFn(ctx, repo, refs)
+	}
+
+	for _, ref := range refs {
+		if err := sdm.SetRepoReference(ctx, repo, ref.Reference, ref.ImageMeta, ref.Opts...); err != nil {
+			return err
+		}
 	}
 
 	return nil

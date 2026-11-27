@@ -221,103 +221,15 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 			return err
 		}
 
-		// 2. Referrers
-		if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
-			refInfo := &proto_go.ReferrersInfo{}
-			if protoRepoMeta.Referrers[subject.Digest.String()] != nil {
-				refInfo = protoRepoMeta.Referrers[subject.Digest.String()]
-			}
-
-			foundReferrer := false
-
-			for i := range refInfo.List {
-				if refInfo.List[i].Digest == mConvert.GetImageDigestStr(protoImageMeta) {
-					foundReferrer = true
-					refInfo.List[i].Count += 1
-
-					break
-				}
-			}
-
-			if !foundReferrer {
-				refInfo.List = append(refInfo.List, &proto_go.ReferrerInfo{
-					Count:        1,
-					MediaType:    protoImageMeta.MediaType,
-					Digest:       mConvert.GetImageDigestStr(protoImageMeta),
-					ArtifactType: mConvert.GetImageArtifactType(protoImageMeta),
-					Size:         mConvert.GetImageManifestSize(protoImageMeta),
-					Annotations:  mConvert.GetImageAnnotations(protoImageMeta),
-				})
-			}
-
-			protoRepoMeta.Referrers[subject.Digest.String()] = refInfo
-		}
-
-		// 3. Update tag
-		if !common.ReferenceIsDigest(reference) {
-			// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
-			// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
-			var taggedTimestamp *timestamppb.Timestamp
-			if existingTag, exists := protoRepoMeta.Tags[reference]; exists {
-				// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
-				if existingTag.GetTaggedTimestamp() != nil {
-					taggedTimestamp = existingTag.GetTaggedTimestamp()
-				}
-				// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
-			} else if options.PushTimestamp.IsZero() {
-				// Live push records the current time. A re-parse sets PushTimestamp from the manifest
-				// blob mod time, shared by every tag of the digest, so leave TaggedTimestamp unset.
-				taggedTimestamp = timestamppb.Now()
-			}
-			protoRepoMeta.Tags[reference] = &proto_go.TagDescriptor{
-				Digest:          imageMeta.Digest.String(),
-				MediaType:       imageMeta.MediaType,
-				TaggedTimestamp: taggedTimestamp,
-			}
-		}
-
-		digestStr := imageMeta.Digest.String()
-		stats, ok := protoRepoMeta.Statistics[digestStr]
-
-		if !ok {
-			stats = &proto_go.DescriptorStatistics{
-				DownloadCount:     0,
-				LastPullTimestamp: mConvert.GetProtoInitialPullTimestamp(options.InitialPullTimestamp),
-				PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
-				PushedBy:          userid,
-			}
-			protoRepoMeta.Statistics[digestStr] = stats
-		} else {
-			if stats.PushTimestamp.AsTime().IsZero() {
-				stats.PushTimestamp = mConvert.GetProtoPushTimestamp(options.PushTimestamp)
-			}
-
-			if userid != "" && stats.PushedBy == "" {
-				stats.PushedBy = userid
-			}
-		}
-
-		if _, ok := protoRepoMeta.Signatures[imageMeta.Digest.String()]; !ok {
-			protoRepoMeta.Signatures[imageMeta.Digest.String()] = &proto_go.ManifestSignatures{
-				Map: map[string]*proto_go.SignaturesInfo{"": {}},
-			}
-		}
-
-		if _, ok := protoRepoMeta.Referrers[imageMeta.Digest.String()]; !ok {
-			protoRepoMeta.Referrers[imageMeta.Digest.String()] = &proto_go.ReferrersInfo{
-				List: []*proto_go.ReferrerInfo{},
-			}
-		}
-
-		// 4. Blobs
-		repoBlobsBytes := repoBlobsBuck.Get([]byte(repo))
-
-		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBytes)
+		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBuck.Get([]byte(repo)))
 		if err != nil {
 			return err
 		}
 
-		protoRepoMeta, repoBlobs = common.AddImageMetaToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta)
+		if common.ApplyReferenceToRepoMeta(protoRepoMeta, repoBlobs, reference, imageMeta, protoImageMeta, userid,
+			options) {
+			common.RecalculateRepoAggregates(protoRepoMeta, repoBlobs)
+		}
 
 		err = setRepoLastUpdated(repo, time.Now(), repoLastUpdatedBuck)
 		if err != nil {
@@ -333,6 +245,94 @@ func (bdw *BoltDB) SetRepoReference(ctx context.Context, repo string, reference 
 	})
 
 	return err
+}
+
+// SetRepoReferences applies the given references to the repo in order inside a single transaction.
+func (bdw *BoltDB) SetRepoReferences(ctx context.Context, repo string, refs []mTypes.RepoReference) error {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	for _, ref := range refs {
+		if err := common.ValidateRepoReferenceInput(repo, ref.Reference, ref.ImageMeta.Digest); err != nil {
+			return err
+		}
+	}
+
+	var userid string
+
+	userAc, err := reqCtx.UserAcFromContext(ctx)
+	if err == nil {
+		userid = userAc.GetUsername()
+	}
+
+	return bdw.DB.Update(func(tx *bbolt.Tx) error {
+		repoBuck := tx.Bucket([]byte(RepoMetaBuck))
+		repoBlobsBuck := tx.Bucket([]byte(RepoBlobsBuck))
+		repoLastUpdatedBuck := repoBlobsBuck.Bucket([]byte(RepoLastUpdatedBuck))
+		imageBuck := tx.Bucket([]byte(ImageMetaBuck))
+
+		protoImageMetas := make([]*proto_go.ImageMeta, len(refs))
+		storedDigests := make(map[godigest.Digest]struct{}, len(refs))
+
+		for i := range refs {
+			protoImageMetas[i] = mConvert.GetProtoImageMeta(refs[i].ImageMeta)
+		}
+
+		// The last reference of a digest decides the stored ImageMeta, as in a sequential run.
+		for i, ref := range slices.Backward(refs) {
+			digest := ref.ImageMeta.Digest
+			if _, stored := storedDigests[digest]; stored {
+				continue
+			}
+
+			storedDigests[digest] = struct{}{}
+
+			imageMetaBlob, err := proto.Marshal(protoImageMetas[i])
+			if err != nil {
+				return err
+			}
+
+			if err := imageBuck.Put([]byte(digest), imageMetaBlob); err != nil {
+				return err
+			}
+		}
+
+		protoRepoMeta, err := getProtoRepoMeta(repo, repoBuck)
+		if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			return err
+		}
+
+		repoBlobs, err := unmarshalProtoRepoBlobs(repo, repoBlobsBuck.Get([]byte(repo)))
+		if err != nil {
+			return err
+		}
+
+		recalcNeeded := false
+
+		for i, ref := range refs {
+			options := mTypes.ApplySetRepoReferenceOptions(ref.Opts...)
+
+			if common.ApplyReferenceToRepoMeta(protoRepoMeta, repoBlobs, ref.Reference, ref.ImageMeta,
+				protoImageMetas[i], userid, options) {
+				recalcNeeded = true
+			}
+		}
+
+		if recalcNeeded {
+			common.RecalculateRepoAggregates(protoRepoMeta, repoBlobs)
+		}
+
+		if err := setRepoLastUpdated(repo, time.Now(), repoLastUpdatedBuck); err != nil {
+			return err
+		}
+
+		if err := setProtoRepoBlobs(repoBlobs, repoBlobsBuck); err != nil {
+			return err
+		}
+
+		return setProtoRepoMeta(protoRepoMeta, repoBuck)
+	})
 }
 
 func setRepoLastUpdated(repo string, lastUpdated time.Time, repoLastUpdatedBuck *bbolt.Bucket) error {
