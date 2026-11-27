@@ -407,10 +407,26 @@ func (r slottedReader) StatBlob(repo string, digest godigest.Digest) (bool, int6
 	return r.ImageStore.StatBlob(repo, digest)
 }
 
-func applySignatures(repo string, metaDB mTypes.MetaDB, signatures []signatureRef, rawStore stypes.ImageStore,
+// slottedVerifier holds a slot of parseReadSlots while signature validity is verified: the image trust store
+// reads the signature layers itself, outside the image store wrapper.
+type slottedVerifier struct {
+	mTypes.MetaDB
+}
+
+func (v slottedVerifier) UpdateSignaturesValidity(ctx context.Context, repo string, manifestDigest godigest.Digest,
+) error {
+	parseReadSlots <- struct{}{}
+
+	defer func() { <-parseReadSlots }()
+
+	return v.MetaDB.UpdateSignaturesValidity(ctx, repo, manifestDigest)
+}
+
+func applySignatures(repo string, rawMetaDB mTypes.MetaDB, signatures []signatureRef, rawStore stypes.ImageStore,
 	log log.Logger,
 ) error {
 	imageStore := slottedReader{rawStore}
+	metaDB := slottedVerifier{rawMetaDB}
 
 	for _, sig := range signatures {
 		// the blob is read again instead of kept from the chunk read, so that a repo with many

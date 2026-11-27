@@ -1134,6 +1134,202 @@ func TestParseRepoSignatureReadsTakeReadSlot(t *testing.T) {
 	})
 }
 
+// verificationTrustStore stands for an image trust store: it reads a signature layer when asked to verify.
+type verificationTrustStore struct {
+	onVerify func()
+}
+
+func (v verificationTrustStore) VerifySignatureLayer(string, godigest.Digest, string, godigest.Digest,
+	mTypes.ImageMeta, string,
+) (mTypes.Author, mTypes.ExpiryDate, mTypes.Validity, error) {
+	v.onVerify()
+
+	return "", time.Time{}, true, nil
+}
+
+func TestParseRepoSignatureVerificationTakesReadSlot(t *testing.T) {
+	logger := log.NewTestLogger()
+	fixture := newParseFixture(t)
+
+	var signatureManifest ispec.Manifest
+	if err := json.Unmarshal(fixture.manifestBlob, &signatureManifest); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+
+	layerDigest := signatureManifest.Layers[0].Digest
+
+	storeModes(func(mode string, wrap func(mocks.MockedImageStore) storage.StoreController) {
+		Convey("signature verification waits for a shared read slot during parse, "+mode+" store", t, func() {
+			signed := fixture.manifestDigest("signed", 0)
+			signatureDigest := fixture.manifestDigest("signature", 0)
+			entries := []indexEntry{
+				{fixture.manifestDigest("image", 0), "image"},
+				{signatureDigest, "sha256-" + signed.Encoded() + ".sig"},
+			}
+
+			var (
+				slotsHeldByTest atomic.Int32
+				allHeld         = make(chan struct{})
+				heldAgain       = make(chan struct{})
+				verifyStarted   = make(chan struct{})
+				done            = make(chan error, 1)
+				mu              sync.Mutex
+				slotsAtVerify   []int
+				holdOnce        sync.Once
+			)
+
+			holdSlot := func() {
+				parseReadSlots <- struct{}{}
+				slotsHeldByTest.Add(1)
+			}
+
+			releaseSlot := func() {
+				<-parseReadSlots
+				slotsHeldByTest.Add(-1)
+			}
+
+			trustStore := verificationTrustStore{onVerify: func() {
+				mu.Lock()
+				defer mu.Unlock()
+
+				slotsAtVerify = append(slotsAtVerify, len(parseReadSlots))
+			}}
+
+			var metaDB mocks.MetaDBMock
+
+			metaDB = mocks.MetaDBMock{
+				ImageTrustStoreFn: func() mTypes.ImageTrustStore { return trustStore },
+				SetRepoReferencesFn: func(context.Context, string, []mTypes.RepoReference) error {
+					holdOnce.Do(func() {
+						for range parseReadParallelism {
+							holdSlot()
+						}
+
+						close(allHeld)
+					})
+
+					return nil
+				},
+				AddManifestSignatureFn: func(string, godigest.Digest, mTypes.SignatureMetadata) error {
+					// the layer stats are done: take back the slot the test released
+					holdSlot()
+					close(heldAgain)
+
+					return nil
+				},
+				UpdateSignaturesValidityFn: func(_ context.Context, repo string, manifestDigest godigest.Digest) error {
+					close(verifyStarted)
+
+					_, _, _, err := metaDB.ImageTrustStore().VerifySignatureLayer(CosignType, layerDigest, "", manifestDigest,
+						mTypes.ImageMeta{}, repo)
+
+					return err
+				},
+			}
+
+			controller := wrap(mocks.MockedImageStore{
+				GetIndexContentFn: func(string) ([]byte, error) { return indexBlobOf(entries), nil },
+				GetBlobContentFn:  func(_ string, digest godigest.Digest) ([]byte, error) { return fixture.blob(digest) },
+			})
+
+			defer func() {
+				for slotsHeldByTest.Load() > 0 {
+					releaseSlot()
+				}
+
+				<-done
+			}()
+
+			go func() {
+				_, err := parseRepo("repo", metaDB, controller, logger)
+				done <- err
+			}()
+
+			select {
+			case <-allHeld:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the references were never written")
+			}
+
+			releaseSlot()
+
+			select {
+			case <-heldAgain:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the signature was never added")
+			}
+
+			select {
+			case <-verifyStarted:
+				t.Fatal("signature verification started while every read slot was held")
+			case <-time.After(probeSettle):
+			}
+
+			releaseSlot()
+
+			var err error
+
+			select {
+			case err = <-done:
+				done <- err
+			case <-time.After(5 * time.Second):
+				t.Fatal("the signature phase did not finish with one free read slot")
+			}
+
+			So(err, ShouldBeNil)
+			So(slotsAtVerify, ShouldResemble, []int{parseReadParallelism})
+		})
+	})
+}
+
+func TestSetImageMetaFromInputTakesNoReadSlot(t *testing.T) {
+	logger := log.NewTestLogger()
+	fixture := newParseFixture(t)
+
+	Convey("a pushed signature is verified without a parse read slot", t, func() {
+		signed := fixture.manifestDigest("signed", 0)
+		signatureDigest := fixture.manifestDigest("signature", 0)
+
+		var verified atomic.Bool
+
+		metaDB := mocks.MetaDBMock{
+			UpdateSignaturesValidityFn: func(context.Context, string, godigest.Digest) error {
+				verified.Store(true)
+
+				return nil
+			},
+		}
+		store := mocks.MockedImageStore{
+			GetBlobContentFn: func(_ string, digest godigest.Digest) ([]byte, error) { return fixture.blob(digest) },
+		}
+
+		for range parseReadParallelism {
+			parseReadSlots <- struct{}{}
+		}
+
+		defer func() {
+			for range parseReadParallelism {
+				<-parseReadSlots
+			}
+		}()
+
+		done := make(chan error, 1)
+
+		go func() {
+			done <- SetImageMetaFromInput(context.Background(), "repo", "sha256-"+signed.Encoded()+".sig",
+				ispec.MediaTypeImageManifest, signatureDigest, fixture.manifestBlob, store, metaDB, logger)
+		}()
+
+		select {
+		case err := <-done:
+			So(err, ShouldBeNil)
+			So(verified.Load(), ShouldBeTrue)
+		case <-time.After(5 * time.Second):
+			t.Fatal("the push path waited for a parse read slot")
+		}
+	})
+}
+
 func TestParseRepoReturnsSignatureError(t *testing.T) {
 	logger := log.NewTestLogger()
 	fixture := newParseFixture(t)
