@@ -5,6 +5,7 @@ package search_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -160,5 +161,55 @@ func TestImageListGql(t *testing.T) {
 		So(img.RepoName, ShouldEqual, "zot-no-vuln")
 		So(img.Vulnerabilities.Count, ShouldEqual, 0)
 		So(img.Vulnerabilities.MaxSeverity, ShouldEqual, "NONE")
+	})
+}
+
+func TestImageListPaginationWithTies(t *testing.T) {
+	Convey("Paging through ImageList returns every tag once when sort keys tie", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+		conf.Storage.RootDirectory = t.TempDir()
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		ctlr := api.NewController(conf)
+		cm := NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		// every tag points to the same image, so all tags share LastUpdated and DownloadCount
+		image := CreateRandomImage()
+		tags := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+
+		for _, tag := range tags {
+			So(UploadImage(image, baseURL, "repo", tag), ShouldBeNil)
+		}
+
+		for _, sortBy := range []string{"UPDATE_TIME", "DOWNLOADS"} {
+			seen := []string{}
+
+			for offset := range tags {
+				query := fmt.Sprintf(`{
+					ImageList(repo:"repo", requestedPage:{limit:1, offset:%d, sortBy:%s}) {
+						Results { Tag }
+					}
+				}`, offset, sortBy)
+
+				resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				var responseStruct zcommon.ImageListResponse
+				So(json.Unmarshal(resp.Body(), &responseStruct), ShouldBeNil)
+				So(len(responseStruct.Results), ShouldEqual, 1)
+
+				seen = append(seen, responseStruct.Results[0].Tag)
+			}
+
+			So(seen, ShouldResemble, tags)
+		}
 	})
 }

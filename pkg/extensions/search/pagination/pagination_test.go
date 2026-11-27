@@ -358,14 +358,14 @@ func TestPagination(t *testing.T) {
 				Tag:         ref("tag2"),
 				LastUpdated: ref(sameTime),
 			}
-			imagePageFinder.Add(&imgSum3)
 			imagePageFinder.Add(&imgSum4)
+			imagePageFinder.Add(&imgSum3)
 
 			page, _ = imagePageFinder.Page()
-			// When LastUpdated times are equal, sort is stable - first added stays first
+			// When LastUpdated times are equal, images are ordered by repo name and tag
 			So(len(page), ShouldEqual, 2)
-			So(*page[0].RepoName, ShouldEqual, "repo1") // First added
-			So(*page[1].RepoName, ShouldEqual, "repo2") // Second added
+			So(*page[0].RepoName, ShouldEqual, "repo1")
+			So(*page[1].RepoName, ShouldEqual, "repo2")
 
 			// Test tie-breaking for Downloads - when DownloadCount values are equal
 			imagePageFinder, err = pagination.NewImgSumPageFinder(10, 0, pagination.Downloads)
@@ -381,14 +381,48 @@ func TestPagination(t *testing.T) {
 				Tag:           ref("tag2"),
 				DownloadCount: ref(100),
 			}
-			imagePageFinder.Add(&imgSum5)
 			imagePageFinder.Add(&imgSum6)
+			imagePageFinder.Add(&imgSum5)
 
 			page, _ = imagePageFinder.Page()
-			// When DownloadCount values are equal, sort is stable - first added stays first
+			// When DownloadCount values are equal, images are ordered by repo name and tag
 			So(len(page), ShouldEqual, 2)
-			So(*page[0].RepoName, ShouldEqual, "repo1") // First added
-			So(*page[1].RepoName, ShouldEqual, "repo2") // Second added
+			So(*page[0].RepoName, ShouldEqual, "repo1")
+			So(*page[1].RepoName, ShouldEqual, "repo2")
+		})
+
+		Convey("Image page finder breaks ties by repo and tag", func() {
+			sameTime := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
+			sameRepoTags := []*gql_generated.ImageSummary{}
+
+			for _, tag := range []string{"d", "b", "e", "a", "c"} {
+				sameRepoTags = append(sameRepoTags, &gql_generated.ImageSummary{
+					RepoName:      ref("repo"),
+					Tag:           ref(tag),
+					LastUpdated:   ref(sameTime),
+					DownloadCount: ref(0),
+				})
+			}
+
+			for _, sortBy := range []pagination.SortCriteria{pagination.UpdateTime, pagination.Downloads} {
+				seen := []string{}
+
+				for offset := range sameRepoTags {
+					imagePageFinder, err := pagination.NewImgSumPageFinder(1, offset, sortBy)
+					So(err, ShouldBeNil)
+
+					// rotate the insertion order for every page
+					for i := range sameRepoTags {
+						imagePageFinder.Add(sameRepoTags[(i+offset)%len(sameRepoTags)])
+					}
+
+					page, _ := imagePageFinder.Page()
+					So(len(page), ShouldEqual, 1)
+					seen = append(seen, *page[0].Tag)
+				}
+
+				So(seen, ShouldResemble, []string{"a", "b", "c", "d", "e"})
+			}
 		})
 
 		Convey("Errors", func() {
@@ -587,6 +621,41 @@ func TestPagination(t *testing.T) {
 			So(page, ShouldEqual, []*gql_generated.RepoSummary{
 				&repoSum4, &repoSum1, &repoSum3, &repoSum2,
 			})
+		})
+
+		Convey("Repo page finder breaks ties by name", func() {
+			sameTime := time.Date(2010, 1, 1, 1, 1, 1, 1, time.UTC)
+			repos := []*gql_generated.RepoSummary{}
+
+			for _, name := range []string{"repo4", "repo2", "repo5", "repo1", "repo3"} {
+				repos = append(repos, &gql_generated.RepoSummary{
+					Name:          ref(name),
+					LastUpdated:   ref(sameTime),
+					DownloadCount: ref(0),
+					Rank:          ref(1),
+				})
+			}
+
+			sortCriteria := []pagination.SortCriteria{pagination.Relevance, pagination.UpdateTime, pagination.Downloads}
+			for _, sortBy := range sortCriteria {
+				seen := []string{}
+
+				for offset := range repos {
+					repoPageFinder, err := pagination.NewRepoSumPageFinder(1, offset, sortBy)
+					So(err, ShouldBeNil)
+
+					// rotate the insertion order for every page
+					for i := range repos {
+						repoPageFinder.Add(repos[(i+offset)%len(repos)])
+					}
+
+					page, _ := repoPageFinder.Page()
+					So(len(page), ShouldEqual, 1)
+					seen = append(seen, *page[0].Name)
+				}
+
+				So(seen, ShouldResemble, []string{"repo1", "repo2", "repo3", "repo4", "repo5"})
+			}
 		})
 
 		Convey("Repo page finder offset without limit", func() {

@@ -1,6 +1,7 @@
 package pagination
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"sync"
@@ -62,7 +63,13 @@ func (pf *ImageSummariesPageFinder) Page() ([]*gql_gen.ImageSummary, zcommon.Pag
 
 	pageInfo := zcommon.PageInfo{}
 
-	slices.SortFunc(pf.pageBuffer, getImgSortFunctions()[pf.sortBy])
+	sortFn := getImgSortFunctions()[pf.sortBy]
+
+	// The buffer order depends on map iteration in MetaDB, so ties have to be broken
+	// for every request to page through the same order.
+	slices.SortFunc(pf.pageBuffer, func(a, b *gql_gen.ImageSummary) int {
+		return cmp.Or(sortFn(a, b), ImgSortByAlphabeticAsc(a, b))
+	})
 
 	// the offset and limit are calculated in terms of repos counted
 	start := pf.offset
