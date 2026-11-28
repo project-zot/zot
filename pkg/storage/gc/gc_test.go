@@ -3333,6 +3333,53 @@ func TestGCStaleManifestPruneReason(t *testing.T) {
 	})
 }
 
+func TestGCPreservesUnchangedIndex(t *testing.T) {
+	Convey("live GC collects orphan blobs without rewriting an unchanged index", t, func() {
+		log := zlog.NewTestLogger()
+		metrics := monitoring.NewNopMetricServer()
+		rootDir := t.TempDir()
+		imgStore := local.NewImageStore(rootDir, false, false, log, metrics, nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imgStore}
+		ctx := context.Background()
+		repo := "gc-unchanged-index"
+
+		image := CreateRandomImage()
+		So(WriteImageToFileSystem(image, repo, "v1", storeController), ShouldBeNil)
+
+		orphanContent := []byte("unreferenced blob")
+		orphanDigest := godigest.FromBytes(orphanContent)
+		_, _, err := imgStore.FullBlobUpload(ctx, repo, bytes.NewReader(orphanContent), orphanDigest)
+		So(err, ShouldBeNil)
+
+		indexPath := path.Join(rootDir, repo, ispec.ImageIndexFile)
+		oldTime := time.Unix(1_000_000_000, 0)
+		So(os.Chtimes(indexPath, oldTime, oldTime), ShouldBeNil)
+		_, _, before, err := imgStore.StatIndex(repo)
+		So(err, ShouldBeNil)
+		indexBefore, err := imgStore.GetIndexContent(repo)
+		So(err, ShouldBeNil)
+
+		audit := zlog.NewAuditLogger("debug", "")
+		collector := gc.NewGarbageCollect(imgStore, nil, gc.Options{}, audit, log, metrics)
+		for range 2 {
+			So(collector.CleanRepo(ctx, repo), ShouldBeNil)
+
+			blobs, err := imgStore.GetAllBlobs(repo)
+			So(err, ShouldBeNil)
+			So(blobs, ShouldNotContain, orphanDigest)
+			So(blobs, ShouldContain, image.ManifestDescriptor.Digest)
+
+			indexAfter, err := imgStore.GetIndexContent(repo)
+			So(err, ShouldBeNil)
+			So(indexAfter, ShouldResemble, indexBefore)
+
+			_, _, after, err := imgStore.StatIndex(repo)
+			So(err, ShouldBeNil)
+			So(after, ShouldEqual, before)
+		}
+	})
+}
+
 // TestGCDryRunDeletesNothing guards DryRun's non-destructive-simulation contract: index.json pruning is
 // already DryRun-gated, but blob GC re-reads the on-disk index.json independently and used to run
 // unconditionally, so it could delete orphan blobs for real - including the config/layers of an

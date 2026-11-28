@@ -307,10 +307,16 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Error on PutIndexContent in gc.cleanRepo()", func() {
-			returnedIndexJSON := ispec.Index{}
+		indexWithUnsupportedManifest := ispec.Index{
+			SchemaVersion: 2,
+			Manifests: []ispec.Descriptor{{
+				MediaType: "application/vnd.example.unsupported",
+				Digest:    godigest.FromString("unsupported manifest"),
+			}},
+		}
 
-			returnedIndexJSONBuf, err := json.Marshal(returnedIndexJSON)
+		Convey("Error on PutIndexContent in gc.cleanRepo()", func() {
+			returnedIndexJSONBuf, err := json.Marshal(indexWithUnsupportedManifest)
 			So(err, ShouldBeNil)
 
 			imgStore := mocks.MockedImageStore{
@@ -332,9 +338,7 @@ func TestGarbageCollectWithMockedImageStore(t *testing.T) {
 		})
 
 		Convey("cleanRepo deletes stale uploads before PutIndexContent fails", func() {
-			returnedIndexJSON := ispec.Index{}
-
-			returnedIndexJSONBuf, err := json.Marshal(returnedIndexJSON)
+			returnedIndexJSONBuf, err := json.Marshal(indexWithUnsupportedManifest)
 			So(err, ShouldBeNil)
 
 			uploadUUID := "stale-upload"

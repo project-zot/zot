@@ -7,6 +7,7 @@ import (
 	"maps"
 	"math/rand"
 	"path"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -327,20 +328,27 @@ func (gc GarbageCollect) cleanRepoLocked(ctx context.Context, repo string) error
 			return err
 		}
 
-		// Update index.json with manifest references removed above; orphan
-		// manifest/config/layer blobs are deleted by gc.deleteUnreferencedBlobs().
-		if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
-			if rollbackErr := gc.imgStore.PutIndexContent(repo, indexBefore); rollbackErr != nil {
-				return errors.Join(err, fmt.Errorf("failed to restore index after index commit failure: %w", rollbackErr))
-			}
+		// GC edits manifest descriptors. Removing a tag can leave the descriptor count unchanged.
+		indexChanged := !slices.EqualFunc(indexBefore.Manifests, index.Manifests, func(before, after ispec.Descriptor) bool {
+			return reflect.DeepEqual(before, after)
+		})
 
-			return err
+		if indexChanged {
+			if err := gc.imgStore.PutIndexContent(repo, index); err != nil {
+				if rollbackErr := gc.imgStore.PutIndexContent(repo, indexBefore); rollbackErr != nil {
+					return errors.Join(err, fmt.Errorf("failed to restore index after index commit failure: %w", rollbackErr))
+				}
+
+				return err
+			}
 		}
 
-		// MetaDB changes are committed only after the index update succeeds. If the
-		// staged index write fails, the plan is discarded with this pass and the old
-		// index and metadata remain aligned for a later retry.
+		// Apply the MetaDB plan after any required index write succeeds.
 		if err := gc.commitMetaDBPlan(); err != nil {
+			if !indexChanged {
+				return err
+			}
+
 			if rollbackErr := gc.imgStore.PutIndexContent(repo, indexBefore); rollbackErr != nil {
 				return errors.Join(err, fmt.Errorf("failed to restore index after MetaDB commit failure: %w", rollbackErr))
 			}
