@@ -25,6 +25,8 @@ type ImageStore interface { //nolint:interfacebloat
 	Name() string
 	DirExists(d string) bool
 	RootDir() string
+	// PruneEmptyNamespaces removes empty namespace directories at startup.
+	PruneEmptyNamespaces()
 	// WithRepoLock and WithRepoReadLock run wrappedFunc while holding the write, respectively
 	// read, lock for work on repo, and return its error.
 	//
@@ -118,6 +120,10 @@ type ImageStore interface { //nolint:interfacebloat
 type Driver interface { //nolint:interfacebloat
 	Name() string
 	EnsureDir(path string) error
+	// ListSubDirs lists immediate directory paths, skipping symlinks and virtual object prefixes.
+	ListSubDirs(path string) ([]string, error)
+	// RemoveEmptyDir removes an empty directory. Missing and non-empty directories are skipped.
+	RemoveEmptyDir(path string) error
 	DirExists(path string) bool
 	Reader(path string, offset int64) (io.ReadCloser, error)
 	ReadFile(path string) ([]byte, error)

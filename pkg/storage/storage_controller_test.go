@@ -118,3 +118,30 @@ func TestStoreControllerSyncStagingRoots(t *testing.T) {
 		})
 	})
 }
+
+func TestStoreControllerPruneEmptyNamespaces(t *testing.T) {
+	calls := map[string]int{}
+	newStore := func(name string) mocks.MockedImageStore {
+		return mocks.MockedImageStore{
+			PruneEmptyNamespacesFn: func() {
+				calls[name]++
+			},
+		}
+	}
+
+	storeController := storage.StoreController{
+		DefaultStore: newStore("default"),
+		SubStore: map[string]storageTypes.ImageStore{
+			"/first":  newStore("first"),
+			"/second": newStore("second"),
+		},
+	}
+
+	storeController.PruneEmptyNamespaces()
+
+	for _, name := range []string{"default", "first", "second"} {
+		if calls[name] != 1 {
+			t.Errorf("expected one namespace pruning call for %s, got %d", name, calls[name])
+		}
+	}
+}

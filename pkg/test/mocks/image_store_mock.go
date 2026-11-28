@@ -72,6 +72,8 @@ type MockedImageStore struct {
 	VerifyBlobDigestValueFn       func(repo string, digest godigest.Digest) error
 	GetAllDedupeReposCandidatesFn func(digest godigest.Digest) ([]string, error)
 	GetBlobRedirectURLFn          func(r *http.Request, repo string, digest godigest.Digest) (string, error)
+
+	PruneEmptyNamespacesFn func()
 }
 
 func (is MockedImageStore) StatIndex(repo string) (bool, int64, time.Time, error) {
@@ -124,6 +126,13 @@ func (is MockedImageStore) DirExists(d string) bool {
 	}
 
 	return true
+}
+
+// PruneEmptyNamespaces invokes the configured startup cleanup, if present.
+func (is MockedImageStore) PruneEmptyNamespaces() {
+	if is.PruneEmptyNamespacesFn != nil {
+		is.PruneEmptyNamespacesFn()
+	}
 }
 
 func (is MockedImageStore) RootDir() string {

@@ -73,6 +73,19 @@ func (sc StoreController) GetImageSubStores() map[string]storageTypes.ImageStore
 	return sc.SubStore
 }
 
+// PruneEmptyNamespaces runs startup namespace cleanup on every configured store.
+func (sc StoreController) PruneEmptyNamespaces() {
+	if sc.DefaultStore != nil {
+		sc.DefaultStore.PruneEmptyNamespaces()
+	}
+
+	for _, store := range sc.SubStore {
+		if store != nil {
+			store.PruneEmptyNamespaces()
+		}
+	}
+}
+
 // SyncStagingRootForImageStore returns the local filesystem root where on-demand sync staging
 // for repos in this image store may exist. When SyncDownloadDir is set, staging always lives
 // there (including for remote serving stores). Otherwise it is the store RootDir for local
