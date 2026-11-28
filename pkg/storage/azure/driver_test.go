@@ -446,3 +446,16 @@ func TestNewImageStore(t *testing.T) {
 		So(imgStore, ShouldNotBeNil)
 	})
 }
+
+func TestEmptyDirectoryOperationsAreNoOps(t *testing.T) {
+	driver := azure.New(nil)
+
+	dirs, err := driver.ListSubDirs("/")
+	if err != nil || len(dirs) != 0 {
+		t.Fatalf("expected no physical directories, got %v, %v", dirs, err)
+	}
+
+	if err := driver.RemoveEmptyDir("/namespace"); err != nil {
+		t.Fatal(err)
+	}
+}

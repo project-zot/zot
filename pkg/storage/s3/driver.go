@@ -37,6 +37,16 @@ func (driver *Driver) EnsureDir(path string) error {
 	return nil
 }
 
+// ListSubDirs returns no directories because EnsureDir creates no objects.
+func (driver *Driver) ListSubDirs(string) ([]string, error) {
+	return nil, nil
+}
+
+// RemoveEmptyDir is a no-op because EnsureDir does not create directory objects.
+func (driver *Driver) RemoveEmptyDir(string) error {
+	return nil
+}
+
 func (driver *Driver) DirExists(path string) bool {
 	if fi, err := driver.store.Stat(context.Background(), path); err == nil && fi.IsDir() {
 		return true

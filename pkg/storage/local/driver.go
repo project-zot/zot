@@ -46,6 +46,39 @@ func (driver *Driver) EnsureDir(path string) error {
 	return driver.formatErr(err)
 }
 
+// ListSubDirs returns immediate subdirectories without following symlinks.
+func (driver *Driver) ListSubDirs(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, driver.formatErr(err)
+	}
+
+	var dirs []string
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirs = append(dirs, path.Join(dir, entry.Name()))
+		}
+	}
+
+	return dirs, nil
+}
+
+// RemoveEmptyDir removes a directory only if it is empty, leaving a non-empty or missing directory alone.
+func (driver *Driver) RemoveEmptyDir(dir string) error {
+	err := syscall.Rmdir(dir)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) ||
+		errors.Is(err, os.ErrExist) {
+		return nil
+	}
+
+	if err != nil {
+		return driver.formatErr(&os.PathError{Op: "rmdir", Path: dir, Err: err})
+	}
+
+	return nil
+}
+
 func (driver *Driver) DirExists(path string) bool {
 	if !utf8.ValidString(path) {
 		return false

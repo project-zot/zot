@@ -1462,3 +1462,42 @@ func TestSameFile(t *testing.T) {
 		})
 	})
 }
+
+func TestRemoveEmptyDir(t *testing.T) {
+	driver := local.New(false)
+	root := t.TempDir()
+	child := filepath.Join(root, "child")
+
+	if err := driver.EnsureDir(child); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := driver.RemoveEmptyDir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	if !driver.DirExists(child) {
+		t.Fatal("non-empty parent or its child was removed")
+	}
+
+	if err := driver.RemoveEmptyDir(child); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Lstat(child); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("empty child should have been removed, stat returned %v", err)
+	}
+
+	file := filepath.Join(root, "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := driver.RemoveEmptyDir(file); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Lstat(file); err != nil {
+		t.Fatalf("regular file should have been preserved: %v", err)
+	}
+}

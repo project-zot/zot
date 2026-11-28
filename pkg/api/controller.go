@@ -391,6 +391,11 @@ func (c *Controller) Init() error {
 		return err
 	}
 
+	// GC removes a repository directory and stops. Ancestors such as user/foo have no OCI
+	// layout, so later passes never visit them. Drop those empty namespace directories once
+	// at startup, before requests, where a non-recursive remove cannot race a live push.
+	c.StoreController.PruneEmptyNamespaces()
+
 	// Once per process, before Run enables sync: a config reload re-enables sync with streams
 	// still live, so this can't move into StartBackgroundTasks.
 	gc.RemoveStreamTempDirs(c.StoreController, c.Log)
