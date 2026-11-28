@@ -17,6 +17,15 @@ type Cache interface {
 	// Uploads blob to cachedb.
 	PutBlob(digest godigest.Digest, path string) error
 
+	// PutDuplicate records path as another copy of digest. Unlike PutBlob, it never creates the
+	// record or an origin: it returns a cache-miss error when digest has no origin, so a copy
+	// that holds no content cannot become the origin because the record was removed meanwhile.
+	PutDuplicate(digest godigest.Digest, path string) error
+
+	// ReplaceBlob makes newPath the origin of digest if oldPath still is, and newPath is one of
+	// the tracked paths. It returns ErrCacheConflict otherwise. oldPath stays tracked.
+	ReplaceBlob(digest godigest.Digest, oldPath, newPath string) error
+
 	// Check if blob exists in cachedb.
 	HasBlob(digest godigest.Digest, path string) bool
 
