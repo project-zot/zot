@@ -3304,6 +3304,41 @@ func (is *ImageStore) pruneRepositoryLayout(repo string) error {
 	return nil
 }
 
+// PruneEmptyNamespaces removes empty namespace directories below the store root at startup.
+// pruneRepositoryLayout removes an emptied repository directory but leaves its parent
+// namespace directory (for user/foo it leaves user/), and this pass removes those empty
+// parents.
+func (is *ImageStore) PruneEmptyNamespaces() {
+	is.pruneEmptyNamespaceDir(filepath.Clean(is.rootDir), true)
+}
+
+// pruneEmptyNamespaceDir visits children before attempting to remove their parent.
+func (is *ImageStore) pruneEmptyNamespaceDir(dir string, preserveRoot bool) {
+	children, err := is.storeDriver.ListSubDirs(dir)
+	if err != nil {
+		if !errclass.IsStorageObjectMissing(err) {
+			is.log.Error().Err(err).Str("dir", dir).Msg("failed to list namespace directories")
+		}
+
+		return
+	}
+
+	for _, child := range children {
+		name := filepath.Base(child)
+		if !isReservedLayoutComponent(name) && zreg.FullNameRegexp.MatchString(name) {
+			is.pruneEmptyNamespaceDir(child, false)
+		}
+	}
+
+	if preserveRoot {
+		return
+	}
+
+	if err := is.storeDriver.RemoveEmptyDir(dir); err != nil {
+		is.log.Error().Err(err).Str("dir", dir).Msg("failed to remove empty namespace directory")
+	}
+}
+
 // finishInterruptedLayoutPrune resumes pruneRepositoryLayout after a mid-flight
 // failure that already removed index.json. Both oci-layout and index.json must be
 // gone (the intentional end of prune) and the repository directory must still
