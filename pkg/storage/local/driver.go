@@ -64,11 +64,11 @@ func (driver *Driver) ListSubDirs(dir string) ([]string, error) {
 	return dirs, nil
 }
 
-// RemoveEmptyDir removes a directory only if it is empty.
+// RemoveEmptyDir removes a directory only if it is empty, leaving a non-empty or missing directory alone.
 func (driver *Driver) RemoveEmptyDir(dir string) error {
 	err := syscall.Rmdir(dir)
 	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) ||
-		errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST) {
+		errors.Is(err, os.ErrExist) {
 		return nil
 	}
 
