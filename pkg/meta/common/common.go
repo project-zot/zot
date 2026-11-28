@@ -10,6 +10,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	zerr "zotregistry.dev/zot/v2/errors"
 	zcommon "zotregistry.dev/zot/v2/pkg/common"
@@ -215,9 +216,127 @@ func CheckImageLastUpdated(repoLastUpdated time.Time, isSigned bool, noImageChec
 	return repoLastUpdated, noImageChecked, isSigned
 }
 
+// ApplyReferenceToRepoMeta applies one reference to already-loaded repo metadata and blobs: referrers, tag,
+// statistics, signature and referrer map entries and the blob bookkeeping of the image. It does not
+// recalculate the repo aggregates (Size, Vendors, Platforms); it returns true when the caller must
+// call RecalculateRepoAggregates before the metadata is used or stored.
+func ApplyReferenceToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, reference string,
+	imageMeta mTypes.ImageMeta, protoImageMeta *proto_go.ImageMeta, userid string,
+	options mTypes.SetRepoReferenceOptions,
+) bool {
+	if subject := mConvert.GetImageSubject(protoImageMeta); subject != nil {
+		refInfo := &proto_go.ReferrersInfo{}
+		if repoMeta.Referrers[subject.Digest.String()] != nil {
+			refInfo = repoMeta.Referrers[subject.Digest.String()]
+		}
+
+		foundReferrer := false
+
+		for i := range refInfo.List {
+			if refInfo.List[i].Digest == mConvert.GetImageDigestStr(protoImageMeta) {
+				foundReferrer = true
+				refInfo.List[i].Count += 1
+
+				break
+			}
+		}
+
+		if !foundReferrer {
+			refInfo.List = append(refInfo.List, &proto_go.ReferrerInfo{
+				Count:        1,
+				MediaType:    protoImageMeta.MediaType,
+				Digest:       mConvert.GetImageDigestStr(protoImageMeta),
+				ArtifactType: mConvert.GetImageArtifactType(protoImageMeta),
+				Size:         mConvert.GetImageManifestSize(protoImageMeta),
+				Annotations:  mConvert.GetImageAnnotations(protoImageMeta),
+			})
+		}
+
+		repoMeta.Referrers[subject.Digest.String()] = refInfo
+	}
+
+	if !ReferenceIsDigest(reference) {
+		// Set TaggedTimestamp to now if this is a new tag, otherwise preserve existing timestamp
+		// For old data without TaggedTimestamp, leave it nil so it falls back to PushTimestamp
+		var taggedTimestamp *timestamppb.Timestamp
+		if existingTag, exists := repoMeta.Tags[reference]; exists {
+			// Tag exists - preserve TaggedTimestamp if present, otherwise leave nil (old data)
+			if existingTag.GetTaggedTimestamp() != nil {
+				taggedTimestamp = existingTag.GetTaggedTimestamp()
+			}
+			// else leave taggedTimestamp as nil (old data without TaggedTimestamp)
+		} else if options.PushTimestamp.IsZero() {
+			// Live push records the current time. A re-parse sets PushTimestamp from the manifest
+			// blob mod time, shared by every tag of the digest, so leave TaggedTimestamp unset.
+			taggedTimestamp = timestamppb.Now()
+		}
+
+		repoMeta.Tags[reference] = &proto_go.TagDescriptor{
+			Digest:          imageMeta.Digest.String(),
+			MediaType:       imageMeta.MediaType,
+			TaggedTimestamp: taggedTimestamp,
+		}
+	}
+
+	digestStr := imageMeta.Digest.String()
+	stats, ok := repoMeta.Statistics[digestStr]
+
+	if !ok {
+		stats = &proto_go.DescriptorStatistics{
+			DownloadCount:     0,
+			LastPullTimestamp: mConvert.GetProtoInitialPullTimestamp(options.InitialPullTimestamp),
+			PushTimestamp:     mConvert.GetProtoPushTimestamp(options.PushTimestamp),
+			PushedBy:          userid,
+		}
+		repoMeta.Statistics[digestStr] = stats
+	} else {
+		if stats.PushTimestamp.AsTime().IsZero() {
+			stats.PushTimestamp = mConvert.GetProtoPushTimestamp(options.PushTimestamp)
+		}
+
+		if userid != "" && stats.PushedBy == "" {
+			stats.PushedBy = userid
+		}
+	}
+
+	if _, ok := repoMeta.Signatures[digestStr]; !ok {
+		repoMeta.Signatures[digestStr] = &proto_go.ManifestSignatures{
+			Map: map[string]*proto_go.SignaturesInfo{"": {}},
+		}
+	}
+
+	if _, ok := repoMeta.Referrers[digestStr]; !ok {
+		repoMeta.Referrers[digestStr] = &proto_go.ReferrersInfo{
+			List: []*proto_go.ReferrerInfo{},
+		}
+	}
+
+	return addImageMetaToRepoMetaDeferred(repoMeta, repoBlobs, reference, imageMeta)
+}
+
+// RecalculateRepoAggregates sets Size, Vendors and Platforms of the repo from the images its tags reach.
+func RecalculateRepoAggregates(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs) {
+	size, platforms, vendors := recalculateAggregateFields(repoMeta, repoBlobs)
+	repoMeta.Vendors = vendors
+	repoMeta.Platforms = platforms
+	repoMeta.Size = size
+}
+
 func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, reference string,
 	imageMeta mTypes.ImageMeta,
 ) (*proto_go.RepoMeta, *proto_go.RepoBlobs) {
+	if addImageMetaToRepoMetaDeferred(repoMeta, repoBlobs, reference, imageMeta) {
+		RecalculateRepoAggregates(repoMeta, repoBlobs)
+	}
+
+	return repoMeta, repoBlobs
+}
+
+// addImageMetaToRepoMetaDeferred updates the blobs and LastUpdatedImage for one reference and returns true
+// when the repo aggregates must be recalculated afterwards.
+func addImageMetaToRepoMetaDeferred(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.RepoBlobs, reference string,
+	imageMeta mTypes.ImageMeta,
+) bool {
 	switch {
 	case compat.IsImageManifestMediaType(imageMeta.MediaType):
 		if len(imageMeta.Manifests) == 0 {
@@ -294,13 +413,8 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 	if zcommon.IsDigest(reference) {
 		updatedIndexes := updateParentIndexesLastUpdated(repoBlobs, imageMeta.Digest.String())
 		if len(updatedIndexes) == 0 {
-			return repoMeta, repoBlobs
+			return false
 		}
-
-		size, platforms, vendors := recalculateAggregateFields(repoMeta, repoBlobs)
-		repoMeta.Vendors = vendors
-		repoMeta.Platforms = platforms
-		repoMeta.Size = size
 
 		for tag, descriptor := range repoMeta.Tags {
 			if _, found := updatedIndexes[descriptor.Digest]; !found {
@@ -316,13 +430,8 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 				})
 		}
 
-		return repoMeta, repoBlobs
+		return true
 	}
-
-	size, platforms, vendors := recalculateAggregateFields(repoMeta, repoBlobs)
-	repoMeta.Vendors = vendors
-	repoMeta.Platforms = platforms
-	repoMeta.Size = size
 
 	imageBlobInfo := repoBlobs.Blobs[imageMeta.Digest.String()]
 
@@ -334,7 +443,7 @@ func AddImageMetaToRepoMeta(repoMeta *proto_go.RepoMeta, repoBlobs *proto_go.Rep
 			Tag:         reference,
 		})
 
-	return repoMeta, repoBlobs
+	return true
 }
 
 // ProjectRepoSize applies an image candidate to already-loaded repository metadata and returns
