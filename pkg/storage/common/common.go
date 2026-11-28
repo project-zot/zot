@@ -722,18 +722,30 @@ func GetReferencedBlobsWithMemo(ctx context.Context, memo *WalkMemo, imgStore st
 		return nil, err
 	}
 
+	referenced, _, err := GetReferencedBlobsFromIndex(ctx, memo, imgStore, repo, index, log)
+
+	return referenced, err
+}
+
+// GetReferencedBlobsFromIndex is GetReferencedBlobsWithMemo for an index the caller already
+// holds. It also returns the manifest and index digests whose blobs could not be read because
+// they were missing; their dependencies are absent from the referenced set.
+func GetReferencedBlobsFromIndex(ctx context.Context, memo *WalkMemo, imgStore storageTypes.ImageStore,
+	repo string, index ispec.Index, log zlog.Logger,
+) (map[godigest.Digest]struct{}, map[godigest.Digest]struct{}, error) {
 	referenced := map[godigest.Digest]struct{}{}
 	seen := map[godigest.Digest]struct{}{}
+	missing := map[godigest.Digest]struct{}{}
 
-	if err := collectReferencedBlobs(ctx, memo, imgStore, repo, index, referenced, seen, log); err != nil {
-		return nil, err
+	if err := collectReferencedBlobs(ctx, memo, imgStore, repo, index, referenced, seen, missing, log); err != nil {
+		return nil, nil, err
 	}
 
-	return referenced, nil
+	return referenced, missing, nil
 }
 
 func collectReferencedBlobs(ctx context.Context, memo *WalkMemo, imgStore storageTypes.ImageStore, repo string,
-	index ispec.Index, referenced map[godigest.Digest]struct{}, seen map[godigest.Digest]struct{}, log zlog.Logger,
+	index ispec.Index, referenced, seen, missing map[godigest.Digest]struct{}, log zlog.Logger,
 ) error {
 	if zcommon.IsContextDone(ctx) {
 		return ctx.Err()
@@ -765,6 +777,8 @@ func collectReferencedBlobs(ctx context.Context, memo *WalkMemo, imgStore storag
 					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
 						Msg("skipping missing image index blob while collecting referenced blobs")
 
+					missing[desc.Digest] = struct{}{}
+
 					continue
 				}
 
@@ -774,7 +788,7 @@ func collectReferencedBlobs(ctx context.Context, memo *WalkMemo, imgStore storag
 				return err
 			}
 
-			if err := collectReferencedBlobs(ctx, memo, imgStore, repo, indexImage, referenced, seen, log); err != nil {
+			if err := collectReferencedBlobs(ctx, memo, imgStore, repo, indexImage, referenced, seen, missing, log); err != nil {
 				return err
 			}
 		case compat.IsImageManifestMediaType(desc.MediaType):
@@ -783,6 +797,8 @@ func collectReferencedBlobs(ctx context.Context, memo *WalkMemo, imgStore storag
 				if errclass.IsBlobUnavailable(err) {
 					log.Warn().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
 						Msg("skipping missing manifest blob while collecting referenced blobs")
+
+					missing[desc.Digest] = struct{}{}
 
 					continue
 				}
