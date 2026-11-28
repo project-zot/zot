@@ -1003,6 +1003,33 @@ func normalizeManifestExtraTags(raw []string) ([]string, error) {
 	return out, nil
 }
 
+func signatureTagsForDigest(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest) ([]string, error) {
+	var index ispec.Index
+	if err := imgStore.WithRepoReadLock(repo, func() error {
+		indexContent, err := imgStore.GetIndexContent(repo)
+		if err != nil {
+			return err
+		}
+
+		return json.Unmarshal(indexContent, &index)
+	}); err != nil {
+		return nil, err
+	}
+
+	matchingTags := make([]string, 0, len(index.Manifests))
+	for _, manifest := range index.Manifests {
+		if manifest.Digest != digest {
+			continue
+		}
+
+		if tag, ok := manifest.Annotations[ispec.AnnotationRefName]; ok {
+			matchingTags = append(matchingTags, tag)
+		}
+	}
+
+	return matchingTags, nil
+}
+
 // DeleteManifest godoc
 // @Summary Delete image manifest
 // @Description Delete an image's manifest given a reference or a digest
@@ -1082,6 +1109,24 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	var restoreTags []string
+	if rh.c.MetaDB != nil && zcommon.IsDigest(reference) {
+		isSignature, _, _, signatureErr := storage.CheckIsImageSignature(name, manifestBlob, reference)
+		if signatureErr == nil && isSignature {
+			restoreTags, err = signatureTagsForDigest(imgStore, name, manifestDigest)
+			if err != nil {
+				if writeStorageClassError(response, err) {
+					rh.c.Log.Error().Err(err).Msg("failed to snapshot signature tags before delete")
+				} else {
+					rh.c.Log.Error().Err(err).Msg("failed to snapshot signature tags before delete")
+					response.WriteHeader(http.StatusInternalServerError)
+				}
+
+				return
+			}
+		}
+	}
+
 	ctx := events.WithEventContext(request.Context(), eventContextFromRequest(request))
 
 	err = imgStore.DeleteImageManifest(ctx, name, reference, detectCollision)
@@ -1129,7 +1174,7 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 
 	if rh.c.MetaDB != nil {
 		err := meta.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
-			rh.c.StoreController, rh.c.MetaDB, rh.c.Log)
+			rh.c.StoreController, rh.c.MetaDB, rh.c.Log, restoreTags...)
 		if err != nil {
 			// The image store manifest may have been restored (or restore may itself have
 			// failed), so this must not report success either way.

@@ -2,6 +2,7 @@ package meta
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -15,7 +16,9 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	"zotregistry.dev/zot/v2/pkg/storage/gc"
+	storageTypes "zotregistry.dev/zot/v2/pkg/storage/types"
 )
 
 // priorTagManifest records where MetaDB believed each tag pointed before a digest PUT with tag=
@@ -269,7 +272,7 @@ func OnUpdateManifestDigestTags(ctx context.Context, repo string, tags []string,
 // of image pushed(normal images, signatures, etc.). In case of any errors, it makes sure to keep
 // consistency between metadb and the image store.
 func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest, manifestBlob []byte,
-	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger,
+	storeController storage.StoreController, metaDB mTypes.MetaDB, log log.Logger, restoreTags ...string,
 ) error {
 	if zcommon.IsReferrersTag(reference) {
 		// The store already deleted the referrers tag entry, which may have emptied the
@@ -292,10 +295,12 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	var metaErr error
 
 	if isSignature {
-		metaErr = metaDB.DeleteSignature(repo, signedManifestDigest, mTypes.SignatureMetadata{
+		signatureMeta := mTypes.SignatureMetadata{
 			SignatureDigest: digest.String(),
 			SignatureType:   signatureType,
-		})
+		}
+
+		metaErr = metaDB.DeleteSignature(repo, signedManifestDigest, signatureMeta)
 
 		switch {
 		case errors.Is(metaErr, zerr.ErrImageMetaNotFound):
@@ -308,6 +313,42 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 		case metaErr != nil:
 			log.Error().Err(metaErr).Str("tag", reference).Str("repository", repo).Str("component", "metadb").
 				Msg("failed to delete signature meta")
+
+			log.Info().Str("component", "metadb").Msg("restoring image store")
+
+			// Restore the signature manifest so the caller can retry metadata cleanup after
+			// the MetaDB failure is resolved.
+			_, _, restoreErr := imgStore.PutImageManifest(context.Background(), repo, reference, mediaType, manifestBlob,
+				restoreTags)
+			if restoreErr != nil {
+				log.Error().Err(restoreErr).Str("component", "metadb").
+					Msg("failed to restore signature manifest to image store, database is not consistent")
+
+				if errclass.IsStorageNotDurable(restoreErr) {
+					log.Warn().Err(restoreErr).Str("repository", repo).Str("component", "metadb").
+						Msg("signature manifest restore may have committed; preserving signature metadata")
+				} else {
+					restored, verifyErr := manifestDigestPresent(imgStore, repo, digest)
+					switch {
+					case verifyErr != nil:
+						log.Warn().Err(verifyErr).Str("repository", repo).Str("component", "metadb").
+							Msg("could not verify signature manifest restore; preserving signature metadata")
+					case restored:
+						log.Warn().Err(restoreErr).Str("repository", repo).Str("component", "metadb").
+							Msg("signature manifest restore may have committed; preserving signature metadata")
+					default:
+						retryErr := metaDB.DeleteSignature(repo, signedManifestDigest, signatureMeta)
+						if retryErr != nil && !errors.Is(retryErr, zerr.ErrImageMetaNotFound) {
+							log.Error().Err(retryErr).Str("repository", repo).Str("component", "metadb").
+								Msg("failed to retry signature metadata deletion after restore failure")
+						} else {
+							releaseIdleRepository(repo, storeController, metaDB, log)
+						}
+					}
+				}
+			}
+
+			return fmt.Errorf("%w: %w", zerr.ErrManifestRestoreAttempted, metaErr)
 		}
 	} else {
 		metaErr = metaDB.RemoveRepoReference(repo, reference, digest)
@@ -333,6 +374,28 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	releaseIdleRepository(repo, storeController, metaDB, log)
 
 	return metaErr
+}
+
+func manifestDigestPresent(imgStore storageTypes.ImageStore, repo string, digest godigest.Digest) (bool, error) {
+	var index v1.Index
+	if err := imgStore.WithRepoReadLock(repo, func() error {
+		indexContent, err := imgStore.GetIndexContent(repo)
+		if err != nil {
+			return err
+		}
+
+		return json.Unmarshal(indexContent, &index)
+	}); err != nil {
+		return false, err
+	}
+
+	for _, manifest := range index.Manifests {
+		if manifest.Digest == digest {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // releaseIdleRepository removes a repo left empty by a manifest delete: the storage layout goes

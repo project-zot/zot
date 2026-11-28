@@ -19,11 +19,15 @@ import (
 	"zotregistry.dev/zot/v2/pkg/log"
 	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	"zotregistry.dev/zot/v2/pkg/storage"
+	"zotregistry.dev/zot/v2/pkg/storage/errclass"
 	testimage "zotregistry.dev/zot/v2/pkg/test/image-utils"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
 
-var errHookInternal = errors.New("hook internal test error")
+var (
+	errHookInternal = errors.New("hook internal test error")
+	errHookRestore  = errors.New("hook restore test error")
+)
 
 func TestPriorTagManifestsFromMetaDB(t *testing.T) {
 	Convey("priorTagManifestsFromMetaDB", t, func() {
@@ -388,7 +392,7 @@ func TestReleaseIdleRepository(t *testing.T) {
 }
 
 func TestOnDeleteManifestSignatureMetaFailure(t *testing.T) {
-	Convey("An unexpected signature meta delete failure still attempts the release", t, func() {
+	Convey("An unexpected signature meta delete failure restores the image store", t, func() {
 		logger := log.NewTestLogger()
 
 		subjectDigest := godigest.FromString("subject")
@@ -407,29 +411,78 @@ func TestOnDeleteManifestSignatureMetaFailure(t *testing.T) {
 		referrerBody, err := json.Marshal(referrer)
 		So(err, ShouldBeNil)
 		referrerDigest := godigest.FromBytes(referrerBody)
+		emptyIndex, err := json.Marshal(ispec.Index{SchemaVersion: 2})
+		So(err, ShouldBeNil)
+		restoredIndex, err := json.Marshal(ispec.Index{
+			SchemaVersion: 2,
+			Manifests:     []ispec.Descriptor{{Digest: referrerDigest}},
+		})
+		So(err, ShouldBeNil)
 
-		released := false
-		imgStore := mocks.MockedImageStore{
-			RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration) (bool, error) {
-				released = true
+		for _, testCase := range []struct {
+			name         string
+			restoreErr   error
+			retryErr     error
+			indexContent []byte
+			indexErr     error
+			noRetry      bool
+		}{
+			{name: "restore succeeds"},
+			{name: "restore fails and retry succeeds", restoreErr: errHookRestore, indexContent: emptyIndex},
+			{name: "restore fails and retry fails", restoreErr: errHookRestore, retryErr: errHookRestore, indexContent: emptyIndex},
+			{name: "restore is not durable", restoreErr: errclass.Wrap(zerr.ErrStorageNotDurable, errHookRestore), noRetry: true},
+			{name: "restore may have committed", restoreErr: errHookRestore, indexContent: restoredIndex, noRetry: true},
+			{name: "restore state is unknown", restoreErr: errHookRestore, indexErr: errHookRestore, noRetry: true},
+		} {
+			Convey(testCase.name, func() {
+				restored := false
+				released := false
+				deleteCalls := 0
+				imgStore := mocks.MockedImageStore{
+					GetIndexContentFn: func(repo string) ([]byte, error) {
+						return testCase.indexContent, testCase.indexErr
+					},
+					PutImageManifestFn: func(ctx context.Context, repo, reference, mediaType string, body []byte,
+						extraTags []string,
+					) (godigest.Digest, godigest.Digest, error) {
+						restored = true
 
-				return false, nil
-			},
+						return referrerDigest, subjectDigest, testCase.restoreErr
+					},
+					RemoveIdleRepositoryFn: func(repo string, maxBlobAge time.Duration) (bool, error) {
+						released = true
+
+						return false, nil
+					},
+				}
+
+				metaDB := mocks.MetaDBMock{
+					DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
+						sigMeta mTypes.SignatureMetadata,
+					) error {
+						deleteCalls++
+						if deleteCalls == 1 {
+							return errHookInternal
+						}
+
+						return testCase.retryErr
+					},
+				}
+
+				sc := storage.StoreController{DefaultStore: &imgStore}
+				err = OnDeleteManifest("repo", referrerDigest.String(), ispec.MediaTypeImageManifest, referrerDigest,
+					referrerBody, sc, metaDB, logger)
+
+				So(errors.Is(err, zerr.ErrManifestRestoreAttempted), ShouldBeTrue)
+				So(errors.Is(err, errHookInternal), ShouldBeTrue)
+				So(restored, ShouldBeTrue)
+				expectedDeleteCalls := 1
+				if testCase.restoreErr != nil && !testCase.noRetry {
+					expectedDeleteCalls++
+				}
+				So(deleteCalls, ShouldEqual, expectedDeleteCalls)
+				So(released, ShouldEqual, testCase.restoreErr != nil && !testCase.noRetry && testCase.retryErr == nil)
+			})
 		}
-
-		metaDB := mocks.MetaDBMock{
-			DeleteSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
-				sigMeta mTypes.SignatureMetadata,
-			) error {
-				return errHookInternal
-			},
-		}
-
-		sc := storage.StoreController{DefaultStore: &imgStore}
-		err = OnDeleteManifest("repo", referrerDigest.String(), ispec.MediaTypeImageManifest, referrerDigest,
-			referrerBody, sc, metaDB, logger)
-
-		So(errors.Is(err, errHookInternal), ShouldBeTrue)
-		So(released, ShouldBeTrue)
 	})
 }

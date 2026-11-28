@@ -3839,8 +3839,13 @@ func TestDeleteManifestSucceedsDespiteMetaDBHookFailure(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		referrerDigest := godigest.FromBytes(manifestJSON)
+		indexContent, err := json.Marshal(ispec.Index{SchemaVersion: 2})
+		So(err, ShouldBeNil)
 
 		store := mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexContent, nil
+			},
 			GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
 				return manifestJSON, referrerDigest, ispec.MediaTypeImageManifest, nil
 			},
