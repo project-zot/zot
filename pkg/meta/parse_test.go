@@ -1098,6 +1098,50 @@ func RunParseStorageTests(rootDir string, metaDB mTypes.MetaDB, log log.Logger) 
 		So(len(repoMetaList), ShouldEqual, 3)
 	})
 
+	Convey("ParseStorage repairs incomplete metadata even when it is newer than the index", func() {
+		imageStore := local.NewImageStore(rootDir, false, false,
+			log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
+		storeController := storage.StoreController{DefaultStore: imageStore}
+		missing := CreateRandomImage()
+		untagged := CreateRandomImage()
+		present := CreateRandomImage()
+		signatureImage := CreateRandomImage()
+		signatureTag, err := signature.GetCosignSignatureTagForManifest(present.Manifest)
+		So(err, ShouldBeNil)
+
+		So(WriteImageToFileSystem(missing, repo, "missing", storeController), ShouldBeNil)
+		So(WriteImageToFileSystem(untagged, repo, untagged.DigestStr(), storeController), ShouldBeNil)
+		So(WriteImageToFileSystem(present, repo, "present", storeController), ShouldBeNil)
+		So(WriteImageToFileSystem(signatureImage, repo, signatureTag, storeController), ShouldBeNil)
+
+		// Backdate the index to make the timestamp comparison independent of filesystem precision.
+		indexPath := filepath.Join(rootDir, repo, ispec.ImageIndexFile)
+		oldTime := time.Now().Add(-time.Hour)
+		So(os.Chtimes(indexPath, oldTime, oldTime), ShouldBeNil)
+
+		// Only the last push reached the metaDB. It still has a newer timestamp than storage.
+		So(metaDB.SetRepoReference(ctx, repo, "present", present.AsImageMeta()), ShouldBeNil)
+		So(metaDB.UpdateStatsOnDownload(repo, "present"), ShouldBeNil)
+		_, _, indexTime, err := imageStore.StatIndex(repo)
+		So(err, ShouldBeNil)
+		So(metaDB.GetRepoLastUpdated(repo), ShouldHappenAfter, indexTime)
+
+		So(meta.ParseStorage(metaDB, storeController, log), ShouldBeNil) //nolint: contextcheck
+
+		repoMeta, err := metaDB.GetRepoMeta(ctx, repo)
+		So(err, ShouldBeNil)
+		So(repoMeta.Tags["missing"].Digest, ShouldEqual, missing.DigestStr())
+		So(repoMeta.Statistics, ShouldContainKey, missing.DigestStr())
+		So(repoMeta.Statistics, ShouldContainKey, untagged.DigestStr())
+		So(repoMeta.Statistics[present.DigestStr()].DownloadCount, ShouldEqual, 1)
+		So(repoMeta.Signatures[present.DigestStr()][meta.CosignType], ShouldHaveLength, 1)
+
+		// Once the metadata covers the index, the next walk leaves it alone.
+		lastUpdated := metaDB.GetRepoLastUpdated(repo)
+		So(meta.ParseStorage(metaDB, storeController, log), ShouldBeNil) //nolint: contextcheck
+		So(metaDB.GetRepoLastUpdated(repo), ShouldEqual, lastUpdated)
+	})
+
 	Convey("ParseStorage should parse repos without metadata", func() {
 		imageStore := local.NewImageStore(rootDir, false, false,
 			log, monitoring.NewNopMetricServer(), nil, nil, nil, nil)
