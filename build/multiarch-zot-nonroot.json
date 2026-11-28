@@ -1,0 +1,7 @@
+{
+    "target_repo": "zot",
+    "source_repos": [
+        "zot-linux-amd64",
+        "zot-linux-arm64"
+    ]
+}

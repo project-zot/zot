@@ -95,9 +95,12 @@ UI_DEPENDENCIES := search,mgmt,userprefs
 # see supported platforms at https://cs.opensource.google/go/go/+/master:src/internal/platform/supported.go;l=222-231;drc=d7fcb5cf80953f1d63246f1ae9defa60c5ce2d76
 BUILDMODE_FLAGS := -buildmode=pie
 BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-$(ARCH)
+# false publishes the nonroot stack. FreeBSD has no nonroot account, so that stack is build-only.
+NONROOT_BUILD_ONLY := false
 ifeq ($(OS),freebsd)
 	BUILDMODE_FLAGS=
 	BASE_IMAGE=freebsd/freebsd-static:14.3
+	NONROOT_BUILD_ONLY := true
 endif
 BIN_EXT :=
 ifeq ($(OS),windows)
@@ -511,6 +514,7 @@ verify-gql-committed:
 .PHONY: binary-container
 binary-container:
 	${CONTAINER_RUNTIME} build ${BUILD_ARGS} \
+		--target final \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 		-f build/Dockerfile -t zot-build:latest .
 
@@ -522,6 +526,7 @@ run-container:
 .PHONY: binary-minimal-container
 binary-minimal-container:
 	${CONTAINER_RUNTIME} build ${BUILD_ARGS} \
+		--target final \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 		-f build/Dockerfile-minimal -t zot-minimal:latest .
 
@@ -549,11 +554,13 @@ oci-image: $(STACKER)
 		--substitute OS=$(OS) \
 		--substitute RELEASE_TAG=$(RELEASE_TAG) \
 		--substitute REPO_NAME=zot-$(OS)-$(ARCH) \
-		--substitute BASE_IMAGE=$(BASE_IMAGE)
+		--substitute BASE_IMAGE=$(BASE_IMAGE) \
+		--substitute NONROOT_BUILD_ONLY=$(NONROOT_BUILD_ONLY)
 
 .PHONY: docker-image
 docker-image:
 	${CONTAINER_RUNTIME} buildx build --platform $(OS)/$(ARCH) \
+		--target final \
 		--build-arg BASE_IMAGE=$(BASE_IMAGE) \
 		-f build/Dockerfile -t zot-$(OS)-$(ARCH):latest .
 

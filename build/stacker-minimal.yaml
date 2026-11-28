@@ -33,11 +33,17 @@ build:
     mkdir -p /zotcopy/.build/${{REPO_NAME}}
     cd /zotcopy/.build/${{REPO_NAME}}
 
-    mkdir -p binary/ cert/ config/
+    mkdir -p binary/ config/
 
     cp /go/src/github.com/project-zot/zot/bin/zot-${{OS}}-${{ARCH}}${{EXT:}} binary/
     cp /go/src/github.com/project-zot/zot/config.json config/
-    cp /etc/ssl/certs/ca-certificates.crt cert/
+    # Static busybox the nonroot layer uses to create a real /var/lib/registry.
+    # Distroless has no shell, and a directory import cannot set an owner.
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends busybox-static
+    cp "$(command -v busybox)" busybox
+    chmod 755 busybox
   build_only: true
 
 "${{REPO_NAME:zot}}":
@@ -52,10 +58,35 @@ build:
   overlay_dirs:
     - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin
-    - source: ../.build/${{REPO_NAME}}/cert
-      dest: /etc/ssl/certs
     - source: ../.build/${{REPO_NAME}}/config
       dest: /etc/zot
+  entrypoint:
+    - /usr/local/bin/zot-${{OS}}-${{ARCH}}${{EXT:}}
+  cmd:
+    - serve
+    - /etc/zot/config.json
+
+# Opt-in nonroot image. NONROOT_BUILD_ONLY is true on FreeBSD, which has no nonroot account.
+"zot-minimal-nonroot-${{OS}}-${{ARCH}}":
+  annotations:
+    org.opencontainers.image.description: "OCI-native container image/artifact registry (purely based on OCI Distribution Specification)"
+    org.opencontainers.image.source: "https://github.com/project-zot/zot"
+  os: ${{OS}}
+  arch: ${{ARCH}}
+  build_only: ${{NONROOT_BUILD_ONLY:false}}
+  runtime_user: "65532:65532"
+  from:
+    type: built
+    tag: ${{REPO_NAME:zot}}
+  imports:
+    - path: ../.build/${{REPO_NAME}}/busybox
+  run:
+    - |
+      #!/stacker/imports/busybox sh
+      set -e
+      mkdir -p /var/lib/registry
+      chown 65532:65532 /var/lib/registry
+      chmod 755 /var/lib/registry
   entrypoint:
     - /usr/local/bin/zot-${{OS}}-${{ARCH}}${{EXT:}}
   cmd:

@@ -9,7 +9,7 @@
 ARG BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest
 
 # ---
-# Stage 1: Install certs, build binary, create default config file
+# Stage 1: Build binary and create default config file
 # ---
 FROM --platform=$BUILDPLATFORM ghcr.io/project-zot/golang:1.27 AS builder
 
@@ -33,16 +33,32 @@ RUN echo '{\n\
         "level": "debug"\n\
     }\n\
 }\n' > config.json && cat config.json
+# Empty data directory for the nonroot stage. The root image does not copy it.
+RUN mkdir -p /var/lib/registry && chown 65532:65532 /var/lib/registry
 
 # ---
-# Stage 2: Final image with nothing but certs, binary, and default config file
+# Stage 2: Final image with the binary and default config file.
+# This is the root image. Build it with --target final.
 # ---
 FROM $BASE_IMAGE AS final
 ARG TARGETOS
 ARG TARGETARCH
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-$TARGETOS-$TARGETARCH-minimal /usr/bin/zot
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/config.json
+ENTRYPOINT ["/usr/bin/zot"]
+EXPOSE 5000
+CMD ["serve", "/etc/zot/config.json"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/usr/bin/zot", "healthcheck", "--insecure-skip-verify", "/etc/zot/config.json"]
+
+# ---
+# Stage 3: Same image, running as the distroless nonroot user.
+# Build it with --target nonroot. The last stage is the default target,
+# so a build without --target produces this image.
+# ---
+FROM final AS nonroot
+COPY --from=builder --chown=65532:65532 /var/lib/registry /var/lib/registry
+USER 65532:65532
 ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
 CMD ["serve", "/etc/zot/config.json"]

@@ -20,9 +20,11 @@ jobs:
           - name: zot
             dockerfile: build/Dockerfile
             tag: zot:ci
+            nonroot_tag: zot-nonroot:ci
           - name: zot-minimal
             dockerfile: build/Dockerfile-minimal
             tag: zot-minimal:ci
+            nonroot_tag: zot-minimal-nonroot:ci
     steps:
       - name: Check out source code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,8 +35,13 @@ jobs:
       - name: Build ${{ matrix.name }} image
         run: |
           docker build -f ${{ matrix.dockerfile }} \
+            --target final \
             --build-arg COMMIT=ci-${GITHUB_SHA} \
             -t ${{ matrix.tag }} .
+          docker build -f ${{ matrix.dockerfile }} \
+            --target nonroot \
+            --build-arg COMMIT=ci-${GITHUB_SHA} \
+            -t ${{ matrix.nonroot_tag }} .
       - name: Install skopeo and podman
         run: |
           sudo apt-get update
@@ -42,14 +49,28 @@ jobs:
       - name: Load image into podman
         run: |
           skopeo copy "docker-daemon:${{ matrix.tag }}" "containers-storage:${{ matrix.tag }}"
-      - name: Healthcheck with docker
+          skopeo copy "docker-daemon:${{ matrix.nonroot_tag }}" "containers-storage:${{ matrix.nonroot_tag }}"
+      - name: Build payload image
         run: |
-          ZOT_TEST_PORT=5000 test/scripts/container_healthcheck.sh \
-            --runtime docker --image ${{ matrix.tag }}
-      - name: Healthcheck with podman
+          payload="$(mktemp -d)"
+          printf 'hello' > "${payload}/hello"
+          cat > "${payload}/Dockerfile" <<'EOF'
+          FROM scratch
+          COPY hello /hello
+          EOF
+          docker build -t payload:ci "${payload}"
+          rm -rf "${payload}"
+      - name: Exercise images
         run: |
-          ZOT_TEST_PORT=5001 test/scripts/container_healthcheck.sh \
-            --runtime podman --image ${{ matrix.tag }}
+          fail=0
+          for runtime in docker podman; do
+            if [ "$runtime" = docker ]; then port=5000; else port=5001; fi
+            for image in "${{ matrix.tag }}" "${{ matrix.nonroot_tag }}"; do
+              ZOT_TEST_PORT="$port" test/scripts/container_check.sh \
+                --runtime "$runtime" --image "$image" --payload payload:ci || fail=1
+            done
+          done
+          exit "$fail"
 
   stacker:
     name: Stacker ${{ matrix.name }} (docker + podman)
@@ -63,12 +84,16 @@ jobs:
             repo_name: zot-linux-amd64
             tag: zot-stacker:ci
             health_bin: /usr/local/bin/zot-linux-amd64
+            nonroot_repo_name: zot-nonroot-linux-amd64
+            nonroot_tag: zot-stacker-nonroot:ci
           - name: zot-minimal
             file: build/stacker-minimal.yaml
             repo_name: zot-minimal-linux-amd64
             tag: zot-minimal-stacker:ci
             health_bin: /usr/local/bin/zot-linux-amd64-minimal
             ext: "-minimal"
+            nonroot_repo_name: zot-minimal-nonroot-linux-amd64
+            nonroot_tag: zot-minimal-stacker-nonroot:ci
     steps:
       - name: Check out source code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,6 +116,7 @@ jobs:
             EXT=${{ matrix.ext }}
             REPO_NAME=${{ matrix.repo_name }}
             BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-amd64
+            NONROOT_BUILD_ONLY=false
       - name: Install skopeo and podman
         run: |
           sudo apt-get update
@@ -98,16 +124,30 @@ jobs:
       - name: Load image into docker
         run: |
           skopeo copy "oci:oci:${{ matrix.repo_name }}" "docker-daemon:${{ matrix.tag }}"
+          skopeo copy "oci:oci:${{ matrix.nonroot_repo_name }}" "docker-daemon:${{ matrix.nonroot_tag }}"
       - name: Load image into podman
         run: |
           skopeo copy "docker-daemon:${{ matrix.tag }}" "containers-storage:${{ matrix.tag }}"
-      - name: Healthcheck with docker
+          skopeo copy "docker-daemon:${{ matrix.nonroot_tag }}" "containers-storage:${{ matrix.nonroot_tag }}"
+      - name: Build payload image
         run: |
-          ZOT_TEST_PORT=5000 test/scripts/container_healthcheck.sh \
-            --runtime docker --image ${{ matrix.tag }} \
-            --health-bin ${{ matrix.health_bin }}
-      - name: Healthcheck with podman
+          payload="$(mktemp -d)"
+          printf 'hello' > "${payload}/hello"
+          cat > "${payload}/Dockerfile" <<'EOF'
+          FROM scratch
+          COPY hello /hello
+          EOF
+          docker build -t payload:ci "${payload}"
+          rm -rf "${payload}"
+      - name: Exercise images
         run: |
-          ZOT_TEST_PORT=5001 test/scripts/container_healthcheck.sh \
-            --runtime podman --image ${{ matrix.tag }} \
-            --health-bin ${{ matrix.health_bin }}
+          fail=0
+          for runtime in docker podman; do
+            if [ "$runtime" = docker ]; then port=5000; else port=5001; fi
+            for image in "${{ matrix.tag }}" "${{ matrix.nonroot_tag }}"; do
+              ZOT_TEST_PORT="$port" test/scripts/container_check.sh \
+                --runtime "$runtime" --image "$image" \
+                --health-bin "${{ matrix.health_bin }}" --payload payload:ci || fail=1
+            done
+          done
+          exit "$fail"

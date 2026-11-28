@@ -22,9 +22,11 @@ jobs:
         run: |
           if [ ${{ matrix.os }} = 'freebsd' ]; then
             echo "BASE_IMAGE=freebsd/freebsd-static:14.3" >> "$GITHUB_ENV"
+            echo "NONROOT_BUILD_ONLY=true" >> "$GITHUB_ENV"
           else
             ARCH=${{ matrix.arch }}
             echo "BASE_IMAGE=gcr.io/distroless/base-nossl-debian13:latest-${ARCH}" >> "$GITHUB_ENV"
+            echo "NONROOT_BUILD_ONLY=false" >> "$GITHUB_ENV"
           fi
       - name: Check out the repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,6 +50,7 @@ jobs:
             ARCH=${{ matrix.arch }}
             REPO_NAME=zot-${{ matrix.os }}-${{ matrix.arch }}
             BASE_IMAGE=${{ env.BASE_IMAGE }}
+            NONROOT_BUILD_ONLY=${{ env.NONROOT_BUILD_ONLY }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -65,6 +68,7 @@ jobs:
             EXT=-minimal
             REPO_NAME=zot-minimal-${{ matrix.os }}-${{ matrix.arch }}
             BASE_IMAGE=${{ env.BASE_IMAGE }}
+            NONROOT_BUILD_ONLY=${{ env.NONROOT_BUILD_ONLY }}
           url: docker://ghcr.io/${{ github.repository_owner }}
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
@@ -101,6 +105,31 @@ jobs:
           tags: ${{ github.event.release.tag_name }} latest
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag nonroot images on the existing repositories
+        if: matrix.os == 'linux'
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -fsSL -o /tmp/regctl \
+            https://github.com/regclient/regclient/releases/download/v0.10.0/regctl-linux-amd64
+          chmod +x /tmp/regctl
+          echo "${REGISTRY_TOKEN}" | /tmp/regctl registry login ghcr.io \
+            -u "${{ github.actor }}" --pass-stdin
+          tag="${{ github.event.release.tag_name }}"
+          owner="${{ github.repository_owner }}"
+          osarch="${{ matrix.os }}-${{ matrix.arch }}"
+          /tmp/regctl image copy \
+            "ghcr.io/${owner}/zot-nonroot-${osarch}:${tag}" \
+            "ghcr.io/${owner}/zot-${osarch}:${tag}-nonroot"
+          /tmp/regctl image copy \
+            "ghcr.io/${owner}/zot-nonroot-${osarch}:${tag}" \
+            "ghcr.io/${owner}/zot-${osarch}:nonroot"
+          /tmp/regctl image copy \
+            "ghcr.io/${owner}/zot-minimal-nonroot-${osarch}:${tag}" \
+            "ghcr.io/${owner}/zot-minimal-${osarch}:${tag}-nonroot"
+          /tmp/regctl image copy \
+            "ghcr.io/${owner}/zot-minimal-nonroot-${osarch}:${tag}" \
+            "ghcr.io/${owner}/zot-minimal-${osarch}:nonroot"
 
   push-multiarch-image:
     name: Push multiarch OCI images to GitHub Packages
@@ -111,7 +140,19 @@ jobs:
       packages: write
     strategy:
       matrix:
-        image: [zot, zot-minimal, zxp, zb]
+        include:
+          - file: build/multiarch-zot.json
+            nonroot: false
+          - file: build/multiarch-zot-minimal.json
+            nonroot: false
+          - file: build/multiarch-zxp.json
+            nonroot: false
+          - file: build/multiarch-zb.json
+            nonroot: false
+          - file: build/multiarch-zot-nonroot.json
+            nonroot: true
+          - file: build/multiarch-zot-minimal-nonroot.json
+            nonroot: true
     steps:
       - name: Check out the repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -125,14 +166,21 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run build
         run: |
-          echo "Building multiarch image for ${{ matrix.image }}"
+          echo "Building multiarch image for ${{ matrix.file }}"
           cd $GITHUB_WORKSPACE
           make check-blackbox-prerequisites
           export PATH=${PATH}:${GITHUB_WORKSPACE}/hack/tools/bin
+          if [ "${{ matrix.nonroot }}" = "true" ]; then
+            source_tag="${GITHUB_EVENT_RELEASE_TAG_NAME}-nonroot"
+            dest_tags="${GITHUB_EVENT_RELEASE_TAG_NAME}-nonroot nonroot"
+          else
+            source_tag="${GITHUB_EVENT_RELEASE_TAG_NAME}"
+            dest_tags="${GITHUB_EVENT_RELEASE_TAG_NAME} latest"
+          fi
           ./scripts/build_multiarch_image.sh --registry ghcr.io/${GITHUB_REPOSITORY_OWNER} \
-            --source-tag ${GITHUB_EVENT_RELEASE_TAG_NAME} \
-            --destination-tags "${GITHUB_EVENT_RELEASE_TAG_NAME} latest" \
-            --file build/multiarch-${{ matrix.image }}.json
+            --source-tag "${source_tag}" \
+            --destination-tags "${dest_tags}" \
+            --file ${{ matrix.file }}
         env:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
 
@@ -153,7 +201,8 @@ jobs:
         run: |
           docker run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
-          curl --connect-timeout 5 \
+          curl --fail \
+            --connect-timeout 5 \
             --max-time 10 \
             --retry 12 \
             --retry-max-time 360 \
@@ -166,7 +215,8 @@ jobs:
         run: |
           podman run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
-          curl --connect-timeout 5 \
+          curl --fail \
+            --connect-timeout 5 \
             --max-time 10 \
             --retry 12 \
             --retry-max-time 360 \
@@ -179,7 +229,8 @@ jobs:
         run: |
           docker run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
-          curl --connect-timeout 5 \
+          curl --fail \
+            --connect-timeout 5 \
             --max-time 10 \
             --retry 12 \
             --retry-max-time 360 \
@@ -192,7 +243,64 @@ jobs:
         run: |
           podman run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
-          curl --connect-timeout 5 \
+          curl --fail \
+            --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5000/v2/'
+          podman kill --all
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+      - name: Run zot nonroot container image with docker
+        run: |
+          docker run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}-nonroot
+          sleep 2
+          curl --fail \
+            --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5000/v2/'
+          docker kill $(docker ps -q)
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+      - name: Run zot nonroot container image with podman
+        run: |
+          podman run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot:${GITHUB_EVENT_RELEASE_TAG_NAME}-nonroot
+          sleep 2
+          curl --fail \
+            --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5000/v2/'
+          podman kill --all
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+      - name: Run zot-minimal nonroot container image with docker
+        run: |
+          docker run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}-nonroot
+          sleep 2
+          curl --fail \
+            --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 360 \
+            --retry-connrefused \
+            'http://localhost:5000/v2/'
+          docker kill $(docker ps -q)
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+      - name: Run zot-minimal nonroot container image with podman
+        run: |
+          podman run -d -p 5000:5000 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zot-minimal:${GITHUB_EVENT_RELEASE_TAG_NAME}-nonroot
+          sleep 2
+          curl --fail \
+            --connect-timeout 5 \
             --max-time 10 \
             --retry 12 \
             --retry-max-time 360 \
@@ -205,7 +313,8 @@ jobs:
         run: |
           docker run -d -p 5001:5001 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
-          curl --connect-timeout 5 \
+          curl --fail \
+            --connect-timeout 5 \
             --max-time 10 \
             --retry 12 \
             --retry-max-time 360 \
@@ -218,7 +327,8 @@ jobs:
         run: |
           podman run -d -p 5001:5001 ghcr.io/${GITHUB_REPOSITORY_OWNER}/zxp:${GITHUB_EVENT_RELEASE_TAG_NAME}
           sleep 2
-          curl --connect-timeout 5 \
+          curl --fail \
+            --connect-timeout 5 \
             --max-time 10 \
             --retry 12 \
             --retry-max-time 360 \
@@ -270,7 +380,27 @@ jobs:
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
-          output: 'trivy-results.sarif'
+          output: 'trivy-results-minimal.sarif'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Trivy vulnerability scanner (nonroot)
+        if: matrix.os == 'linux'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # ed142fd
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}-nonroot'
+          format: 'sarif'
+          output: 'trivy-results-nonroot.sarif'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Trivy vulnerability scanner (minimal nonroot)
+        if: matrix.os == 'linux'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # ed142fd
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}-nonroot'
+          format: 'sarif'
+          output: 'trivy-results-minimal-nonroot.sarif'
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -278,6 +408,24 @@ jobs:
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: 'trivy-results.sarif'
+          category: zot-${{ matrix.os }}-${{ matrix.arch }}
+      - name: Upload Trivy minimal scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: 'trivy-results-minimal.sarif'
+          category: zot-minimal-${{ matrix.os }}-${{ matrix.arch }}
+      - name: Upload Trivy nonroot scan results to GitHub Security tab
+        if: matrix.os == 'linux'
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: 'trivy-results-nonroot.sarif'
+          category: zot-${{ matrix.os }}-${{ matrix.arch }}-nonroot
+      - name: Upload Trivy minimal nonroot scan results to GitHub Security tab
+        if: matrix.os == 'linux'
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: 'trivy-results-minimal-nonroot.sarif'
+          category: zot-minimal-${{ matrix.os }}-${{ matrix.arch }}-nonroot
 
   scan-multiarch-image:
     name: Run Trivy scan on OCI multiarch images published to GitHub Packages
@@ -307,7 +455,25 @@ jobs:
         with:
           image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}'
           format: 'sarif'
-          output: 'trivy-results.sarif'
+          output: 'trivy-results-minimal.sarif'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Trivy vulnerability scanner (nonroot)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # ed142fd
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/zot:${{ github.event.release.tag_name }}-nonroot'
+          format: 'sarif'
+          output: 'trivy-results-nonroot.sarif'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Trivy vulnerability scanner (minimal nonroot)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # ed142fd
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/zot-minimal:${{ github.event.release.tag_name }}-nonroot'
+          format: 'sarif'
+          output: 'trivy-results-minimal-nonroot.sarif'
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -315,6 +481,22 @@ jobs:
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: 'trivy-results.sarif'
+          category: zot-multiarch
+      - name: Upload Trivy minimal scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: 'trivy-results-minimal.sarif'
+          category: zot-minimal-multiarch
+      - name: Upload Trivy nonroot scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: 'trivy-results-nonroot.sarif'
+          category: zot-multiarch-nonroot
+      - name: Upload Trivy minimal nonroot scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: 'trivy-results-minimal-nonroot.sarif'
+          category: zot-minimal-multiarch-nonroot
 
   update-helm-chart:
     if: ${{ github.event_name == 'release' && github.event.action == 'published' && !contains(github.event.release.tag_name, 'rc') }}

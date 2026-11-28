@@ -299,6 +299,7 @@ IMAGE_NAME="zot-linux-amd64-minimal:${COMMIT_HASH}"
 # Use --quiet to suppress verbose build output
 docker buildx build \
     --platform linux/amd64 \
+    --target final \
     --build-arg BASE_IMAGE=gcr.io/distroless/base-debian12:latest-amd64 \
     --build-arg COMMIT="${COMMIT_HASH}" \
     -t "${IMAGE_NAME}" \
