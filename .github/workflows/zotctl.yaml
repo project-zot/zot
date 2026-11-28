@@ -1,0 +1,34 @@
+name: "zotctl"
+
+# Lint and test the zotctl install script (published as a release asset, see build.yaml).
+# The tests run unprivileged against fake systemctl/htpasswd/runuser; no real systemd needed.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'install/linux/**/*'
+      - '.github/workflows/zotctl.yaml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'install/linux/**/*'
+      - '.github/workflows/zotctl.yaml'
+
+permissions: read-all
+
+jobs:
+  zotctl:
+    name: Lint and test zotctl
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: shellcheck -S warning install/linux/zotctl install/linux/zotctl_test.sh
+      - name: markdownlint
+        run: npx --yes markdownlint-cli@0.44.0 install/linux/zotctl.md
+      - name: Run zotctl tests
+        run: bash install/linux/zotctl_test.sh

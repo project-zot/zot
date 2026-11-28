@@ -1,0 +1,1605 @@
+#!/usr/bin/env bash
+# zotctl - install, upgrade, roll back and manage zot on a Linux host with systemd.
+#
+# Run `zotctl --help` for usage, see install/linux/zotctl.md for details.
+#
+# Exit codes: 0 ok, 1 runtime failure, 2 usage error, 3 missing dependencies.
+set -euo pipefail
+
+ZOTCTL_VERSION="0.1.0"
+
+# ---------------------------------------------------------------- settings --
+# Environment overrides exist mainly so the test-suite can run unprivileged.
+PREFIX="/opt/zot"
+BIN_DIR=""
+CONFIG_DIR=""
+UNIT_DIR="${ZOTCTL_UNIT_DIR:-/etc/systemd/system}"
+SYSTEMCTL="${ZOTCTL_SYSTEMCTL:-systemctl}"
+OS_RELEASE="${ZOTCTL_OS_RELEASE:-/etc/os-release}"
+TEST_MODE="${ZOTCTL_TEST:-0}"        # skip root/systemd/user-account checks
+WAIT_SECS="${WAIT_SECS:-600}"        # startup dedupe/gc scan can be slow
+POLL_SECS="${ZOTCTL_POLL_SECS:-5}"
+SERVICE="zot.service"
+HEALTH_SERVICE="zot-health.service"
+HEALTH_TIMER="zot-health.timer"
+SERVICE_USER="zot"
+DEFAULT_REPO="project-zot/zot"
+MIN_PASSWORD_LEN=8
+
+# command-line state
+CMD=""
+SUBCMD=""
+POSITIONAL=()
+DRY=0
+ASSUME_YES=0
+SRC_DIR=""
+TAG=""
+REPO="$DEFAULT_REPO"
+VARIANT="extended"
+CONFIG_SRC=""
+KEEP=""
+OLDER_THAN=""
+RELEASES=()
+INCLUDE_LEGACY=0
+ROLLBACK_TO=""
+AVAILABLE=0
+PURGE_DATA=0
+REMOVE_USER=0
+KEEP_BINARIES=0
+NO_HEALTH_TIMER=0
+NO_AUTH=0
+ADMIN_USER=""
+PASSWORD_FILE=""
+PASSWORD_STDIN=0
+MEMORY_HIGH=""
+MEMORY_MAX=""
+START_TIMEOUT="5min"
+HARDEN=""                 # "" = default (fresh install: on), 1 = on, 0 = off
+NO_LOGROTATE=0
+LOGROTATE_DIR="${ZOTCTL_LOGROTATE_DIR:-/etc/logrotate.d}"
+FOLLOW=0
+
+# runtime state
+TMP_DIR=""
+HEALTH_PAUSED=0
+CONFIG_FILE=""
+EXEC_BIN=""
+CFG_PARSED=0
+PORT=""
+SCHEME="http"
+ARCH=""
+STAGED_ID=""
+RELEASE_UNCHANGED=0
+ADMIN_PASSWORD=""
+
+# ----------------------------------------------------------------- helpers --
+if [ -t 2 ]; then C_RED=$'\033[31m'; C_YEL=$'\033[33m'; C_GRN=$'\033[32m'; C_OFF=$'\033[0m'; else C_RED=""; C_YEL=""; C_GRN=""; C_OFF=""; fi
+
+info() { printf '%s\n' "$*" >&2; }
+ok()   { printf '%s%s%s\n' "$C_GRN" "$*" "$C_OFF" >&2; }
+warn() { printf '%sWARNING:%s %s\n' "$C_YEL" "$C_OFF" "$*" >&2; }
+die()  { printf '%sERROR:%s %s\n' "$C_RED" "$C_OFF" "$*" >&2; exit 1; }
+die_usage() { printf '%sERROR:%s %s\nRun "zotctl --help" for usage.\n' "$C_RED" "$C_OFF" "$*" >&2; exit 2; }
+
+# run a state-changing command (printed instead of executed with --dry-run)
+run() {
+    if [ "$DRY" = 1 ]; then
+        printf '  [dry-run] %s\n' "$*" >&2
+        return 0
+    fi
+    "$@"
+}
+
+cleanup() {
+    resume_health_timer
+    if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then rm -rf "$TMP_DIR"; fi
+}
+trap cleanup EXIT
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+require_root() {
+    [ "$TEST_MODE" = 1 ] && return 0
+    [ "$(id -u)" -eq 0 ] || die "zotctl $CMD must run as root (try: sudo zotctl $CMD ...)"
+}
+
+maybe_chown() { # owner:group path...
+    local owner=$1; shift
+    [ "$TEST_MODE" = 1 ] && return 0
+    [ "$(id -u)" -eq 0 ] || return 0
+    run chown "$owner" "$@"
+}
+
+confirm() { # prompt
+    [ "$ASSUME_YES" = 1 ] && return 0
+    [ "$DRY" = 1 ] && return 0
+    [ -t 0 ] || die "confirmation needed but stdin is not a terminal; re-run with --yes"
+    local ans
+    read -r -p "$1 [y/N] " ans
+    case $ans in [Yy]|[Yy][Ee][Ss]) return 0 ;; *) info "aborted"; exit 1 ;; esac
+}
+
+# write stdin to a file atomically: write_file PATH MODE [OWNER:GROUP]
+write_file() {
+    local path=$1 mode=$2 owner=${3:-}
+    if [ "$DRY" = 1 ]; then
+        cat >/dev/null
+        info "  [dry-run] write $path (mode $mode)"
+        return 0
+    fi
+    local tmp
+    tmp=$(mktemp "$path.XXXXXX")
+    cat >"$tmp"
+    chmod "$mode" "$tmp"
+    if [ -n "$owner" ]; then maybe_chown "$owner" "$tmp"; fi
+    mv -f "$tmp" "$path"
+}
+
+# atomically point LINK at TARGET (works for symlinks to directories too)
+atomic_link() { # target link
+    local target=$1 link=$2 tmp
+    tmp="$(dirname "$link")/.$(basename "$link").tmp.$$"
+    run ln -sfn "$target" "$tmp"
+    run mv -T "$tmp" "$link"
+}
+
+valid_id() { [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; }
+
+# Refuse to delete anything that is not clearly a non-trivial path. The path is canonicalised
+# first (dot components, repeated slashes and symlinked ancestors), so /var/../etc, //var or
+# /var/./log cannot dodge the protected-path list. A symlink as the final component is refused.
+safe_rm_dir() {
+    local p=$1 real
+    case $p in /*) ;; *) die "refusing to delete non-absolute path: $p" ;; esac
+    [ ! -L "${p%/}" ] || die "refusing to delete symlink: $p"
+    real=$(realpath -m -- "$p") || die "cannot resolve $p"
+    case $real in
+        /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/media|/mnt|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/var|/data \
+        |/usr/local|/usr/bin|/usr/sbin|/usr/lib|/var/lib|/var/log|/var/run|/var/tmp|/var/cache|/var/spool)
+            die "refusing to delete protected path: $real (from $p)" ;;
+    esac
+    [[ ${real#/} == */* ]] || die "refusing to delete top-level path: $real (from $p)"
+    [ -d "$real" ] || return 0
+    run rm -rf -- "$real"
+}
+
+# ------------------------------------------------------------ dependencies --
+declare -a MISSING=()
+declare -a PKGKEYS=()
+declare -a PROBLEMS=()
+FAMILY="unknown"
+
+detect_family() {
+    local id="" id_like=""
+    if [ -r "$OS_RELEASE" ]; then
+        # shellcheck disable=SC1090
+        id=$(. "$OS_RELEASE" >/dev/null 2>&1; printf '%s' "${ID:-}")
+        # shellcheck disable=SC1090
+        id_like=$(. "$OS_RELEASE" >/dev/null 2>&1; printf '%s' "${ID_LIKE:-}")
+    fi
+    case " $id $id_like " in
+        *" debian "*|*" ubuntu "*) FAMILY=debian ;;
+        *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*) FAMILY=rhel ;;
+        *" suse "*|*" opensuse "*|*" sles "*) FAMILY=suse ;;
+        *" arch "*) FAMILY=arch ;;
+        *) FAMILY=unknown ;;
+    esac
+}
+
+pkg_for() { # key -> package name for $FAMILY
+    case "$FAMILY:$1" in
+        debian:htpasswd) echo apache2-utils ;;   rhel:htpasswd) echo httpd-tools ;;
+        suse:htpasswd) echo apache2-utils ;;     arch:htpasswd) echo apache ;;
+        debian:useradd) echo passwd ;;           rhel:useradd) echo shadow-utils ;;
+        suse:useradd|arch:useradd) echo shadow ;;
+        debian:shasum) echo libdigest-sha-perl ;; rhel:shasum|suse:shasum) echo perl-Digest-SHA ;;
+        arch:shasum) echo perl ;;
+        *:curl) echo curl ;; *:jq) echo jq ;; *:coreutils) echo coreutils ;; *:systemd) echo systemd ;;
+        *) echo "$1" ;;
+    esac
+}
+
+need_cmd() { # command purpose pkgkey
+    if ! have "$1"; then MISSING+=("$1|$2"); PKGKEYS+=("$3"); fi
+}
+
+need_any() { # "cmd1 cmd2" purpose pkgkey
+    local c
+    for c in $1; do have "$c" && return 0; done
+    MISSING+=("${1// / or }|$2"); PKGKEYS+=("$3")
+}
+
+# check_deps  net=0|1  jq=0|1  htpasswd=0|1  useradd=0|1
+check_deps() {
+    local net=$1 jq=$2 htp=$3 uadd=$4 m key pkgs=() k seen=" "
+    detect_family
+
+    if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then PROBLEMS+=("bash >= 4 is required (found $BASH_VERSION)"); fi
+    if [ "$TEST_MODE" != 1 ]; then
+        need_cmd "$SYSTEMCTL" "manage the zot service" systemd
+        if [ ! -d /run/systemd/system ]; then PROBLEMS+=("systemd is not the running init system (/run/systemd/system missing); zotctl requires systemd"); fi
+    fi
+    for key in install mv ln mktemp uname rm cp realpath; do need_cmd "$key" "basic file handling" coreutils; done
+    need_any "sha256sum shasum" "verify checksums" coreutils
+    need_any "curl wget" "download releases and check that zot is healthy" curl
+    if [ "$net" = 1 ] && [ -z "${ZOTCTL_DOWNLOAD_BASE:-}" ] && have curl; then
+        if ! curl -fsSI -m 10 -o /dev/null https://github.com 2>/dev/null; then
+            PROBLEMS+=("cannot reach https://github.com (check network, DNS, or set https_proxy); use --dir to install from a local folder")
+        fi
+    fi
+    if [ "$jq" = 1 ]; then need_cmd jq "read zot's JSON config" jq; fi
+    if [ "$htp" = 1 ]; then need_cmd htpasswd "write bcrypt hashes to the htpasswd file" htpasswd; fi
+    if [ "$uadd" = 1 ] && [ "$TEST_MODE" != 1 ]; then need_any "useradd adduser" "create the '$SERVICE_USER' service account" useradd; fi
+
+    if [ ${#MISSING[@]} -eq 0 ] && [ ${#PROBLEMS[@]} -eq 0 ]; then return 0; fi
+
+    printf '%sERROR:%s zotctl cannot continue:\n' "$C_RED" "$C_OFF" >&2
+    for m in "${MISSING[@]}"; do printf '  - missing tool: %s  (needed to %s)\n' "${m%%|*}" "${m#*|}" >&2; done
+    for m in "${PROBLEMS[@]}"; do printf '  - %s\n' "$m" >&2; done
+    if [ ${#PKGKEYS[@]} -gt 0 ]; then
+        for k in "${PKGKEYS[@]}"; do
+            case $seen in *" $k "*) continue ;; esac
+            seen="$seen$k "; pkgs+=("$(pkg_for "$k")")
+        done
+        info ""
+        case $FAMILY in
+            debian) info "Install them with:  sudo apt-get install -y ${pkgs[*]}" ;;
+            rhel)   info "Install them with:  sudo dnf install -y ${pkgs[*]}" ;;
+            suse)   info "Install them with:  sudo zypper install -y ${pkgs[*]}" ;;
+            arch)   info "Install them with:  sudo pacman -S --needed ${pkgs[*]}" ;;
+            *)      info "Install the packages that provide: ${pkgs[*]}  (use your distribution's package manager)" ;;
+        esac
+    fi
+    info "Then re-run:  zotctl ${ORIG_ARGS:-$CMD}"
+    exit 3
+}
+
+# --------------------------------------------------------------- utilities --
+detect_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64) ARCH=amd64 ;;
+        aarch64|arm64) ARCH=arm64 ;;
+        *) die "unsupported architecture: $(uname -m) (zot ships linux amd64 and arm64)" ;;
+    esac
+}
+
+fetch() { # url dest
+    if have curl; then curl -fL --retry 3 --retry-delay 2 -sS -o "$2" "$1"
+    else wget -q --tries=3 -O "$2" "$1"; fi
+}
+
+http_code() { # url
+    if have curl; then curl -sk -o /dev/null -m 5 -w '%{http_code}' "$1" 2>/dev/null || true
+    else wget -q --no-check-certificate --spider -S -T 5 "$1" 2>&1 | awk '/HTTP\//{c=$2} END{print c}' || true; fi
+}
+
+sha256_check() { # dir file...   (checksum lines on stdin)
+    if have sha256sum; then (cd "$1" && sha256sum -c --status -)
+    else (cd "$1" && shasum -a 256 -c --status -); fi
+}
+
+version_commit() { # binary -> commit string from `--version`
+    local out
+    out=$("$1" --version 2>&1 | head -5) || true
+    printf '%s' "$out" | grep -o '"commit":"[^"]*"' | head -1 | sed 's/"commit":"\(.*\)"/\1/'
+}
+
+cfg() { # jq filter -> value (empty if unset or unparsable)
+    [ "$CFG_PARSED" = 1 ] || return 0
+    jq -r "($1) // empty" "$CONFIG_FILE" 2>/dev/null || true
+}
+
+load_config() { # CONFIG_FILE must be set
+    CFG_PARSED=0; PORT=""; SCHEME="http"
+    [ -n "$CONFIG_FILE" ] && [ -r "$CONFIG_FILE" ] || return 0
+    case $CONFIG_FILE in
+        *.json) have jq || return 0
+            jq -e . "$CONFIG_FILE" >/dev/null 2>&1 || die "$CONFIG_FILE is not valid JSON"
+            CFG_PARSED=1 ;;
+        *) warn "$CONFIG_FILE is not JSON; port, auth and storage settings can't be read from it" ;;
+    esac
+    if [ "$CFG_PARSED" = 1 ]; then
+        PORT=$(cfg '.http.port')
+        [ -n "$(cfg '.http.tls.cert')" ] && SCHEME="https"
+        [ -n "$PORT" ] || PORT=8080
+    fi
+}
+
+needs_bind_cap() { # true when the port is privileged or unknown
+    if [ "$CFG_PARSED" != 1 ]; then return 0; fi
+    [[ $PORT =~ ^[0-9]+$ ]] || return 0
+    [ "$PORT" -lt 1024 ]
+}
+
+# zot's own probe (`zot healthcheck`, endpoints livez/readyz/startupz) reads the listener
+# from the config. Builds without it (the strings are constants in the binary) get /v2/.
+supports_healthcheck() { LC_ALL=C grep -aqF 'startupz' "$1" 2>/dev/null; }
+
+# Host to probe: wildcard listeners map to loopback, a specific address is kept (IPv6 bracketed).
+health_host() {
+    local a; a=$(cfg '.http.address')
+    case $a in
+        ""|0.0.0.0) printf '127.0.0.1' ;;
+        "::"|"[::]") printf '[::1]' ;;
+        \[*\]) printf '%s' "$a" ;;
+        *:*) printf '[%s]' "$a" ;;
+        *) printf '%s' "$a" ;;
+    esac
+}
+
+health_url() { printf '%s://%s:%s/v2/' "$SCHEME" "$(health_host)" "${PORT:-8080}"; }
+
+health_ok() {
+    if [ -n "${ZOTCTL_HEALTH_CMD:-}" ]; then eval "$ZOTCTL_HEALTH_CMD"; return; fi
+    local bin="$PREFIX/current/zot" code
+    if [ -x "$bin" ] && [ -n "$CONFIG_FILE" ] && supports_healthcheck "$bin"; then
+        # a local probe: the certificate is usually issued for the public name, not 127.0.0.1
+        "$bin" healthcheck --insecure-skip-verify "$CONFIG_FILE" >/dev/null 2>&1
+        return
+    fi
+    code=$(http_code "$(health_url)")
+    [ "$code" = 200 ] || [ "$code" = 401 ]
+}
+
+wait_healthy() {
+    [ "$DRY" = 1 ] && { info "  [dry-run] wait up to ${WAIT_SECS}s for zot to report ready"; return 0; }
+    info "waiting up to ${WAIT_SECS}s for zot to report ready"
+    local deadline state
+    deadline=$(( $(date +%s) + WAIT_SECS ))
+    while :; do
+        state=$("$SYSTEMCTL" is-active "$SERVICE" 2>/dev/null || true)
+        case $state in failed|inactive) warn "$SERVICE is $state"; return 1 ;; esac
+        if health_ok; then return 0; fi
+        if [ "$(date +%s)" -ge "$deadline" ]; then warn "timed out waiting for zot"; return 1; fi
+        sleep "$POLL_SECS"
+    done
+}
+
+pause_health_timer() {
+    # HEALTH_PAUSED stays set across calls: a recovery attempt finds the timer already stopped
+    # by us and must still restart it when zotctl exits.
+    if [ "$DRY" = 1 ]; then return 0; fi
+    if [ -f "$UNIT_DIR/$HEALTH_TIMER" ] && "$SYSTEMCTL" is-active --quiet "$HEALTH_TIMER" 2>/dev/null; then
+        "$SYSTEMCTL" stop "$HEALTH_TIMER"
+        HEALTH_PAUSED=1
+    fi
+}
+
+resume_health_timer() {
+    if [ "$HEALTH_PAUSED" = 1 ]; then
+        "$SYSTEMCTL" start "$HEALTH_TIMER" || true
+        HEALTH_PAUSED=0
+    fi
+}
+
+# Figure out where an existing install lives from the systemd unit.
+load_existing() {
+    local unit="$UNIT_DIR/$SERVICE" line rest
+    CONFIG_FILE=""; EXEC_BIN=""
+    if [ -f "$unit" ]; then
+        line=$(sed -n 's/^ExecStart=[-@+!:]*//p' "$unit" | head -1)
+        EXEC_BIN=${line%% *}
+        if [[ $line == *" serve "* ]]; then rest=${line#* serve }; CONFIG_FILE=${rest%% *}; fi
+        line=$(sed -n 's/^User=//p' "$unit" | head -1)
+        SERVICE_USER=${line:-root}      # a unit without User= runs as root
+    fi
+    if [ -z "$BIN_DIR" ]; then
+        if [ -n "$EXEC_BIN" ] && [ "$(dirname "$EXEC_BIN")" != "$PREFIX/current" ]; then BIN_DIR=$(dirname "$EXEC_BIN")
+        else BIN_DIR=/usr/local/bin; fi
+    fi
+    if [ -z "$CONFIG_DIR" ]; then
+        if [ -n "$CONFIG_FILE" ]; then CONFIG_DIR=$(dirname "$CONFIG_FILE"); else CONFIG_DIR=/etc/zot; fi
+    fi
+    load_config
+}
+
+is_installed() { [ -f "$UNIT_DIR/$SERVICE" ]; }
+is_managed() { [ -L "$PREFIX/current" ]; }
+current_id() { if [ -L "$PREFIX/current" ]; then basename "$(readlink "$PREFIX/current")"; fi; }
+previous_of() { if [ -f "$PREFIX/releases/$1/.previous" ]; then head -1 "$PREFIX/releases/$1/.previous"; fi; }
+
+# --------------------------------------------------------- source handling --
+resolve_latest_tag() {
+    have curl || die "resolving 'latest' needs curl; pass --version TAG explicitly"
+    local url
+    url=$(curl -fsSIL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest") \
+        || die "could not resolve the latest release of $REPO"
+    case $url in */releases/tag/*) printf '%s' "${url##*/releases/tag/}" ;; *) die "no releases found for $REPO" ;; esac
+}
+
+# Fills TMP_DIR with ./zot and ./zli and sets STAGED_ID. Read-only for the system.
+acquire() {
+    TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/zotctl.XXXXXX")
+    local zot_asset zli_asset base sums
+    if [ -n "$SRC_DIR" ]; then
+        [ -d "$SRC_DIR" ] || die "--dir $SRC_DIR is not a directory"
+        local b
+        for b in zot zli; do [ -f "$SRC_DIR/$b" ] || die "$SRC_DIR/$b not found"; done
+        info "using local binaries from $SRC_DIR"
+        install -m 0755 "$SRC_DIR/zot" "$TMP_DIR/zot"
+        install -m 0755 "$SRC_DIR/zli" "$TMP_DIR/zli"
+    else
+        detect_arch
+        [ -n "$TAG" ] || TAG=latest
+        if [ "$TAG" = latest ]; then TAG=$(resolve_latest_tag); fi
+        valid_id "$TAG" || die "invalid release tag: $TAG"
+        case $VARIANT in
+            extended) zot_asset="zot-linux-$ARCH" ;;
+            minimal|debug) zot_asset="zot-linux-$ARCH-$VARIANT" ;;
+            *) die_usage "--variant must be extended, minimal or debug" ;;
+        esac
+        zli_asset="zli-linux-$ARCH"
+        base="${ZOTCTL_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download}/$TAG"
+        info "downloading $REPO $TAG ($zot_asset, $zli_asset)"
+        fetch "$base/$zot_asset" "$TMP_DIR/$zot_asset" || die "download failed: $base/$zot_asset"
+        fetch "$base/$zli_asset" "$TMP_DIR/$zli_asset" || die "download failed: $base/$zli_asset"
+        fetch "$base/checksums.sha256.txt" "$TMP_DIR/checksums.sha256.txt" || die "download failed: $base/checksums.sha256.txt"
+        sums=$(awk -v a="$zot_asset" -v b="$zli_asset" '{f=$2; sub(/^\*/,"",f); if (f==a||f==b) print $1"  "f}' "$TMP_DIR/checksums.sha256.txt")
+        [ "$(printf '%s\n' "$sums" | grep -c .)" -eq 2 ] || die "checksums.sha256.txt has no entries for both $zot_asset and $zli_asset"
+        printf '%s\n' "$sums" | sha256_check "$TMP_DIR" || die "CHECKSUM MISMATCH for downloaded binaries; nothing was installed"
+        ok "checksums verified"
+        mv "$TMP_DIR/$zot_asset" "$TMP_DIR/zot"; mv "$TMP_DIR/$zli_asset" "$TMP_DIR/zli"
+        chmod 0755 "$TMP_DIR/zot" "$TMP_DIR/zli"
+    fi
+
+    local zc lc bt
+    zc=$(version_commit "$TMP_DIR/zot") || true
+    lc=$(version_commit "$TMP_DIR/zli") || true
+    [ -n "$zc" ] || die "the new zot binary does not run on this machine (no version output)"
+    [ -n "$lc" ] || die "the new zli binary does not run on this machine (no version output)"
+    bt=$("$TMP_DIR/zot" --version 2>&1 | grep -o '"binary-type":"[^"]*"' | head -1 || true)
+    if [ -z "$SRC_DIR" ]; then
+        case "$VARIANT:$bt" in
+            minimal:*'"minimal"'*) ;;
+            minimal:*) warn "requested minimal variant but binary reports $bt" ;;
+            extended:*'"minimal"'*) warn "requested extended variant but binary reports $bt" ;;
+        esac
+    fi
+    if [ -n "$SRC_DIR" ]; then STAGED_ID=$zc
+    elif [ "$VARIANT" = extended ]; then STAGED_ID=$TAG
+    else STAGED_ID="$TAG-$VARIANT"; fi
+    STAGED_ID=$(printf '%s' "$STAGED_ID" | tr -c 'A-Za-z0-9._-' '_')
+    valid_id "$STAGED_ID" || STAGED_ID="local-$(date +%Y%m%d%H%M%S)"
+    info "new release id: $STAGED_ID  (zot: $zc)"
+}
+
+check_space() { # dir need_kb
+    local dir=$1 need=$2 avail
+    while [ ! -d "$dir" ] && [ "$dir" != / ]; do dir=$(dirname "$dir"); done
+    avail=$(df -Pk "$dir" | awk 'NR==2{print $4}')
+    [ "${avail:-0}" -ge "$need" ] || die "not enough free space on $dir: need ${need}KB, have ${avail}KB"
+}
+
+# write_sums DIR FILE...: record checksums in DIR/SHA256SUMS. It is written through a temporary
+# name, so the manifest never hashes itself.
+write_sums() {
+    local dir=$1; shift
+    if have sha256sum; then (cd "$dir" && sha256sum -- "$@" >.SHA256SUMS.tmp && mv -f .SHA256SUMS.tmp SHA256SUMS)
+    else (cd "$dir" && shasum -a 256 -- "$@" >.SHA256SUMS.tmp && mv -f .SHA256SUMS.tmp SHA256SUMS); fi
+}
+
+# Stage TMP_DIR's binaries as release STAGED_ID. When that release is already installed with
+# identical binaries and is the current one, RELEASE_UNCHANGED=1 is set instead (the caller still
+# applies any requested unit settings).
+stage_release() {
+    local dest="$PREFIX/releases/$STAGED_ID" new_sums
+    RELEASE_UNCHANGED=0
+    if [ -d "$dest" ]; then
+        if [ -f "$dest/SHA256SUMS" ]; then
+            new_sums=$(cd "$TMP_DIR" && if have sha256sum; then sha256sum zot zli; else shasum -a 256 zot zli; fi)
+            if [ "$new_sums" != "$(cat "$dest/SHA256SUMS")" ]; then
+                die "release $STAGED_ID is already installed with different binaries (a rebuild with the same version string?); switch to another release and remove it first with 'zotctl prune --release $STAGED_ID'"
+            fi
+            if [ "$(current_id)" = "$STAGED_ID" ]; then RELEASE_UNCHANGED=1; return 0; fi
+            die "release $STAGED_ID is already installed; use 'zotctl rollback --to $STAGED_ID' or 'zotctl prune --release $STAGED_ID' first"
+        fi
+        warn "removing incomplete earlier staging of $STAGED_ID"
+        safe_rm_dir "$dest"
+    fi
+    run install -d -m 0755 "$PREFIX" "$PREFIX/releases" "$dest"
+    run install -m 0755 "$TMP_DIR/zot" "$dest/zot"
+    run install -m 0755 "$TMP_DIR/zli" "$dest/zli"
+    if [ "$DRY" = 1 ]; then info "  [dry-run] record checksums in $dest/SHA256SUMS"
+    else write_sums "$dest" zot zli; fi
+}
+
+ensure_self_installed() {
+    local self="${BASH_SOURCE[0]}"
+    [ -f "$self" ] || return 0
+    if [ ! -e "$BIN_DIR/zotctl" ]; then run install -m 0755 "$self" "$BIN_DIR/zotctl"; fi
+}
+
+# ---------------------------------------------------- units and capability --
+bind_cap_lines() {
+    printf 'AmbientCapabilities=CAP_NET_BIND_SERVICE\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\n'
+}
+
+# Does this zot binary send sd_notify READY=1? (older builds do not; with Type=notify
+# systemd would then kill them after TimeoutStartSec.) The string is a constant in the binary.
+supports_notify() { LC_ALL=C grep -aqF 'READY=1' "$1" 2>/dev/null; }
+
+# Select Type=notify or Type=simple for release $1 through a zotctl-owned drop-in.
+apply_service_type() {
+    local id=$1 bin="$PREFIX/releases/$1/zot" body file="$UNIT_DIR/$SERVICE.d/zotctl-type.conf" want
+    if supports_notify "$bin"; then
+        want=notify
+        body=$(printf '[Service]\nType=notify\nNotifyAccess=main\nTimeoutStartSec=%s\n' "$START_TIMEOUT")
+    else
+        want=simple
+        body=$(printf '[Service]\nType=simple\n')
+    fi
+    if [ -f "$file" ] && [ "$(cat "$file")" = "$body" ]; then return 0; fi
+    info "release $id: service Type=$want"
+    run install -d -m 0755 "$UNIT_DIR/$SERVICE.d"
+    printf '%s\n' "$body" | write_file "$file" 0644
+}
+
+write_unit() {
+    {
+        cat <<EOF
+[Unit]
+Description=zot OCI registry
+Documentation=https://zotregistry.dev/
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+ExecStart=$BIN_DIR/zot serve $CONFIG_FILE
+Restart=on-failure
+User=$SERVICE_USER
+Group=$SERVICE_USER
+LimitNOFILE=500000
+EOF
+        if [ -n "$MEMORY_HIGH" ]; then printf 'MemoryHigh=%s\n' "$MEMORY_HIGH"; fi
+        if [ -n "$MEMORY_MAX" ]; then printf 'MemoryMax=%s\n' "$MEMORY_MAX"; fi
+        if needs_bind_cap; then bind_cap_lines; fi
+        printf '\n[Install]\nWantedBy=multi-user.target\n'
+    } | write_file "$UNIT_DIR/$SERVICE" 0644
+}
+
+unit_has_bind_cap() {
+    local f
+    for f in "$UNIT_DIR/$SERVICE" "$UNIT_DIR/$SERVICE.d"/*.conf; do
+        [ -f "$f" ] || continue
+        if grep -qE '^AmbientCapabilities=.*CAP_NET_BIND_SERVICE' "$f"; then return 0; fi
+    done
+    return 1
+}
+
+ensure_bind_cap_dropin() {
+    if ! needs_bind_cap; then return 0; fi
+    if unit_has_bind_cap; then return 0; fi
+    info "granting CAP_NET_BIND_SERVICE through systemd (no file capability needed)"
+    run install -d -m 0755 "$UNIT_DIR/$SERVICE.d"
+    { printf '[Service]\n'; bind_cap_lines; } | write_file "$UNIT_DIR/$SERVICE.d/zotctl.conf" 0644
+}
+
+write_health_units() {
+    [ "$NO_HEALTH_TIMER" = 1 ] && return 0
+    {
+        printf '#!/usr/bin/env bash\n# Generated by zotctl.\n'
+        printf 'BIN=%q\nCONFIG=%q\nURL=%q\nSERVICE=%q\n' "$BIN_DIR/zot" "$CONFIG_FILE" "$(health_url)" "$SERVICE"
+        cat <<'EOF'
+# Restarts zot after 3 consecutive failed checks, with a startup grace period (zot's startup
+# dedupe/gc scan can take minutes; restarting during it would loop forever). Nothing is checked
+# while the service is still activating (Type=notify services report ready only after the scan).
+STATE_FILE=${ZOT_HEALTH_STATE_FILE:-/run/zot-health.failcount}
+STARTUP_GRACE_SECS=180
+FAILURE_THRESHOLD=3
+http_code() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -sk -o /dev/null -m 10 -w '%{http_code}' "$1" || true
+    else
+        wget -q --no-check-certificate --spider -S -T 10 "$1" 2>&1 | awk '/HTTP\//{c=$2} END{print c}'
+    fi
+}
+healthy() {
+    # zot's own probe when this build has it (reads the listener from the config); else /v2/
+    if grep -aqF startupz "$BIN" 2>/dev/null; then "$BIN" healthcheck --insecure-skip-verify "$CONFIG" >/dev/null 2>&1; return; fi
+    local code
+    code=$(http_code "$URL")
+    [ "$code" = 200 ] || [ "$code" = 401 ]
+}
+if [ "$(systemctl is-active "$SERVICE" 2>/dev/null || true)" = activating ]; then echo "zot is still starting; not checking"; exit 0; fi
+if healthy; then rm -f "$STATE_FILE"; exit 0; fi
+started_at=$(systemctl show "$SERVICE" -p ActiveEnterTimestamp --value)
+started_epoch=0
+if [ -n "$started_at" ]; then started_epoch=$(date -d "$started_at" +%s 2>/dev/null || echo 0); fi
+uptime=$(( $(date +%s) - started_epoch ))
+if [ "$uptime" -lt "$STARTUP_GRACE_SECS" ]; then echo "zot not ready, started ${uptime}s ago; in grace period"; exit 0; fi
+fails=$(( $(cat "$STATE_FILE" 2>/dev/null || echo 0) + 1 ))
+echo "$fails" > "$STATE_FILE"
+if [ "$fails" -lt "$FAILURE_THRESHOLD" ]; then echo "zot not ready ($fails/$FAILURE_THRESHOLD)"; exit 1; fi
+echo "zot not ready after $FAILURE_THRESHOLD checks, restarting"
+rm -f "$STATE_FILE"
+systemctl restart "$SERVICE"
+exit 1
+EOF
+    } | write_file "$PREFIX/zot-health.sh" 0755
+    write_file "$UNIT_DIR/$HEALTH_SERVICE" 0644 <<EOF
+[Unit]
+Description=zot health check
+Wants=$SERVICE
+
+[Service]
+Type=oneshot
+ExecStart=$PREFIX/zot-health.sh
+EOF
+    write_file "$UNIT_DIR/$HEALTH_TIMER" 0644 <<EOF
+[Unit]
+Description=Run the zot health check every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+# ------------------------------------------------------------- credentials --
+valid_username() { [[ $1 =~ ^[A-Za-z0-9._@-]+$ ]]; }
+
+# Sets ADMIN_PASSWORD from (in order): file, stdin, environment, interactive prompt.
+# The password is never placed on a command line.
+read_password() { # prompt
+    set +x
+    ADMIN_PASSWORD=""
+    if [ -n "$PASSWORD_FILE" ]; then
+        [ -f "$PASSWORD_FILE" ] || die "password file $PASSWORD_FILE not found"
+        local mode; mode=$(stat -c %a "$PASSWORD_FILE")
+        case $mode in 600|400) ;; *) die "password file $PASSWORD_FILE must have mode 0600 or 0400 (is $mode)" ;; esac
+        IFS= read -r ADMIN_PASSWORD <"$PASSWORD_FILE" || true
+    elif [ "$PASSWORD_STDIN" = 1 ]; then
+        IFS= read -r ADMIN_PASSWORD || true
+    elif [ -n "${ZOTCTL_ADMIN_PASSWORD:-}${ZOTCTL_PASSWORD:-}" ]; then
+        ADMIN_PASSWORD="${ZOTCTL_ADMIN_PASSWORD:-${ZOTCTL_PASSWORD:-}}"
+        unset ZOTCTL_ADMIN_PASSWORD ZOTCTL_PASSWORD
+    else
+        [ -t 0 ] || die "no password source: stdin is not a terminal. Use --password-file FILE (mode 0600), --password-stdin, or ZOTCTL_PASSWORD"
+        local p1 p2
+        while :; do
+            read -r -s -p "$1 password: " p1 </dev/tty; echo >&2
+            read -r -s -p "Confirm password: " p2 </dev/tty; echo >&2
+            if [ "$p1" != "$p2" ]; then warn "passwords do not match, try again"; continue; fi
+            if [ "${#p1}" -lt "$MIN_PASSWORD_LEN" ]; then warn "password must be at least $MIN_PASSWORD_LEN characters"; continue; fi
+            break
+        done
+        ADMIN_PASSWORD=$p1
+    fi
+    [ "${#ADMIN_PASSWORD}" -ge "$MIN_PASSWORD_LEN" ] || { ADMIN_PASSWORD=""; die "password must be at least $MIN_PASSWORD_LEN characters"; }
+}
+
+# True when the htpasswd file has an entry for exactly this user name (no regex matching).
+htpasswd_has_user() { # name
+    local f; f=$(htpasswd_path)
+    [ -f "$f" ] && awk -F: -v u="$1" '$1 == u { found = 1 } END { exit !found }' "$f"
+}
+
+htpasswd_path() {
+    local p; p=$(cfg '.http.auth.htpasswd.path')
+    [ -n "$p" ] && printf '%s' "$p" || printf '%s/htpasswd' "$CONFIG_DIR"
+}
+
+# htpasswd_apply ACTION USER   ACTION: set | remove   (password in ADMIN_PASSWORD for set)
+# An existing file keeps its owner and mode; a new one is root:zot 0640 so only root can change
+# the user list (zot only needs to read it and watches it for changes).
+htpasswd_apply() {
+    local action=$1 user=$2 file tmp existed=0
+    file=$(htpasswd_path)
+    if [ "$DRY" = 1 ]; then info "  [dry-run] htpasswd $action $user in $file (password ****)"; return 0; fi
+    if [ -e "$file" ]; then existed=1; fi
+    if [ ! -d "$(dirname "$file")" ]; then run install -d -m 0755 "$(dirname "$file")"; fi
+    tmp=$(mktemp "$file.XXXXXX")
+    chmod 0600 "$tmp"
+    if [ "$existed" = 1 ]; then cp -p "$file" "$tmp"; fi
+    case $action in
+        set)
+            if [ -s "$tmp" ]; then printf '%s\n' "$ADMIN_PASSWORD" | htpasswd -B -i "$tmp" "$user" 2>/dev/null
+            else printf '%s\n' "$ADMIN_PASSWORD" | htpasswd -B -i -c "$tmp" "$user" 2>/dev/null; fi ;;
+        remove) htpasswd -D "$tmp" "$user" 2>/dev/null ;;
+    esac || { rm -f "$tmp"; die "htpasswd failed"; }
+    if [ "$existed" = 0 ]; then
+        chmod 0640 "$tmp"
+        maybe_chown "root:$SERVICE_USER" "$tmp"
+    fi
+    mv -f "$tmp" "$file"
+}
+
+warn_if_user_unauthorized() {
+    [ "$CFG_PARSED" = 1 ] || return 0
+    [ "$(jq -r '.http.accessControl // empty | type' "$CONFIG_FILE" 2>/dev/null)" = object ] || return 0
+    if ! jq -e --arg u "$1" '[.. | strings] | index($u)' "$CONFIG_FILE" >/dev/null 2>&1; then
+        warn "user '$1' does not appear in the accessControl section of $CONFIG_FILE; it may not be authorised for anything"
+    fi
+}
+
+# preflight_verify ZOT_BINARY CONFIG: validate CONFIG with zot's own `verify` without side
+# effects. `zot verify` opens log.output and log.audit with O_CREATE (and panics when their
+# directory is missing), so it runs on a copy of the config without the log files. Configs that
+# are not JSON cannot be sanitised; they are validated later, as the service user.
+preflight_verify() {
+    local bin=$1 cfgfile=$2 d rc=0
+    case $cfgfile in
+        *.json) have jq || return 0 ;;
+        *) info "not validating $cfgfile before changes (not JSON); it is validated as $SERVICE_USER later"; return 0 ;;
+    esac
+    d=$(mktemp -d "${TMPDIR:-/tmp}/zotctl-verify.XXXXXX")
+    if jq 'del(.log.output, .log.audit)' "$cfgfile" >"$d/config.json" 2>/dev/null; then
+        "$bin" verify "$d/config.json" >/dev/null 2>&1 || rc=$?
+    else
+        rc=1
+    fi
+    rm -rf "$d"
+    return "$rc"
+}
+
+# ----------------------------------------------- service user, hardening, logs --
+# Run a command as the service account. Used to prove that zot itself (not root) can read
+# its config, certificates and htpasswd file and write its storage and logs.
+run_as_service_user() {
+    if [ -n "${ZOTCTL_RUN_AS:-}" ]; then ZOTCTL_SERVICE_USER=$SERVICE_USER "$ZOTCTL_RUN_AS" "$@"; return; fi
+    if [ "$TEST_MODE" = 1 ] || [ "$(id -u)" -ne 0 ]; then "$@"; return; fi
+    if have runuser; then runuser -u "$SERVICE_USER" -- "$@"
+    elif have su; then su -s /bin/sh "$SERVICE_USER" -c "$(printf '%q ' "$@")"
+    elif have sudo; then sudo -n -u "$SERVICE_USER" "$@"
+    else warn "no runuser/su/sudo available; cannot check access as $SERVICE_USER"; return 0; fi
+}
+
+# Storage directories from the config: root, every subPaths root and the cache directory.
+storage_dirs() {
+    [ "$CFG_PARSED" = 1 ] || return 0
+    {
+        cfg '.storage.rootDirectory'
+        jq -r '(.storage.subPaths // {}) | to_entries[] | .value.rootDirectory // empty' "$CONFIG_FILE" 2>/dev/null || true
+        jq -r '.storage.cacheDriver.rootDir // empty' "$CONFIG_FILE" 2>/dev/null || true
+    } | sed '/^$/d' | sort -u
+}
+
+# The log files from the config (files, not their directories: a log may live in a shared
+# directory such as /var/log that zotctl must not take over).
+log_files() {
+    [ "$CFG_PARSED" = 1 ] || return 0
+    { cfg '.log.output'; cfg '.log.audit'; } | sed '/^$/d' | sort -u
+}
+
+# Everything zot must be able to write.
+writable_paths() { { storage_dirs; log_files; } | sort -u; }
+
+# Create what is missing and hand it to the service account. Existing directories (including
+# the parent of a log file) are left exactly as they are; check_service_access reports any
+# that zot cannot use.
+provision_paths() {
+    local d f p
+    while IFS= read -r d; do
+        [ -n "$d" ] || continue
+        if [ ! -d "$d" ]; then run install -d -m 0750 "$d"; maybe_chown "$SERVICE_USER:$SERVICE_USER" "$d"; fi
+    done < <(storage_dirs)
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        p=$(dirname "$f")
+        if [ ! -d "$p" ]; then run install -d -m 0750 "$p"; maybe_chown "$SERVICE_USER:$SERVICE_USER" "$p"; fi
+        if [ ! -e "$f" ]; then run install -m 0640 /dev/null "$f"; maybe_chown "$SERVICE_USER:$SERVICE_USER" "$f"; fi
+    done < <(log_files)
+}
+
+# Problems with the paths in the config, one per line. zot resolves a relative path against
+# its working directory, which is not where zotctl (or an admin) would look, and a missing
+# storage root leaves zot with nowhere to store anything.
+config_path_problems() {
+    [ "$CFG_PARSED" = 1 ] || return 0
+    local k v
+    if [ -z "$(cfg '.storage.rootDirectory')" ]; then echo "storage.rootDirectory is not set"; fi
+    if [ "$(cfg '.http.auth.htpasswd | type')" = object ] && [ -z "$(cfg '.http.auth.htpasswd.path')" ]; then
+        echo "http.auth.htpasswd has no path; zot only enables htpasswd authentication when a path is set"
+    fi
+    while IFS='=' read -r k v; do
+        [ -n "$v" ] || continue
+        case $v in
+            /*) ;;
+            *) echo "$k is a relative path ($v); use an absolute path" ;;
+        esac
+    done < <(jq -r '
+        (["storage.rootDirectory", .storage.rootDirectory],
+         ["storage.cacheDriver.rootDir", .storage.cacheDriver.rootDir],
+         ["log.output", .log.output], ["log.audit", .log.audit],
+         ["http.tls.cert", .http.tls.cert], ["http.tls.key", .http.tls.key],
+         ["http.auth.htpasswd.path", .http.auth.htpasswd.path],
+         ((.storage.subPaths // {}) | to_entries[] | ["storage.subPaths[\(.key)].rootDirectory", .value.rootDirectory]))
+        | select(.[1] != null and .[1] != "" and (.[1] | type) == "string") | "\(.[0])=\(.[1])"' "$CONFIG_FILE" 2>/dev/null || true)
+}
+
+# check_service_access ZOT_BINARY: config must validate and be readable, and the paths it
+# names must be accessible, all as the service account. Returns non-zero on any problem.
+check_service_access() {
+    local bin=$1 f d bad=0 hp=""
+    if [ "$DRY" = 1 ]; then info "  [dry-run] check access to config, certificates and storage as $SERVICE_USER"; return 0; fi
+    if ! run_as_service_user "$bin" verify "$CONFIG_FILE" >/dev/null 2>&1; then
+        warn "'zot verify $CONFIG_FILE' fails when run as $SERVICE_USER"; bad=1
+    fi
+    hp=$(cfg '.http.auth.htpasswd.path')
+    for f in "$CONFIG_FILE" "$(cfg '.http.tls.cert')" "$(cfg '.http.tls.key')" "$hp"; do
+        [ -n "$f" ] || continue
+        if ! run_as_service_user test -r "$f"; then warn "$SERVICE_USER cannot read $f"; bad=1; fi
+    done
+    # zot creates its storage directories but not the directory of a log file: it panics at start
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        if [ ! -d "$(dirname "$f")" ]; then warn "the directory of log file $f does not exist and zot cannot create it"; bad=1; fi
+    done < <(log_files)
+    while IFS= read -r d; do
+        [ -n "$d" ] || continue
+        # an existing file or directory must itself be writable; a missing one is created by zot,
+        # so what matters is its nearest existing parent
+        f=$d
+        while [ ! -e "$f" ] && [ "$f" != / ]; do f=$(dirname "$f"); done
+        if ! run_as_service_user test -w "$f"; then warn "$SERVICE_USER cannot write to $f (needed for $d)"; bad=1; fi
+    done < <(writable_paths)
+    return "$bad"
+}
+
+# systemd sandboxing. ReadWritePaths are derived from the config; ambient capabilities keep
+# working under NoNewPrivileges.
+apply_hardening() {
+    local file="$UNIT_DIR/$SERVICE.d/zotctl-hardening.conf" paths
+    if [ -n "$(config_path_problems)" ]; then
+        warn "the configuration has path problems (see above); skipping hardening because ReadWritePaths cannot be derived reliably"
+        return 0
+    fi
+    local all
+    all=$(writable_paths)
+    if grep -q '[[:blank:]%]' <<<"$all"; then
+        warn "a writable path in the configuration contains whitespace or '%', which ReadWritePaths cannot express reliably; skipping hardening"
+        return 0
+    fi
+    paths=$(tr '\n' ' ' <<<"$all")
+    paths=${paths% }
+    if [ -z "$paths" ]; then
+        warn "cannot derive writable paths from $CONFIG_FILE (needs a JSON config with storage.rootDirectory); skipping hardening"
+        return 0
+    fi
+    info "hardening: sandboxing the service, writable: $paths"
+    # ReadWritePaths must exist or the service will not start
+    provision_paths
+    run install -d -m 0755 "$UNIT_DIR/$SERVICE.d"
+    printf '[Service]\nNoNewPrivileges=yes\nProtectSystem=strict\nProtectHome=read-only\nPrivateTmp=yes\nProtectKernelTunables=yes\nProtectKernelModules=yes\nProtectControlGroups=yes\nReadWritePaths=%s\n' "$paths" \
+        | write_file "$file" 0644
+}
+
+# zot treats SIGHUP as a shutdown request, so rotate with copytruncate (never a HUP postrotate).
+write_logrotate() {
+    [ "$NO_LOGROTATE" = 1 ] && return 0
+    local out aud files
+    out=$(cfg '.log.output'); aud=$(cfg '.log.audit')
+    [ -n "$out" ] || return 0
+    if [ ! -d "$LOGROTATE_DIR" ]; then info "no $LOGROTATE_DIR (logrotate not installed); log rotation not configured"; return 0; fi
+    files="\"$out\""
+    if [ -n "$aud" ]; then files="$files \"$aud\""; fi
+    write_file "$LOGROTATE_DIR/zot" 0644 <<EOF
+# managed by zotctl. zot treats SIGHUP as shutdown, so rotate with copytruncate.
+$files {
+    su $SERVICE_USER $SERVICE_USER
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+}
+EOF
+}
+
+# ----------------------------------------------------------------- install --
+cmd_install() {
+    [ -n "$CONFIG_SRC" ] || die_usage "install needs --config FILE (your zot config.json)"
+    [ -r "$CONFIG_SRC" ] || die "config file $CONFIG_SRC not readable"
+    require_root
+    local want_net=1; [ -n "$SRC_DIR" ] && want_net=0
+    CONFIG_FILE=$CONFIG_SRC; CFG_PARSED=0
+    local want_htp=0
+    [ -z "$ADMIN_USER" ] || want_htp=1
+    check_deps "$want_net" 1 "$want_htp" 1
+    is_installed && die "zot is already installed ($UNIT_DIR/$SERVICE exists); use 'zotctl upgrade'"
+    is_managed && die "$PREFIX/current exists; this host already has a zotctl install"
+    [ -n "$BIN_DIR" ] || BIN_DIR=/usr/local/bin
+    [ -n "$CONFIG_DIR" ] || CONFIG_DIR=/etc/zot
+    local src_cfg=$CONFIG_SRC
+    CONFIG_FILE=$src_cfg
+    load_config
+
+    local problems
+    problems=$(config_path_problems)
+    if [ -n "$problems" ]; then
+        printf '%sERROR:%s %s has problems that would break the install:\n' "$C_RED" "$C_OFF" "$src_cfg" >&2
+        printf '  - %s\n' "${problems//$'\n'/$'\n'  - }" >&2
+        die "fix the configuration and run 'zotctl install' again; nothing was changed"
+    fi
+
+    # decide about the initial admin user before touching anything
+    local htp_path="" need_user=0
+    htp_path=$(cfg '.http.auth.htpasswd.path')
+    if [ -n "$htp_path" ]; then
+        if [ -e "$htp_path" ]; then info "htpasswd file $htp_path already exists; leaving it untouched"
+        elif [ "$NO_AUTH" = 1 ]; then die_usage "--no-auth was given but the config enables htpasswd authentication"
+        else need_user=1; fi
+    elif [ -n "$ADMIN_USER" ]; then warn "config does not use htpasswd authentication; ignoring --admin-user"
+    fi
+    if [ "$need_user" = 1 ]; then
+        have htpasswd || check_deps 0 0 1 0
+        if [ -z "$ADMIN_USER" ]; then
+            [ -t 0 ] || die "the config enables htpasswd auth and needs an initial user, but stdin is not a terminal. Pass --admin-user NAME with --password-file FILE, --password-stdin or ZOTCTL_ADMIN_PASSWORD (or --no-auth only if auth is not wanted)"
+            read -r -p "Admin username [admin]: " ADMIN_USER; ADMIN_USER=${ADMIN_USER:-admin}
+        fi
+        valid_username "$ADMIN_USER" || die "invalid username '$ADMIN_USER' (allowed: letters, digits, . _ @ -)"
+        if [ "$DRY" != 1 ]; then read_password "Password for '$ADMIN_USER'"; fi
+        warn_if_user_unauthorized "$ADMIN_USER"
+    fi
+
+    acquire
+    check_space "$PREFIX" 600000
+    info "validating $src_cfg with the new zot binary"
+    preflight_verify "$TMP_DIR/zot" "$src_cfg" || die "new zot rejected $src_cfg (run: $TMP_DIR/zot verify $src_cfg)"
+
+    info "installing zot $STAGED_ID under $PREFIX"
+    confirm "Proceed with fresh install of zot $STAGED_ID?"
+
+    # service account and directories
+    if [ "$TEST_MODE" != 1 ] && ! id "$SERVICE_USER" >/dev/null 2>&1; then
+        local nologin=/usr/sbin/nologin; [ -x $nologin ] || nologin=/sbin/nologin; [ -x $nologin ] || nologin=/bin/false
+        if have useradd; then run useradd --system --user-group --no-create-home --shell "$nologin" "$SERVICE_USER"
+        else run adduser --system --group --no-create-home --shell "$nologin" "$SERVICE_USER"; fi
+    fi
+    # config and user list stay root-owned (zot can read but not rewrite them); only the storage
+    # directories and log files that are missing are created and handed to the service account
+    run install -d -m 0755 "$CONFIG_DIR"
+    maybe_chown "root:root" "$CONFIG_DIR"
+    provision_paths
+    if [ "$src_cfg" -ef "$CONFIG_DIR/config.json" ]; then
+        info "config is already at $CONFIG_DIR/config.json"
+        run chmod 0640 "$CONFIG_DIR/config.json"
+    else
+        run install -m 0640 "$src_cfg" "$CONFIG_DIR/config.json"
+    fi
+    maybe_chown "root:$SERVICE_USER" "$CONFIG_DIR/config.json"
+    CONFIG_FILE="$CONFIG_DIR/config.json"
+    if [ "$DRY" = 1 ]; then CONFIG_FILE=$src_cfg; fi
+    load_config
+
+    stage_release
+    atomic_link "releases/$STAGED_ID" "$PREFIX/current"
+    run install -d -m 0755 "$BIN_DIR"
+    ensure_bin_links "$STAGED_ID"
+    ensure_self_installed
+
+    if [ "$need_user" = 1 ]; then
+        htpasswd_apply set "$ADMIN_USER"
+        ADMIN_PASSWORD=""
+        ok "created initial user '$ADMIN_USER' in $htp_path"
+    fi
+
+    CONFIG_FILE="$CONFIG_DIR/config.json"
+    if [ "$DRY" = 1 ]; then CONFIG_FILE=$src_cfg; fi
+    check_service_access "$PREFIX/releases/$STAGED_ID/zot" \
+        || die "$SERVICE_USER cannot use the installed files (see warnings above); fix permissions and run 'zotctl install' again after 'zotctl uninstall'"
+    CONFIG_FILE="$CONFIG_DIR/config.json"
+    write_unit
+    apply_service_type "$STAGED_ID"
+    if [ "$HARDEN" != 0 ]; then apply_hardening; fi
+    write_logrotate
+    write_health_units
+    run "$SYSTEMCTL" daemon-reload
+    run "$SYSTEMCTL" enable "$SERVICE"
+    run "$SYSTEMCTL" start "$SERVICE"
+    if ! wait_healthy; then
+        warn "zot did not become healthy. Files are left in place for debugging."
+        info "  see: journalctl -u $SERVICE -n 100   and the log files named in $CONFIG_FILE"
+        exit 1
+    fi
+    if [ "$NO_HEALTH_TIMER" != 1 ]; then run "$SYSTEMCTL" enable --now "$HEALTH_TIMER"; fi
+    ok "zot $STAGED_ID installed and answering on $(health_url)"
+}
+
+# ----------------------------------------------------------------- upgrade --
+# Point <bin-dir>/zot and <bin-dir>/zli at <prefix>/current for every binary release $1 has, and
+# drop our link for one it lacks. Anything in the bin directory that is not our link is left alone.
+ensure_bin_links() {
+    local id=$1 n link want
+    if [ "$DRY" = 1 ]; then info "  [dry-run] link $BIN_DIR/zot and $BIN_DIR/zli to $PREFIX/current"; return 0; fi
+    for n in zot zli; do
+        link="$BIN_DIR/$n"; want="$PREFIX/current/$n"
+        if [ -e "$PREFIX/releases/$id/$n" ]; then
+            if [ -e "$link" ] && [ ! -L "$link" ]; then warn "$link is a regular file, not a zotctl link; leaving it"; continue; fi
+            if [ -L "$link" ] && [ "$(readlink "$link")" != "$want" ]; then warn "$link points elsewhere ($(readlink "$link")); leaving it"; continue; fi
+            if [ ! -L "$link" ]; then atomic_link "$want" "$link"; fi
+        elif [ -L "$link" ] && [ "$(readlink "$link")" = "$want" ]; then
+            info "release $id has no $n; removing the $link link"
+            rm -f "$link"
+        fi
+    done
+}
+
+migrate_legacy() {
+    local ts legacy n m
+    local -a moved=()
+    ts=$(date +%Y%m%d%H%M%S)
+    legacy="$PREFIX/releases/legacy-$ts"
+    # validate everything before moving anything, so a refusal never leaves zot without a binary
+    for n in zot zli; do
+        if [ -L "$BIN_DIR/$n" ]; then die "$BIN_DIR/$n is a symlink that zotctl did not create; refusing to replace it"; fi
+    done
+    [ -f "$BIN_DIR/zot" ] || die "no zot binary found at $BIN_DIR/zot to migrate; use --bin-dir"
+    info "migrating existing binaries in $BIN_DIR to $legacy"
+    run install -d -m 0755 "$PREFIX/releases" "$legacy"
+    for n in zot zli; do
+        [ -f "$BIN_DIR/$n" ] || continue
+        if ! run mv "$BIN_DIR/$n" "$legacy/$n"; then
+            for m in ${moved[@]+"${moved[@]}"}; do mv "$legacy/$m" "$BIN_DIR/$m" || true; done
+            die "could not move $BIN_DIR/$n; put back what had already been moved"
+        fi
+        moved+=("$n")
+    done
+    if [ "$DRY" != 1 ]; then write_sums "$legacy" "${moved[@]}"; fi
+    atomic_link "releases/legacy-$ts" "$PREFIX/current"
+    ensure_bin_links "legacy-$ts"
+}
+
+# Switch to release $1. If $2 is given it is recorded as "<id>/.previous".
+activate_release() {
+    local id=$1 marker=${2:-}
+    pause_health_timer
+    info "stopping $SERVICE"
+    run "$SYSTEMCTL" stop "$SERVICE" || return 1
+    if [ -n "$marker" ] && [ "$DRY" != 1 ]; then
+        printf '%s\n' "$marker" >"$PREFIX/releases/$id/.previous.tmp"
+        mv -f "$PREFIX/releases/$id/.previous.tmp" "$PREFIX/releases/$id/.previous"
+    elif [ -n "$marker" ]; then info "  [dry-run] record '$marker' in $PREFIX/releases/$id/.previous"; fi
+    atomic_link "releases/$id" "$PREFIX/current"
+    ensure_bin_links "$id"
+    apply_service_type "$id" || return 1
+    run "$SYSTEMCTL" daemon-reload || return 1
+    info "starting $SERVICE"
+    run "$SYSTEMCTL" start "$SERVICE" || return 1
+}
+
+# A checksum of the zotctl-owned unit drop-ins, to tell whether unit settings changed.
+dropin_state() {
+    local f
+    for f in "$UNIT_DIR/$SERVICE.d"/zotctl*.conf; do
+        if [ -f "$f" ]; then echo "$f"; cat "$f"; fi
+    done | cksum
+}
+
+cmd_upgrade() {
+    require_root
+    local want_net=1; [ -n "$SRC_DIR" ] && want_net=0
+    load_existing
+    check_deps "$want_net" 1 0 0
+    is_installed || die "zot is not installed ($UNIT_DIR/$SERVICE not found); use 'zotctl install'"
+    if [ -z "$CONFIG_FILE" ] || [ ! -r "$CONFIG_FILE" ]; then die "cannot find the config file from $UNIT_DIR/$SERVICE (ExecStart: ${EXEC_BIN:-?})"; fi
+    local old="" problem
+    if is_managed; then old=$(current_id); fi
+    while IFS= read -r problem; do
+        [ -n "$problem" ] || continue
+        warn "$CONFIG_FILE: $problem"
+    done < <(config_path_problems)
+
+    acquire
+    check_space "$PREFIX" 600000
+    info "validating $CONFIG_FILE with the new zot binary"
+    preflight_verify "$TMP_DIR/zot" "$CONFIG_FILE" || die "new zot rejected $CONFIG_FILE (run: $TMP_DIR/zot verify $CONFIG_FILE); nothing was changed"
+
+    local cur_label=${old:-"unmanaged binary in $BIN_DIR"}
+    info "upgrade: $cur_label -> $STAGED_ID"
+    confirm "Proceed? zot will be restarted."
+    stage_release
+    if ! check_service_access "$PREFIX/releases/$STAGED_ID/zot"; then
+        if [ "$RELEASE_UNCHANGED" != 1 ]; then safe_rm_dir "$PREFIX/releases/$STAGED_ID"; fi
+        die "$SERVICE_USER cannot use the new release with the current config (see warnings above); nothing was changed"
+    fi
+    local dropins_before
+    dropins_before=$(dropin_state)
+    ensure_bind_cap_dropin
+    if [ "$HARDEN" = 1 ] || { [ "$HARDEN" != 0 ] && [ -f "$UNIT_DIR/$SERVICE.d/zotctl-hardening.conf" ]; }; then
+        apply_hardening
+    elif [ "$HARDEN" = 0 ]; then
+        run rm -f "$UNIT_DIR/$SERVICE.d/zotctl-hardening.conf"
+    fi
+    if [ "$RELEASE_UNCHANGED" = 1 ]; then
+        # same binaries as the current release: only unit settings can differ
+        apply_service_type "$STAGED_ID"
+        if [ "$DRY" = 1 ]; then return 0; fi
+        if [ "$(dropin_state)" = "$dropins_before" ]; then
+            ok "release $STAGED_ID is already current and its unit settings are up to date; nothing to do"
+            return 0
+        fi
+        info "unit settings changed; restarting zot to apply them"
+        pause_health_timer
+        run "$SYSTEMCTL" daemon-reload
+        run "$SYSTEMCTL" restart "$SERVICE"
+        wait_healthy || die "zot did not become healthy with the new unit settings; see: journalctl -u $SERVICE (and $UNIT_DIR/$SERVICE.d/zotctl-*.conf)"
+        ok "applied the new unit settings to the current release $STAGED_ID"
+        return 0
+    fi
+    if [ -z "$old" ]; then
+        migrate_legacy
+        old=$(current_id)
+        if [ "$DRY" = 1 ]; then old="legacy-<timestamp>"; fi
+    fi
+    ensure_self_installed
+
+    if ! activate_release "$STAGED_ID" "$old" || ! wait_healthy; then
+        warn "release $STAGED_ID did not come up healthy; rolling back to $old"
+        if activate_release "$old" "" && wait_healthy; then
+            die "upgrade to $STAGED_ID failed; rolled back to $old (release dir kept; see: zotctl releases)"
+        fi
+        die "upgrade FAILED and rollback to $old also failed; investigate with: journalctl -u $SERVICE"
+    fi
+    ok "upgraded to $STAGED_ID ($(health_url) is answering)"
+    local keep=${KEEP:-5}
+    if [ -z "$KEEP" ] || [ "$KEEP" -gt 0 ]; then prune_releases "$keep" "" 0 1 || true; fi
+}
+
+# ---------------------------------------------------------------- rollback --
+cmd_rollback() {
+    require_root
+    load_existing
+    check_deps 0 1 0 0
+    is_managed || die "no zotctl-managed release found at $PREFIX/current"
+    local cur target
+    cur=$(current_id)
+    if [ -n "$ROLLBACK_TO" ]; then target=$ROLLBACK_TO
+    else
+        target=$(previous_of "$cur")
+        [ -n "$target" ] || die "release $cur has no recorded previous release; use 'zotctl releases' and 'zotctl rollback --to ID'"
+    fi
+    valid_id "$target" || die "invalid release id: $target"
+    [ -d "$PREFIX/releases/$target" ] || die "previous release $target no longer exists; use 'zotctl releases' and 'zotctl rollback --to ID'"
+    [ "$target" != "$cur" ] || die "$target is already the current release"
+    info "rollback: $cur -> $target"
+    if [ -n "$CONFIG_FILE" ] && ! preflight_verify "$PREFIX/releases/$target/zot" "$CONFIG_FILE"; then
+        warn "$target's zot rejects the current config $CONFIG_FILE"
+        confirm "Roll back anyway?"
+    else
+        confirm "Proceed? zot will be restarted."
+    fi
+    if ! activate_release "$target" "" || ! wait_healthy; then
+        warn "$target did not come up healthy; restoring $cur"
+        if activate_release "$cur" "" && wait_healthy; then die "rollback to $target failed; $cur restored"; fi
+        die "rollback FAILED and restoring $cur also failed; investigate with: journalctl -u $SERVICE"
+    fi
+    ok "rolled back to $target"
+}
+
+# ------------------------------------------------------- releases and prune --
+list_releases_newest() {
+    local d
+    [ -d "$PREFIX/releases" ] || return 0
+    (cd "$PREFIX/releases" && ls -1t) | while IFS= read -r d; do [ -d "$PREFIX/releases/$d" ] && printf '%s\n' "$d"; done || true
+}
+
+cmd_releases() {
+    if [ "$AVAILABLE" = 1 ]; then
+        check_deps 1 1 0 0
+        curl -fsS "https://api.github.com/repos/$REPO/releases?per_page=30" | jq -r '.[].tag_name'
+        return
+    fi
+    [ -d "$PREFIX/releases" ] || { info "no releases under $PREFIX"; return 0; }
+    local cur id prev size when mark
+    cur=$(current_id)
+    printf '%-34s %-9s %-17s %s\n' RELEASE SIZE INSTALLED NOTES
+    while IFS= read -r id; do
+        [ -n "$id" ] || continue
+        size=$(du -sh "$PREFIX/releases/$id" 2>/dev/null | cut -f1)
+        when=$(date -r "$PREFIX/releases/$id" '+%Y-%m-%d %H:%M' 2>/dev/null || echo ?)
+        mark=""; [ "$id" = "$cur" ] && mark="current"
+        prev=$(previous_of "$id")
+        [ -z "$prev" ] || mark="${mark:+$mark, }replaced $prev"
+        printf '%-34s %-9s %-17s %s\n' "$id" "$size" "$when" "$mark"
+    done < <(list_releases_newest)
+}
+
+# prune_releases KEEP OLDER_DAYS INCLUDE_LEGACY QUIET_AUTO
+prune_releases() {
+    local keep=$1 older=$2 legacy=$3 auto=${4:-0}
+    local cur prev id i=0 total
+    local -a all=() victims=() remaining=()
+    cur=$(current_id); prev=$(previous_of "$cur")
+    [ -d "$PREFIX/releases" ] || return 0
+    mapfile -t all < <(list_releases_newest)
+    total=${#all[@]}
+
+    if [ ${#RELEASES[@]} -gt 0 ] && [ "$auto" = 0 ]; then
+        for id in "${RELEASES[@]}"; do
+            valid_id "$id" || die "invalid release id: $id"
+            [ -d "$PREFIX/releases/$id" ] || die "no such release: $id"
+            [ "$id" != "$cur" ] || die "refusing to remove the current release ($id)"
+            [ "$id" != "$prev" ] || die "refusing to remove $id: it is the release 'zotctl rollback' would return to"
+            victims+=("$id")
+        done
+    else
+        for id in "${all[@]}"; do
+            i=$((i + 1))
+            if [ "$id" = "$cur" ] || [ "$id" = "$prev" ]; then continue; fi
+            case $id in legacy-*) [ "$legacy" = 1 ] || continue ;; esac
+            if [ -z "$older" ] || [ -n "$KEEP" ]; then
+                if [ "$i" -gt "$keep" ]; then victims+=("$id"); continue; fi
+            fi
+            if [ -n "$older" ] && [ -n "$(find "$PREFIX/releases/$id" -maxdepth 0 -mtime "+$older" 2>/dev/null)" ]; then victims+=("$id"); fi
+        done
+    fi
+    if [ ${#victims[@]} -eq 0 ]; then [ "$auto" = 1 ] || info "nothing to prune ($total release(s), current: ${cur:-none})"; return 0; fi
+
+    for id in "${all[@]}"; do
+        case " ${victims[*]} " in *" $id "*) ;; *) remaining+=("$id") ;; esac
+    done
+    info "will remove ${#victims[@]} release(s): ${victims[*]}"
+    local r p v
+    for r in "${remaining[@]}"; do
+        p=$(previous_of "$r")
+        for v in "${victims[@]}"; do
+            if [ "$p" = "$v" ]; then warn "after removing $v, 'zotctl rollback' from $r will stop (its previous release is gone)"; fi
+        done
+    done
+    if [ "$auto" = 0 ]; then confirm "Remove them?"; fi
+    for id in "${victims[@]}"; do safe_rm_dir "$PREFIX/releases/$id"; info "removed $id"; done
+}
+
+cmd_prune() {
+    require_root
+    load_existing
+    is_managed || die "no zotctl-managed release found at $PREFIX/current"
+    prune_releases "${KEEP:-3}" "$OLDER_THAN" "$INCLUDE_LEGACY" 0
+}
+
+# ------------------------------------------------------ status, verify, etc. --
+cmd_status() {
+    load_existing
+    local cur state since pid user caps ver
+    cur=$(current_id)
+    printf '%-18s %s\n' "installed:" "$(is_installed && echo yes || echo no)"
+    printf '%-18s %s\n' "prefix:" "$PREFIX"
+    printf '%-18s %s\n' "release:" "${cur:-(not managed by zotctl)}"
+    if [ -x "$BIN_DIR/zot" ]; then
+        ver=$(version_commit "$BIN_DIR/zot" || true)
+        printf '%-18s %s (%s)\n' "zot binary:" "$BIN_DIR/zot" "${ver:-unknown version}"
+    fi
+    printf '%-18s %s\n' "config:" "${CONFIG_FILE:-?}"
+    is_installed || return 0
+    state=$("$SYSTEMCTL" is-active "$SERVICE" 2>/dev/null || true)
+    since=$("$SYSTEMCTL" show "$SERVICE" -p ActiveEnterTimestamp --value 2>/dev/null || true)
+    pid=$("$SYSTEMCTL" show "$SERVICE" -p MainPID --value 2>/dev/null || true)
+    user=""
+    if [ -n "$pid" ] && [ "$pid" != 0 ] && have ps; then user=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ' || true); fi
+    caps=$("$SYSTEMCTL" show "$SERVICE" -p AmbientCapabilities --value 2>/dev/null || true)
+    printf '%-18s %s%s\n' "service:" "${state:-unknown}" "${since:+ (since $since)}"
+    printf '%-18s %s\n' "start type:" "$("$SYSTEMCTL" show "$SERVICE" -p Type --value 2>/dev/null || true)"
+    printf '%-18s %s\n' "runs as:" "${user:-n/a}"
+    printf '%-18s %s\n' "ambient caps:" "${caps:-none}"
+    printf '%-18s %s\n' "health timer:" "$("$SYSTEMCTL" is-active "$HEALTH_TIMER" 2>/dev/null || echo not-installed)"
+    if [ "$CFG_PARSED" = 1 ]; then
+        printf '%-18s %s -> HTTP %s\n' "endpoint:" "$(health_url)" "$(http_code "$(health_url)")"
+    fi
+    printf '%-18s %s\n' "config dir:" "$CONFIG_DIR"
+    local sroot; sroot=$(cfg '.storage.rootDirectory')
+    if [ -n "$sroot" ] && [ -d "$sroot" ]; then printf '%-18s %s\n' "storage:" "$sroot ($(df -h "$sroot" | awk 'NR==2{print $3" used, "$4" free"}'))"; fi
+}
+
+cmd_verify() {
+    load_existing
+    check_deps 0 1 0 0
+    local problems=0 cur
+    is_installed || die "zot is not installed"
+    fail() { warn "$*"; problems=$((problems + 1)); }
+    cur=$(current_id)
+    if [ -n "$cur" ]; then
+        if [ -f "$PREFIX/releases/$cur/SHA256SUMS" ]; then
+            if sha256_check "$PREFIX/releases/$cur" <"$PREFIX/releases/$cur/SHA256SUMS"; then ok "checksums of $cur match"; else fail "checksum mismatch in $PREFIX/releases/$cur"; fi
+        else info "no recorded checksums for $cur"; fi
+        local n
+        for n in zot zli; do
+            [ -e "$PREFIX/current/$n" ] || continue
+            if [ "$(readlink "$BIN_DIR/$n" 2>/dev/null)" = "$PREFIX/current/$n" ]; then ok "$BIN_DIR/$n -> $PREFIX/current/$n"; else fail "$BIN_DIR/$n is not the expected link into $PREFIX/current"; fi
+        done
+    else info "install is not managed by zotctl yet (run 'zotctl upgrade' to migrate)"; fi
+    if [ -n "$CONFIG_FILE" ]; then
+        if preflight_verify "$BIN_DIR/zot" "$CONFIG_FILE"; then ok "config $CONFIG_FILE is valid"; else fail "zot rejects $CONFIG_FILE"; fi
+    fi
+    if [ -x "$BIN_DIR/zot" ] && [ -n "$CONFIG_FILE" ]; then
+        if check_service_access "$BIN_DIR/zot"; then ok "$SERVICE_USER can read the config, certificates and htpasswd, and write storage and logs"
+        else fail "$SERVICE_USER cannot access everything the config needs"; fi
+    fi
+    local hf="$UNIT_DIR/$SERVICE.d/zotctl-hardening.conf" wp rwp
+    if [ -f "$hf" ]; then
+        rwp=" $(sed -n 's/^ReadWritePaths=//p' "$hf") "
+        while IFS= read -r wp; do
+            [ -n "$wp" ] || continue
+            case $rwp in
+                *" $wp "*) ;;
+                *) fail "$wp is writable per the config but not in ReadWritePaths of $hf; run 'zotctl upgrade --harden' to refresh" ;;
+            esac
+        done < <(writable_paths)
+    fi
+    local cp
+    while IFS= read -r cp; do
+        [ -n "$cp" ] || continue
+        fail "$CONFIG_FILE: $cp"
+    done < <(config_path_problems)
+    if [ "$(cfg '.log.level')" = debug ]; then warn "log.level is debug; that is verbose and fills disks quickly, use info unless troubleshooting"; fi
+    if needs_bind_cap; then
+        if unit_has_bind_cap; then ok "CAP_NET_BIND_SERVICE granted by systemd"; else warn "port ${PORT:-?} may need CAP_NET_BIND_SERVICE; the unit has no AmbientCapabilities (a file capability on the binary would work, 'zotctl upgrade' adds the unit setting)"; fi
+    fi
+    if [ "$CFG_PARSED" = 1 ] && [ -n "$(cfg '.http.auth.htpasswd.path')" ]; then
+        local htf mode; htf=$(htpasswd_path)
+        if [ -f "$htf" ]; then
+            mode=$(stat -c %a "$htf"); case $mode in 600|400|640|440) ok "htpasswd $htf mode $mode" ;; *) fail "htpasswd $htf has mode $mode (expected 640 or stricter)" ;; esac
+        else fail "htpasswd file $htf is missing"; fi
+    fi
+    [ "$problems" = 0 ] || die "$problems problem(s) found"
+    ok "all checks passed"
+}
+
+cmd_config() {
+    load_existing
+    case $SUBCMD in
+        path) [ -n "$CONFIG_FILE" ] || die "no config found"; printf '%s\n' "$CONFIG_FILE" ;;
+        check) [ -n "$CONFIG_FILE" ] || die "no config found"
+            preflight_verify "$BIN_DIR/zot" "$CONFIG_FILE" || die "zot rejects $CONFIG_FILE"
+            ok "config is valid" ;;
+        show) [ "$CFG_PARSED" = 1 ] || die "can only show JSON configs (needs jq)"
+            jq 'walk(if type == "object" then with_entries(if (.key | test("pass|secret|token|key|credential"; "i")) and (.value | type == "string") then .value = "****" else . end) else . end)' "$CONFIG_FILE" ;;
+        *) die_usage "config needs a subcommand: check | path | show" ;;
+    esac
+}
+
+cmd_user() {
+    require_root
+    load_existing
+    check_deps 0 1 1 0
+    [ "$CFG_PARSED" = 1 ] || die "cannot read config (need a JSON config and jq)"
+    [ -n "$(cfg '.http.auth.htpasswd.path')" ] || die "the config does not enable htpasswd authentication (http.auth.htpasswd.path is not set)"
+    local name=${POSITIONAL[0]:-}
+    case $SUBCMD in
+        list) local f; f=$(htpasswd_path); if [ -f "$f" ]; then cut -d: -f1 "$f"; fi ;;
+        add|passwd)
+            [ -n "$name" ] || die_usage "user $SUBCMD needs a username"
+            valid_username "$name" || die "invalid username '$name' (allowed: letters, digits, . _ @ -)"
+            local exists=0; if htpasswd_has_user "$name"; then exists=1; fi
+            if [ "$SUBCMD" = add ] && [ "$exists" = 1 ]; then die "user $name already exists; use 'zotctl user passwd $name'"; fi
+            if [ "$SUBCMD" = passwd ] && [ "$exists" = 0 ]; then die "user $name does not exist; use 'zotctl user add $name'"; fi
+            read_password "Password for '$name'"
+            warn_if_user_unauthorized "$name"
+            htpasswd_apply set "$name"; ADMIN_PASSWORD=""
+            ok "user $name updated (zot picks up htpasswd changes automatically)" ;;
+        remove)
+            [ -n "$name" ] || die_usage "user remove needs a username"
+            htpasswd_has_user "$name" || die "user $name does not exist"
+            confirm "Remove user $name?"
+            htpasswd_apply remove "$name"; ok "user $name removed" ;;
+        *) die_usage "user needs a subcommand: add | passwd | remove | list" ;;
+    esac
+}
+
+cmd_service() { # start | stop | restart | logs
+    case $CMD in
+        logs)
+            local args=(-u "$SERVICE" --no-pager -n 200); [ "$FOLLOW" = 1 ] && args+=(-f)
+            exec journalctl "${args[@]}" ;;
+    esac
+    require_root
+    load_existing
+    case $CMD in
+        start) run "$SYSTEMCTL" start "$SERVICE"; wait_healthy
+               if [ -f "$UNIT_DIR/$HEALTH_TIMER" ]; then run "$SYSTEMCTL" start "$HEALTH_TIMER"; fi ;;
+        stop)  if [ -f "$UNIT_DIR/$HEALTH_TIMER" ]; then run "$SYSTEMCTL" stop "$HEALTH_TIMER"; info "health timer stopped so it does not restart zot; 'zotctl start' re-enables it"; fi
+               run "$SYSTEMCTL" stop "$SERVICE" ;;
+        restart) pause_health_timer; run "$SYSTEMCTL" restart "$SERVICE"; wait_healthy ;;
+    esac
+}
+
+cmd_version() {
+    printf 'zotctl %s\n' "$ZOTCTL_VERSION"
+    load_existing
+    if [ -x "$BIN_DIR/zot" ]; then printf 'zot    %s\n' "$(version_commit "$BIN_DIR/zot" || echo unknown)"; fi
+}
+
+# --------------------------------------------------------------- uninstall --
+cmd_uninstall() {
+    require_root
+    load_existing
+    check_deps 0 0 0 0
+    if ! is_installed && [ ! -d "$PREFIX" ]; then ok "nothing to uninstall"; return 0; fi
+    local d f
+    local -a storage=() logs=()
+    mapfile -t storage < <(storage_dirs)
+    mapfile -t logs < <(log_files)
+
+    info "this will:"
+    info "  - stop and disable $SERVICE and $HEALTH_TIMER, remove their unit files"
+    if [ "$KEEP_BINARIES" = 1 ]; then info "  - keep $PREFIX and the links in $BIN_DIR"
+    else info "  - remove $PREFIX (all releases) and the zot/zli links in $BIN_DIR"; fi
+    if [ "$PURGE_DATA" = 1 ]; then
+        info "  - DELETE ALL DATA:"
+        info "      config directory $CONFIG_DIR"
+        for d in ${storage[@]+"${storage[@]}"}; do info "      storage $d"; done
+        for f in ${logs[@]+"${logs[@]}"}; do info "      log file $f (and its rotated copies; the directory is left alone)"; done
+        if [ "$CFG_PARSED" != 1 ]; then warn "the config is not JSON, so storage and log locations are unknown; only $CONFIG_DIR is removed"; fi
+    else info "  - keep the config ($CONFIG_DIR), the storage directories and the log files"; fi
+    [ "$REMOVE_USER" != 1 ] || info "  - remove the '$SERVICE_USER' account"
+    if [ "$PURGE_DATA" = 1 ]; then
+        local sz; sz=$(du -sh "$CONFIG_DIR" 2>/dev/null | cut -f1 || true)
+        warn "--purge-data permanently deletes ${sz:-?} in $CONFIG_DIR"
+        if [ "$ASSUME_YES" != 1 ] && [ "$DRY" != 1 ]; then
+            [ -t 0 ] || die "--purge-data needs confirmation but stdin is not a terminal; re-run with --yes"
+            local ans; read -r -p "Type 'delete' to confirm: " ans
+            [ "$ans" = delete ] || { info "aborted"; exit 1; }
+        fi
+    else confirm "Proceed with uninstall?"; fi
+
+    run "$SYSTEMCTL" disable --now "$HEALTH_TIMER" 2>/dev/null || true
+    run "$SYSTEMCTL" disable --now "$SERVICE" 2>/dev/null || true
+    run rm -f "$UNIT_DIR/$SERVICE" "$UNIT_DIR/$HEALTH_SERVICE" "$UNIT_DIR/$HEALTH_TIMER" "$UNIT_DIR/$SERVICE.d"/zotctl*.conf
+    run rmdir "$UNIT_DIR/$SERVICE.d" 2>/dev/null || true
+    if [ -f "$LOGROTATE_DIR/zot" ] && grep -q 'managed by zotctl' "$LOGROTATE_DIR/zot"; then run rm -f "$LOGROTATE_DIR/zot"; fi
+    run "$SYSTEMCTL" daemon-reload || true
+    run "$SYSTEMCTL" reset-failed "$SERVICE" 2>/dev/null || true
+
+    if [ "$KEEP_BINARIES" != 1 ]; then
+        local n
+        for n in zot zli; do
+            if [ -L "$BIN_DIR/$n" ] && [ "$(readlink "$BIN_DIR/$n")" = "$PREFIX/current/$n" ]; then run rm -f "$BIN_DIR/$n"
+            elif [ -e "$BIN_DIR/$n" ]; then info "left $BIN_DIR/$n in place (not a zotctl link)"; fi
+        done
+        if [ -d "$PREFIX" ]; then safe_rm_dir "$PREFIX"; fi
+        if [ -e "$BIN_DIR/zotctl" ]; then info "left $BIN_DIR/zotctl in place; remove it yourself when done"; fi
+    fi
+
+    if [ "$PURGE_DATA" = 1 ]; then
+        # the storage locations were read from the config above, before the config is deleted
+        if [ -n "$CONFIG_DIR" ] && [ -d "$CONFIG_DIR" ]; then safe_rm_dir "$CONFIG_DIR"; fi
+        for d in ${storage[@]+"${storage[@]}"}; do
+            case "$d/" in "$CONFIG_DIR"/*) continue ;; esac
+            safe_rm_dir "$d"
+        done
+        # only the log files go, never their directory (it may be shared, like /var/log)
+        for f in ${logs[@]+"${logs[@]}"}; do
+            run rm -f -- "$f" "$f".*
+        done
+    else
+        info "kept: $CONFIG_DIR${storage[*]:+ ${storage[*]}}${logs[*]:+ ${logs[*]}}"
+        info "to delete later:  rm -rf $CONFIG_DIR${storage[*]:+ ${storage[*]}}  (and the log files)"
+    fi
+    if [ "$REMOVE_USER" = 1 ]; then
+        if [ "$PURGE_DATA" != 1 ] && [ -d "$CONFIG_DIR" ]; then die_usage "--remove-user needs --purge-data (the config directory still exists)"; fi
+        if [ "$TEST_MODE" != 1 ] && id "$SERVICE_USER" >/dev/null 2>&1; then
+            if have userdel; then run userdel "$SERVICE_USER"; else run deluser "$SERVICE_USER"; fi
+        fi
+    elif [ "$TEST_MODE" != 1 ]; then info "kept the '$SERVICE_USER' account (remove with: userdel $SERVICE_USER)"; fi
+    ok "zot uninstalled"
+}
+
+# ------------------------------------------------------------ usage, main --
+usage() {
+    cat <<'EOF'
+zotctl - install, upgrade and manage zot on a Linux host with systemd
+
+Usage: zotctl <command> [options]
+
+Commands:
+  install      fresh install            --config FILE [source] [--admin-user NAME ...]
+  upgrade      upgrade an install       [source]   (also migrates a hand-installed zot)
+  rollback     switch back              [--to ID]  (default: the release this one replaced)
+  uninstall    remove zot               [--purge-data] [--remove-user] [--keep-binaries]
+  status       show service/install state
+  releases     list installed releases  [--available]  (--available lists GitHub tags)
+  prune        remove old releases      [--keep N] [--older-than DAYS] [--release ID]... [--include-legacy]
+  verify       check checksums, links, config, capability, htpasswd
+  config       check | path | show      (show redacts secrets)
+  user         add NAME | passwd NAME | remove NAME | list   (htpasswd users)
+  start | stop | restart | logs [--follow]
+  version      zotctl and installed zot versions
+
+Source (install / upgrade): one of
+  --dir PATH         local folder containing the 'zot' and 'zli' binaries
+  --version TAG      GitHub release tag (default: latest)
+    --variant extended|minimal|debug   binary variant (default: extended)
+    --repo OWNER/REPO                  default: project-zot/zot
+
+Global options:
+  --dry-run          show what would change; change nothing
+  -y, --yes          do not ask for confirmation
+  --prefix DIR       release store (default /opt/zot)
+  --bin-dir DIR      where zot/zli links go (default: existing, else /usr/local/bin)
+  --config-dir DIR   directory with config.json and htpasswd (default: existing, else /etc/zot)
+  --keep N           releases kept by prune / auto-prune after upgrade (default 3 / 5)
+  --no-health-timer  install: do not create the health check timer
+  --no-harden        install: skip systemd sandboxing (default on for fresh installs)
+  --harden           upgrade: turn sandboxing on for an existing install
+  --no-logrotate     install: do not write /etc/logrotate.d/zot
+  --memory-high S / --memory-max S   install: MemoryHigh / MemoryMax for the unit
+  --start-timeout T  TimeoutStartSec for Type=notify releases (default 5min; zot reports
+                     ready only after its startup scan)
+  -h, --help
+
+Passwords are never accepted as command-line values. Initial/extra users are prompted
+for, or read from --password-file FILE (mode 0600), --password-stdin, or the
+ZOTCTL_PASSWORD environment variable.
+
+Environment: WAIT_SECS (health wait, default 600).
+Exit codes: 0 ok, 1 failure, 2 usage error, 3 missing dependencies.
+EOF
+}
+
+need_arg() { [ "$2" -ge 2 ] || die_usage "option $1 requires a value"; }
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case $1 in
+            -h|--help) usage; exit 0 ;;
+            --dry-run) DRY=1 ;;
+            -y|--yes) ASSUME_YES=1 ;;
+            --prefix) need_arg "$1" $#; PREFIX=${2%/}; shift ;;
+            --bin-dir) need_arg "$1" $#; BIN_DIR=${2%/}; shift ;;
+            --config-dir) need_arg "$1" $#; CONFIG_DIR=${2%/}; shift ;;
+            --harden) HARDEN=1 ;;
+            --no-harden) HARDEN=0 ;;
+            --no-logrotate) NO_LOGROTATE=1 ;;
+            --dir) need_arg "$1" $#; SRC_DIR=${2%/}; shift ;;
+            --version) need_arg "$1" $#; TAG=$2; shift ;;
+            --repo) need_arg "$1" $#; REPO=$2; shift ;;
+            --variant) need_arg "$1" $#; VARIANT=$2; shift ;;
+            --config) need_arg "$1" $#; CONFIG_SRC=$2; shift ;;
+            --keep) need_arg "$1" $#; KEEP=$2; shift ;;
+            --older-than) need_arg "$1" $#; OLDER_THAN=$2; shift ;;
+            --release) need_arg "$1" $#; RELEASES+=("$2"); shift ;;
+            --to) need_arg "$1" $#; ROLLBACK_TO=$2; shift ;;
+            --include-legacy) INCLUDE_LEGACY=1 ;;
+            --available) AVAILABLE=1 ;;
+            --purge-data) PURGE_DATA=1 ;;
+            --remove-user) REMOVE_USER=1 ;;
+            --keep-binaries) KEEP_BINARIES=1 ;;
+            --no-health-timer) NO_HEALTH_TIMER=1 ;;
+            --no-auth) NO_AUTH=1 ;;
+            --admin-user) need_arg "$1" $#; ADMIN_USER=$2; shift ;;
+            --admin-password-file|--password-file) need_arg "$1" $#; PASSWORD_FILE=$2; shift ;;
+            --admin-password-stdin|--password-stdin) PASSWORD_STDIN=1 ;;
+            --admin-password|--password) die_usage "passwords are not accepted on the command line (they would be visible in 'ps' and shell history); use --password-file, --password-stdin or ZOTCTL_PASSWORD" ;;
+            --memory-high) need_arg "$1" $#; MEMORY_HIGH=$2; shift ;;
+            --memory-max) need_arg "$1" $#; MEMORY_MAX=$2; shift ;;
+            --start-timeout) need_arg "$1" $#; START_TIMEOUT=$2; shift ;;
+            -f|--follow) FOLLOW=1 ;;
+            -*) die_usage "unknown option: $1" ;;
+            *) if [ -z "$CMD" ]; then CMD=$1
+               elif [ -z "$SUBCMD" ] && { [ "$CMD" = config ] || [ "$CMD" = user ]; }; then SUBCMD=$1
+               else POSITIONAL+=("$1"); fi ;;
+        esac
+        shift
+    done
+    [ -n "$CMD" ] || { usage >&2; exit 2; }
+    if [ -n "$SRC_DIR" ] && [ -n "$TAG" ]; then die_usage "--dir and --version are mutually exclusive"; fi
+    [[ -z $KEEP || $KEEP =~ ^[0-9]+$ ]] || die_usage "--keep needs a number"
+    [[ -z $OLDER_THAN || $OLDER_THAN =~ ^[0-9]+$ ]] || die_usage "--older-than needs a number of days"
+    case $VARIANT in extended|minimal|debug) ;; *) die_usage "--variant must be extended, minimal or debug" ;; esac
+    case $PREFIX in /*) ;; *) die_usage "--prefix must be an absolute path" ;; esac
+}
+
+ORIG_ARGS="$*"
+parse_args "$@"
+case $CMD in
+    install)   cmd_install ;;
+    upgrade)   cmd_upgrade ;;
+    rollback)  cmd_rollback ;;
+    uninstall) cmd_uninstall ;;
+    status)    cmd_status ;;
+    releases)  cmd_releases ;;
+    prune)     cmd_prune ;;
+    verify)    cmd_verify ;;
+    config)    cmd_config ;;
+    user)      cmd_user ;;
+    start|stop|restart|logs) cmd_service ;;
+    version)   cmd_version ;;
+    help)      usage ;;
+    *) die_usage "unknown command: $CMD" ;;
+esac
